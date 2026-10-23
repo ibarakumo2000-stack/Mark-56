@@ -55,3 +55,10 @@ Local OCR is optional and requires the Tesseract system package plus Python pack
 The `coding_workspace` plugin is discovered by the existing plugin loader. Set `MARK56_WORKSPACE` to the project directory you want Mark 56 to inspect; otherwise it uses the application's current working directory. It can list/read bounded files, produce a unified diff without writing, apply a reviewed edit only with `confirmed=true` and a matching SHA-256, and run only the fixed unittest/pytest/compile suites. It does not accept arbitrary shell commands.
 
 See [Build, test and release workflow](docs/BUILD_TEST_RELEASE.md). GitHub Actions runs unit tests and syntax compilation on Python 3.12 and 3.13. CI success does not establish that real desktop capture works in a Wayland session; that still requires a local GUI test.
+
+
+### Closed-loop desktop task agent
+
+The `desktop_task_agent` plugin adds bounded task lifecycle management (`start`, `step`, `status`, `stop`). For each `step`, it captures a fresh screenshot, asks the configured Gemini vision provider for one structured next action, executes only allowlisted actions, and requires another fresh screenshot before continuing. It automatically stops on visible completion, capture/provider/input errors, a 180-second time limit, or 12 actions. Application launch is restricted to a fixed allowlist; arbitrary shell commands are never accepted.
+
+Example: start a task with `operation=start, task="Open Krita and draw a penguin"`, then call `operation=step` until the plugin reports `completed` or `active=false`. The caller should surface each step result to the task orchestrator and honour `operation=stop` immediately. This implementation is a bounded control loop, not a background daemon. Screen capture and PyAutoGUI input must work in the logged-in graphical session; on Ubuntu Wayland the current machine has a confirmed GNOME portal crash, so this plugin will stop with a clear error until desktop capture is repaired. It will not claim the screen is blank or the drawing is complete after a capture error.
