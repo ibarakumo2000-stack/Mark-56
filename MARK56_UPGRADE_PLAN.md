@@ -75,3 +75,15 @@
 
 ## Current status
 Planning and repository bootstrap only. The code baseline must be copied and validated before marking the application upgrade as started in implementation terms. Later stages are not yet implemented or tested.
+
+## Step 2 implementation: guarded screen agent
+
+Implemented in `plugins/screen_agent.py` with a `screen_agent` tool entry point:
+
+- `observe`: captures a local screenshot; optional PNG path must remain inside the user's home directory.
+- `read_text`: optional local OCR (requires pytesseract, Pillow, and the system Tesseract binary).
+- `analyze`: asks the configured Gemini text/vision route to describe the current screen; screenshot content is treated as untrusted input.
+- `propose`: returns a proposal only and does not execute it.
+- `execute`: requires `confirmed=true` and allows only click, bounded text typing, or a small navigation-key allowlist. Coordinates are checked against screen bounds; no shell, hotkey, deletion, submit, purchase, or credential-entry action is allowed.
+
+Safety tests are in `tests/test_screen_agent.py`. Local test execution is still required; a GitHub commit is not evidence that desktop capture or plugin auto-discovery works on the target Ubuntu session. The agent is intentionally conservative and is not yet an autonomous multi-step computer-use system.
