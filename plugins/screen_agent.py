@@ -206,3 +206,16 @@ TOOL = {
     },
     "handler": screen_agent,
 }
+
+
+
+def run(parameters: dict, **_context) -> str:
+    """Adapter required by core.plugin_loader."""
+    return screen_agent(parameters)
+
+
+PLUGIN = {
+    "name": "screen_agent",
+    "description": TOOL["description"],
+    "parameters": TOOL["parameters"],
+}
