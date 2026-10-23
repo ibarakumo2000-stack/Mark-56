@@ -84,3 +84,20 @@ Run `python -m unittest discover -s tests -v` and `python -m compileall -q main.
 ### Preferred response language
 
 The **Customise Assistant** panel includes a **Preferred Response Language** selector. Its value is saved in `config/api_keys.json` as `preferred_response_language` and applied to the next Gemini Live session. The selected language is the default for both spoken and text-formulated replies, independent of the language used for incoming speech. A language-specific one-off request (such as a translation) does not change the saved preference. Available choices include English, Yoruba, Igbo, Hausa, French, Spanish, Portuguese, German, Italian, Arabic, Hindi, Mandarin Chinese, Japanese, Korean, Russian, Turkish, Swahili, Dutch, Bengali, and Indonesian. Voice fluency and pronunciation depend on model support for the selected language.
+
+
+### Offline project scaffolding
+
+The local_project_builder plugin can create starter portfolios, static web apps, browser games, and Python CLI projects without calling an AI provider. It previews the file list first, creates only a new folder under MARK56_WORKSPACE (or the current working directory), requires confirmation, and never overwrites an existing destination. These templates are foundations, not complete production systems; generated code still needs review and testing.
+
+### Update channel
+
+The Controls drawer includes an automatic background release check at startup and every six hours, plus a manual check button. The checker reads stable release metadata from the official Mark 56 GitHub Releases channel over HTTPS and never executes downloaded code. A newer release is surfaced for review. Automatic installation and restart are not enabled yet: a signed platform-specific package, hash/signature verification, staged replacement, rollback handling, and a restart-time installer must be implemented and tested before the app can safely apply updates unattended.
+
+### Linux network audit boundaries
+
+The linux_network_audit plugin is enabled only on Linux. It can perform explicitly confirmed host discovery or TCP port/service enumeration against bounded private/loopback networks using Nmap. Public targets and large ranges are rejected. It does not exploit devices, brute-force credentials, or use another person's device as an attack target. For lab practice, use an isolated virtual network and deliberately vulnerable training machines that you own or are authorized to test. Windows returns an unavailable message without attempting to install security tools.
+
+### Coding workspace expectations
+
+The coding workspace can review local files, propose a diff, apply a reviewed change with a matching SHA-256 confirmation, and run supported test suites. The offline scaffolder removes the AI-provider dependency for initial project creation. Complex problem solving and reliably correct production code still require iterative tests, dependency checks, runtime verification, and often a capable model; no code generator can guarantee correctness from generation alone.
