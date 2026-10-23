@@ -10,5 +10,6 @@
   "output_device": "",
   "text_provider": "gemini",
   "openai_api_key": "",
-  "openai_model": "gpt-4.1-mini"
+  "openai_model": "gpt-4.1-mini",
+  "preferred_response_language": "English"
 }
