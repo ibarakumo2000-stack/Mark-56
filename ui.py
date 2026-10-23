@@ -5764,6 +5764,7 @@ class MainWindow(QMainWindow):
 
         try:
             data = _read_full_config()
+            language_changed = response_language != (data.get("preferred_response_language") or "English")
             data["assistant_name"] = self._assistant_name
             data["user_name"] = user_name.strip()
             data["preferred_response_language"] = response_language
@@ -5779,7 +5780,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self._log.append_log(f"ERR: Config save failed — {e}")
 
-        if voice_changed and self.on_voice_change:
+        if (voice_changed or language_changed) and self.on_voice_change:
             self.on_voice_change()
 
     def _centre_overlay(self, ov) -> None:
