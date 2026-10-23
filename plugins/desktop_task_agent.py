@@ -14,7 +14,7 @@ import threading
 import time
 from typing import Any
 
-from plugins import desktop_capture
+from plugins import desktop_capture, screen_agent
 
 MAX_TASK_SECONDS = 180
 MAX_TASK_STEPS = 12
@@ -115,7 +115,6 @@ def _perform(decision: dict) -> str:
         return "complete"
     if action == "launch_app":
         return _launch_app(str(decision.get("app") or "").lower().strip())
-    from plugins import screen_agent
     if not screen_agent._HAS_PYAUTOGUI:
         raise RuntimeError("Desktop input unavailable; PyAutoGUI could not connect to this display.")
     pg = screen_agent.pyautogui
