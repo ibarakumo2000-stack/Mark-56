@@ -87,3 +87,15 @@ Implemented in `plugins/screen_agent.py` with a `screen_agent` tool entry point:
 - `execute`: requires `confirmed=true` and allows only click, bounded text typing, or a small navigation-key allowlist. Coordinates are checked against screen bounds; no shell, hotkey, deletion, submit, purchase, or credential-entry action is allowed.
 
 Safety tests are in `tests/test_screen_agent.py`. Local test execution is still required; a GitHub commit is not evidence that desktop capture or plugin auto-discovery works on the target Ubuntu session. The agent is intentionally conservative and is not yet an autonomous multi-step computer-use system.
+
+
+## Build automation and coding workspace implementation
+
+Implemented on branch `mark56-build-automation` (not yet merged):
+
+- Added `.github/workflows/mark56-ci.yml` to run unit tests, compile checks, and example-config JSON validation on Python 3.12 and 3.13.
+- Added `plugins/coding_workspace.py`, discovered by the existing `core.plugin_loader` contract. It confines file operations to `MARK56_WORKSPACE` (or the current working directory), bounds file sizes, provides read/list/propose/apply/test operations, uses unified diffs and SHA-256 stale-file checks, requires explicit confirmation before applying edits, and restricts test commands to unittest, pytest, and compileall.
+- Registered `plugins/screen_agent.py` with the existing plugin loader using the expected `PLUGIN` and `run(parameters, ...)` contract.
+- Added coding workspace unit tests and documented local testing/release steps.
+
+Not yet verified: executing the tests locally or in GitHub Actions; screen capture/OCR in the user's Wayland session; manual regression of voice, HUD, memory, dashboard, and all legacy plugins. Do not mark release-ready until those checks pass.
