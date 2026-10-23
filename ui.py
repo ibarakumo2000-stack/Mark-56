@@ -901,10 +901,32 @@ class HudCanvas(QWidget):
         p.setPen(QPen(blend(acc if live else main, 0.25 + 0.5 * amp), 1.6))
         p.drawLines(spikes)
 
-        # 8. The inner ring the name sits in.
+        # 8. The inner ring and restrained iris assembly. Thin radial vanes,
+        #    nested precision rings and a small optical centre add mechanical
+        #    depth without introducing another colour or changing the layout.
         inner = r * 0.355
         p.setPen(QPen(blend(acc, 0.30 + 0.45 * amp), 1.5))
         p.drawEllipse(QRectF(cx - inner, cy - inner, inner * 2, inner * 2))
+
+        iris_outer, iris_inner = r * 0.285, r * 0.205
+        iris_lines = []
+        for i in range(12):
+            a = math.radians(i * 30.0 + (t * 2.2 if live else t * 0.45))
+            ca, sa = math.cos(a), math.sin(a)
+            iris_lines.append(QLineF(cx + ca * iris_inner, cy + sa * iris_inner,
+                                     cx + ca * (iris_outer if i % 3 else iris_outer * 0.91),
+                                     cy + sa * (iris_outer if i % 3 else iris_outer * 0.91)))
+        p.setPen(QPen(blend(main, 0.20 + 0.12 * amp), 1.0))
+        p.drawLines(iris_lines)
+        for rr, alpha, width in ((0.205, 0.24, 1.0), (0.145, 0.30, 1.0), (0.075, 0.42, 1.2)):
+            rad = r * rr
+            p.setPen(QPen(blend(main, alpha + (0.12 * amp if live else 0.0)), width))
+            p.drawEllipse(QRectF(cx - rad, cy - rad, rad * 2, rad * 2))
+        core_rad = r * (0.035 + 0.012 * amp)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(blend(acc if live else main, 0.24 + 0.22 * amp)))
+        p.drawEllipse(QRectF(cx - core_rad, cy - core_rad, core_rad * 2, core_rad * 2))
+        p.setBrush(Qt.BrushStyle.NoBrush)
 
         # 9. The name, sized from the string rather than from the radius alone:
         #    "J.A.R.V.I.S" and a name someone renamed to "MAX" are very
