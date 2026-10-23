@@ -192,7 +192,7 @@ def run(parameters: dict, **_context) -> str:
         return json.dumps(_snapshot(), ensure_ascii=False)
     if operation == "confirm":
         if p.get("confirmed") is not True:
-            return "Blocked: pass confirmed=true after the user explicitly approves the task."
+            return "Blocked: explicit user approval is required; pass confirmed=true only after the user approves the task."
         with _state_lock:
             if _state["status"] != "awaiting_confirmation":
                 return json.dumps({"active": _state["active"], "status": _state["status"], "message": "No pending approval."})
