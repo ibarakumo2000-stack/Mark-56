@@ -97,6 +97,23 @@ def _read_ui_prefs() -> dict:
         return {}
 
 
+def _get_auto_update_enabled() -> bool:
+    value = _read_ui_prefs().get("auto_update_enabled", True)
+    return value if isinstance(value, bool) else True
+
+
+def _save_auto_update_enabled(enabled: bool) -> None:
+    try:
+        prefs = _read_ui_prefs()
+        prefs["auto_update_enabled"] = bool(enabled)
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _UI_PREFS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(prefs, indent=2), encoding="utf-8")
+        tmp.replace(_UI_PREFS_FILE)
+    except Exception as e:
+        print(f"[UI] Could not save auto-update preference: {e}")
+
+
 def _get_metrics_style() -> str:
     v = _read_ui_prefs().get("metrics_style")
     return v if v in _METRIC_STYLES else _METRIC_DEFAULT
@@ -4735,17 +4752,41 @@ class MainWindow(QMainWindow):
         self._metrics_btn.clicked.connect(self._toggle_metrics_style)
         self._refresh_metrics_btn()
 
-        self._update_btn = _row(QPushButton("↻  AUTO UPDATE  ·  CHECK"))
-        self._update_btn.setToolTip("Check the official Mark 56 release channel in the background.")
+        self._auto_update_btn = _row(QPushButton())
+        self._auto_update_btn.setToolTip("Enable or disable automatic background checks for official Mark 56 releases.")
+        self._auto_update_btn.clicked.connect(self._toggle_auto_update)
+        self._refresh_auto_update_btn()
+
+        self._update_btn = _row(QPushButton("↻  CHECK FOR UPDATES NOW"))
+        self._update_btn.setToolTip("Check the official Mark 56 release channel immediately.")
         self._update_btn.clicked.connect(self._start_update_check)
         self._update_timer = QTimer(self)
         self._update_timer.setInterval(6 * 60 * 60 * 1000)
         self._update_timer.timeout.connect(self._start_update_check)
-        self._update_timer.start()
-        QTimer.singleShot(4500, self._start_update_check)
+        if _get_auto_update_enabled():
+            self._update_timer.start()
+            QTimer.singleShot(4500, self._start_update_check)
 
         w.adjustSize()
         return w
+
+    def _refresh_auto_update_btn(self):
+        enabled = _get_auto_update_enabled()
+        if hasattr(self, "_auto_update_btn"):
+            self._auto_update_btn.setText("↻  AUTO UPDATE: ON" if enabled else "↻  AUTO UPDATE: OFF")
+            self._auto_update_btn.setStyleSheet(self._BTN_PRI if enabled else self._BTN_DIM)
+
+    def _toggle_auto_update(self):
+        enabled = not _get_auto_update_enabled()
+        _save_auto_update_enabled(enabled)
+        if hasattr(self, "_update_timer"):
+            if enabled:
+                self._update_timer.start()
+                QTimer.singleShot(250, self._start_update_check)
+            else:
+                self._update_timer.stop()
+        self._refresh_auto_update_btn()
+        self._log_sig.emit("UPDATE: automatic background checks " + ("enabled" if enabled else "disabled"))
 
     def _start_update_check(self):
         """Check release metadata away from the Qt thread; never block the HUD."""
