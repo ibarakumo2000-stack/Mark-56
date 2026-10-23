@@ -42,7 +42,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QConicalGradient, QDragEnterEvent, QDropEvent, QFont,
-    QFontDatabase, QKeySequence, QLinearGradient, QPainter, QPainterPath,
+    QFontDatabase, QKeySequence, QLinearGradient, QPainter, QPainterPath, QDesktopServices,
     QPen, QPixmap, QRadialGradient, QShortcut,
 )
 # Video playback for the HUD. Part of PyQt6, so it costs no new dependency —
@@ -60,7 +60,7 @@ except Exception as _e:            # noqa: BLE001 - reported, never fatal
 
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter,
+    QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter, QMessageBox,
     QGraphicsScene, QGraphicsView,
     QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar,
 )
@@ -3240,6 +3240,7 @@ class MainWindow(QMainWindow):
     _quiz_sig       = pyqtSignal(str, object, object)  # (topic, questions, grader)
     _quiz_hide_sig  = pyqtSignal()
     _review_sig     = pyqtSignal(str, str, object, object)  # document review payload
+    _update_result_sig = pyqtSignal(object)  # background release-check result
 
     def __init__(self, face_path: str):
         super().__init__()
@@ -3509,6 +3510,7 @@ class MainWindow(QMainWindow):
         self._update_metrics()
 
         self._log_sig.connect(self._log.append_log)
+        self._update_result_sig.connect(self._on_update_check_result)
         self._state_sig.connect(self._apply_state)
         self._content_sig.connect(self._show_content)
         self._reconfig_sig.connect(self._show_setup)
@@ -4711,8 +4713,61 @@ class MainWindow(QMainWindow):
         self._metrics_btn.clicked.connect(self._toggle_metrics_style)
         self._refresh_metrics_btn()
 
+        self._update_btn = _row(QPushButton("↻  AUTO UPDATE  ·  CHECK"))
+        self._update_btn.setToolTip("Check the official Mark 56 release channel in the background.")
+        self._update_btn.clicked.connect(self._start_update_check)
+        self._update_timer = QTimer(self)
+        self._update_timer.setInterval(6 * 60 * 60 * 1000)
+        self._update_timer.timeout.connect(self._start_update_check)
+        self._update_timer.start()
+        QTimer.singleShot(4500, self._start_update_check)
+
         w.adjustSize()
         return w
+
+    def _start_update_check(self):
+        """Check release metadata away from the Qt thread; never block the HUD."""
+        if getattr(self, "_update_check_running", False):
+            return
+        self._update_check_running = True
+        if hasattr(self, "_update_btn"):
+            self._update_btn.setEnabled(False)
+            self._update_btn.setText("↻  CHECKING RELEASES")
+        def work():
+            try:
+                from plugins.update_manager import check_for_update, as_dict
+                result = as_dict(check_for_update())
+            except Exception as exc:
+                result = {"update_available": False, "release_url":
+                          "https://github.com/ibarakumo2000-stack/Mark-56/releases",
+                          "message": f"Update check failed ({type(exc).__name__}).",
+                          "auto_install_ready": False}
+            self._update_result_sig.emit(result)
+        threading.Thread(target=work, daemon=True, name="mark56-update-check").start()
+
+    def _on_update_check_result(self, result):
+        self._update_check_running = False
+        message = str(result.get("message") or "Update check finished.")
+        self._log_sig.emit("UPDATE: " + message)
+        if hasattr(self, "_update_btn"):
+            self._update_btn.setEnabled(True)
+            self._update_btn.setText("↻  UPDATE AVAILABLE" if result.get("update_available")
+                                     else "↻  AUTO UPDATE  ·  CHECK")
+        if result.get("update_available"):
+            box = QMessageBox(self)
+            box.setWindowTitle("Mark 56 update available")
+            box.setText(message)
+            box.setInformativeText(
+                "The release is available for review. Automatic installation is not enabled yet "
+                "because this build does not have a verified platform installer and restart-time "
+                "rollback path. Your current installation has not been changed."
+            )
+            open_btn = box.addButton("Open release page", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is open_btn:
+                QDesktopServices.openUrl(QUrl(str(result.get("release_url") or
+                    "https://github.com/ibarakumo2000-stack/Mark-56/releases")))
 
     def _warm_wake_state(self) -> None:
         """Work out the wake-word state off the UI thread, once.
