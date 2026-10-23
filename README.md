@@ -101,3 +101,8 @@ The linux_network_audit plugin is enabled only on Linux. It can perform explicit
 ### Coding workspace expectations
 
 The coding workspace can review local files, propose a diff, apply a reviewed change with a matching SHA-256 confirmation, and run supported test suites. The offline scaffolder removes the AI-provider dependency for initial project creation. Complex problem solving and reliably correct production code still require iterative tests, dependency checks, runtime verification, and often a capable model; no code generator can guarantee correctness from generation alone.
+
+
+### Reactor HUD refinement
+
+The existing HUD layout is preserved. The reactor core has a restrained mechanical iris treatment with nested precision rings and subtle state/audio-reactive detail, using the existing palette rather than adding new colours.
