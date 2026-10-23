@@ -29,6 +29,36 @@ class DesktopTaskAgentTests(unittest.TestCase):
         self.assertFalse(result["active"])
         self.assertEqual(result["status"], "stopped")
 
+    def test_pause_and_resume(self):
+        agent.run({"operation": "start", "task": "Draw a penguin"})
+        paused = json.loads(agent.run({"operation": "pause"}))
+        self.assertEqual(paused["status"], "paused")
+        self.assertTrue(paused["active"])
+        blocked = json.loads(agent.run({"operation": "step"}))
+        self.assertEqual(blocked["status"], "paused")
+        resumed = json.loads(agent.run({"operation": "resume"}))
+        self.assertEqual(resumed["status"], "running")
+
+    def test_consequential_task_waits_for_explicit_confirmation(self):
+        result = json.loads(agent.run({"operation": "start", "task": "Delete my files"}))
+        self.assertEqual(result["status"], "awaiting_confirmation")
+        self.assertTrue(result["approval_required"])
+        blocked = json.loads(agent.run({"operation": "step"}))
+        self.assertEqual(blocked["status"], "awaiting_confirmation")
+        denied = agent.run({"operation": "confirm", "confirmed": False})
+        self.assertIn("explicit user approval", denied)
+        approved = json.loads(agent.run({"operation": "confirm", "confirmed": True}))
+        self.assertEqual(approved["status"], "running")
+
+    def test_completed_state_cannot_be_forged(self):
+        result = json.loads(agent.run({"operation": "completed"}))
+        self.assertEqual(result["status"], "idle")
+        self.assertIn("cannot be marked completed", result["message"])
+
+    def test_request_stop_sets_interrupt_event(self):
+        agent.request_stop()
+        self.assertTrue(agent._stop_event.is_set())
+
     def test_step_without_active_task_does_nothing(self):
         result = json.loads(agent.run({"operation": "step"}))
         self.assertFalse(result["active"])
