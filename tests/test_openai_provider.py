@@ -1,5 +1,5 @@
 """Unit tests for the optional Mark 56 OpenAI text provider."""
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
@@ -28,7 +28,8 @@ class OpenAIProviderTests(unittest.TestCase):
         response = SimpleNamespace(output_text="  Ready.  ")
         client = MagicMock()
         client.responses.create.return_value = response
-        fake_sdk = SimpleNamespace(OpenAI=MagicMock(return_value=client))
+        fake_sdk = ModuleType("openai")
+        fake_sdk.OpenAI = MagicMock(return_value=client)
         with patch.object(openai_provider, "_settings", return_value={
             "openai_api_key": "test-key",
             "openai_model": "gpt-4.1-mini",
