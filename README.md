@@ -38,4 +38,13 @@ See [MARK56_UPGRADE_PLAN.md](MARK56_UPGRADE_PLAN.md) for the staged roadmap and 
 4. Run the unit tests, then launch with `python main.py`.
 
 The real `config/api_keys.json` must remain local and ignored by Git. Never paste API keys into issues, chat logs, or commits. OpenAI usage may incur API charges. Switching this setting affects one-shot side tasks only; it does not switch the live voice conversation.
+### Guarded screen agent
 
+Mark 56 includes `plugins/screen_agent.py`. Its modes are `observe`, `read_text`, `analyze`, `propose`, and `execute`. Proposals never run automatically; `execute` requires `confirmed=true` and supports only a small allowlist of reversible actions. To test:
+
+```bash
+python -m unittest discover -s tests -v
+python -m compileall -q main.py ui.py core actions plugins dashboard memory tests
+```
+
+Local OCR is optional and requires the Tesseract system package plus Python packages `pytesseract` and `Pillow`. Screen capture needs a logged-in graphical desktop session; it may not work in a headless terminal or restricted Wayland environment.
