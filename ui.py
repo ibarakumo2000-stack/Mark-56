@@ -5762,6 +5762,7 @@ class MainWindow(QMainWindow):
                 save_voice(voice)
                 voice_changed = True
 
+        language_changed = False
         try:
             data = _read_full_config()
             language_changed = response_language != (data.get("preferred_response_language") or "English")
