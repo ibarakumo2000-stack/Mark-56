@@ -48,3 +48,10 @@ python -m compileall -q main.py ui.py core actions plugins dashboard memory test
 ```
 
 Local OCR is optional and requires the Tesseract system package plus Python packages `pytesseract` and `Pillow`. Screen capture needs a logged-in graphical desktop session; it may not work in a headless terminal or restricted Wayland environment.
+
+
+### Coding workspace and automated checks
+
+The `coding_workspace` plugin is discovered by the existing plugin loader. Set `MARK56_WORKSPACE` to the project directory you want Mark 56 to inspect; otherwise it uses the application's current working directory. It can list/read bounded files, produce a unified diff without writing, apply a reviewed edit only with `confirmed=true` and a matching SHA-256, and run only the fixed unittest/pytest/compile suites. It does not accept arbitrary shell commands.
+
+See [Build, test and release workflow](docs/BUILD_TEST_RELEASE.md). GitHub Actions runs unit tests and syntax compilation on Python 3.12 and 3.13. CI success does not establish that real desktop capture works in a Wayland session; that still requires a local GUI test.
