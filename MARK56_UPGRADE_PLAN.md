@@ -99,3 +99,22 @@ Implemented on branch `mark56-build-automation` (not yet merged):
 - Added coding workspace unit tests and documented local testing/release steps.
 
 Not yet verified: executing the tests locally or in GitHub Actions; screen capture/OCR in the user's Wayland session; manual regression of voice, HUD, memory, dashboard, and all legacy plugins. Do not mark release-ready until those checks pass.
+
+
+## Stage 4 implementation update — bounded desktop task controller
+
+Implemented on `mark56-build-automation`:
+
+- Explicit task states and operations: start, awaiting_confirmation, running, paused, completed, stopped, timeout, and error; pause/resume/stop/status/step/confirm are exposed by the plugin.
+- Bounded task memory for goal, recent actions, current application estimate, and remaining work.
+- Fresh screenshot feedback through a multi-backend capture adapter with timeouts and image validation.
+- Fixed approved application launch list, coordinate bounds, bounded drawing drags, text/key limits, and step/time budgets.
+- Consequential-goal approval gate and a thread-safe stop-request hook.
+- Unit tests for pause/resume, approval, stop requests, false completion, capture errors, and action bounds.
+
+Still requires local verification before the stage can be called complete:
+
+- Wire the stop-request hook into the actual voice/UI intent handler so a spoken stop command interrupts task orchestration.
+- Test the capture adapter on the target GNOME Wayland session. This fallback does not prove the existing GNOME portal crash is repaired; capture must show the full desktop.
+- Test real keyboard/mouse input under Wayland. PyAutoGUI may be restricted even if capture works.
+- Run unit tests and syntax checks locally and inspect the CI run for this commit.
