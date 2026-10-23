@@ -59,10 +59,27 @@ See [Build, test and release workflow](docs/BUILD_TEST_RELEASE.md). GitHub Actio
 
 ### Closed-loop desktop task agent
 
-The `desktop_task_agent` plugin adds bounded task lifecycle management (`start`, `step`, `status`, `stop`). For each `step`, it captures a fresh screenshot, asks the configured Gemini vision provider for one structured next action, executes only allowlisted actions, and requires another fresh screenshot before continuing. It automatically stops on visible completion, capture/provider/input errors, a 180-second time limit, or 12 actions. Application launch is restricted to a fixed allowlist; arbitrary shell commands are never accepted.
+The `desktop_task_agent` plugin now exposes `start`, `confirm`, `step`, `status`, `pause`, `resume`, `stop`, and `completed` operations. Each `step` obtains a fresh screenshot, asks the configured Gemini vision route for one small next action, performs only an allowlisted action, and requires another screenshot on the next step. Task memory records the goal, recent actions, current app estimate, and remaining work. The default limits are 180 seconds and 12 actions.
 
-Example: start a task with `operation=start, task="Open Krita and draw a penguin"`, then call `operation=step` until the plugin reports `completed` or `active=false`. The caller should surface each step result to the task orchestrator and honour `operation=stop` immediately. This implementation is a bounded control loop, not a background daemon. Screen capture and PyAutoGUI input must work in the logged-in graphical session; on Ubuntu Wayland the current machine has a confirmed GNOME portal crash, so this plugin will stop with a clear error until desktop capture is repaired. It will not claim the screen is blank or the drawing is complete after a capture error.
+- Approved application launches use a fixed list; arbitrary shell commands are not accepted.
+- Mouse clicks and bounded drawing drags are coordinate-checked; text and key input are limited.
+- Goals containing common consequential terms enter `awaiting_confirmation`; the caller must obtain user approval and then call `confirm` with `confirmed=true`.
+- `request_stop()` provides a thread-safe stop signal for a voice/UI stop-command integration. The caller must wire the spoken stop intent to this function; the current plugin does not by itself guarantee recognition of a stop phrase during a model request.
+- A model's `completed` decision is based on its screenshot interpretation, not a formal pixel-level or application-document proof. Treat completion as vision-verified, not infallible.
 
+#### Desktop capture on Linux
+
+`plugins/desktop_capture.py` tries native capture backends with timeouts, validates that the output is a decodable image, and reports backend failures instead of pretending an empty screen was captured. It tries `grim` on Wayland (where supported), then installed desktop screenshot tools such as `gnome-screenshot` / `spectacle`, then Python capture fallbacks. `screen_agent` uses this adapter for observation, OCR, and vision analysis.
+
+This is a fallback adapter, **not proof that the existing GNOME Wayland portal crash is fixed**. On the target Ubuntu GNOME session, verify capture with `screen_agent` and confirm that the screenshot contains the whole desktop. A backend may fail or capture only an XWayland surface; the task agent stops safely if no backend succeeds. Desktop input is still subject to Wayland/PyAutoGUI restrictions and needs a separate manual check.
+
+Example workflow:
+1. `start` with a low-risk task such as `Open Krita and draw a penguin`.
+2. Call `step` one time, inspect its status/history, and repeat only while status is `running`.
+3. Use `pause` / `resume` to suspend and continue; use `stop` to abort.
+4. Only use `completed` to inspect the final state after the controller reports completion.
+
+Run `python -m unittest discover -s tests -v` and `python -m compileall -q main.py ui.py core actions plugins dashboard memory tests`. Automated tests cannot verify capture quality or real mouse/keyboard control; those require a logged-in desktop session.
 
 ### Preferred response language
 
