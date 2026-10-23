@@ -106,3 +106,16 @@ The coding workspace can review local files, propose a diff, apply a reviewed ch
 ### Reactor HUD refinement
 
 The existing HUD layout is preserved. The reactor core has a restrained mechanical iris treatment with nested precision rings and subtle state/audio-reactive detail, using the existing palette rather than adding new colours.
+
+
+### Project builder (no external AI provider required)
+
+The `project_builder` plugin can list, preview, and create built-in starter templates for a portfolio website, a small browser web app, and a simple browser game. It writes only inside `MARK56_WORKSPACE` (or the current working directory), requires `confirmed=true` after preview, and refuses to overwrite an existing directory. These are useful deterministic starting points, not a substitute for a reasoning model when requirements are novel or complex.
+
+### Defensive network inventory on Linux
+
+The `network_audit` plugin supports bounded host discovery and common TCP port/service inventory with Nmap. It requires explicit confirmation, limits targets to private/loopback/link-local IPv4 CIDRs with at most 256 addresses, and runs no exploit scripts, brute force, or stealth operations. It is unavailable for scan operations on Windows. Service banners alone do not prove a vulnerability; use a deliberately vulnerable lab for exploit training.
+
+### Automatic update checks
+
+The Controls drawer now has a persistent `AUTO UPDATE: ON/OFF` switch and a separate `CHECK FOR UPDATES NOW` action. Enabled background checks run every six hours and once shortly after startup. The current release manager checks GitHub Releases metadata only. **Automatic installation and restart prompting are not yet enabled**: a signed, platform-specific installer, artifact verification, safe staging/rollback, and a tested restart handoff are still required. Do not treat a version being available as permission to execute downloaded code.
