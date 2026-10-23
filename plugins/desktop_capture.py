@@ -59,7 +59,7 @@ def capture_png() -> tuple[bytes, int, int]:
     # grim works on wlroots compositors; it is not expected to work on GNOME.
     if wayland and shutil.which("grim"):
         try:
-            return _run_capture([shutil.which("grim") or "grim"], timeout=5.0)
+            return _run_capture([shutil.which("grim") or "grim", "-"], timeout=5.0)
         except Exception as exc:
             failures.append(f"grim: {type(exc).__name__}: {exc}")
 
