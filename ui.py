@@ -1816,11 +1816,11 @@ class HueWheel(QWidget):
 class CustomizeOverlay(QWidget):
     """Floating overlay — change assistant name, user name, UI colour and voice."""
 
-    saved = pyqtSignal(str, str, str, str)   # assistant_name, user_name, ui_color, voice
-    _OW, _OH = 400, 588
+    saved = pyqtSignal(str, str, str, str, str)   # assistant_name, user_name, ui_color, voice, response_language
+    _OW, _OH = 420, 632
 
     def __init__(self, assistant_name="JARVIS", user_name="",
-                 ui_color=DEFAULT_UI_COLOR, voice="", parent=None):
+                 ui_color=DEFAULT_UI_COLOR, voice="", response_language="English", parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
@@ -1891,6 +1891,34 @@ class CustomizeOverlay(QWidget):
             voice_row.addWidget(b)
         lay.addLayout(voice_row)
         self._refresh_voice_btns()
+
+        # ── Preferred response language ───────────────────────────────────────
+        # Independent of the language the user speaks.
+        lay.addSpacing(4)
+        lay.addWidget(_lbl("PREFERRED RESPONSE LANGUAGE", 8, color=C.TEXT_DIM,
+                            align=Qt.AlignmentFlag.AlignLeft))
+        self._response_language = QComboBox()
+        self._response_languages = [
+            "English", "Yoruba", "Igbo", "Hausa", "French", "Spanish",
+            "Portuguese", "German", "Italian", "Arabic", "Hindi",
+            "Mandarin Chinese", "Japanese", "Korean", "Russian", "Turkish",
+            "Swahili", "Dutch", "Bengali", "Indonesian",
+        ]
+        self._response_language.addItems(self._response_languages)
+        selected_language = response_language if response_language in self._response_languages else "English"
+        self._response_language.setCurrentText(selected_language)
+        self._response_language.setFixedHeight(30)
+        self._response_language.setFont(QFont(_mono(), 9))
+        self._response_language.setStyleSheet(f"""
+            QComboBox {{ background: #000d12; color: {C.TEXT};
+                border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px; }}
+            QComboBox:focus {{ border: 1px solid {C.PRI}; }}
+            QComboBox QAbstractItemView {{ background: {C.PANEL}; color: {C.TEXT};
+                selection-background-color: {C.PRI_GHO}; selection-color: {C.PRI}; }}
+        """)
+        lay.addWidget(self._response_language)
+        lay.addWidget(_lbl("Replies stay in this language, regardless of your spoken language.",
+                            7, color=C.TEXT_DIM, align=Qt.AlignmentFlag.AlignLeft))
 
         # ── UI colour — colour wheel ─────────────────────────────────────────
         lay.addSpacing(4)
@@ -2027,7 +2055,7 @@ class CustomizeOverlay(QWidget):
     def _save(self):
         name = self._name_input.text().strip() or "JARVIS"
         user = self._user_input.text().strip()
-        self.saved.emit(name, user, self._sel_color or DEFAULT_UI_COLOR, self._sel_voice)
+        self.saved.emit(name, user, self._sel_color or DEFAULT_UI_COLOR, self._sel_voice, self._response_language.currentText())
         self.hide()
 
 
@@ -5682,6 +5710,7 @@ class MainWindow(QMainWindow):
             cfg.get("user_name", ""),
             cfg.get("ui_color", "") or DEFAULT_UI_COLOR,
             cfg.get("voice_name", ""),
+            cfg.get("preferred_response_language", "English"),
             parent=cw,
         )
         ow, oh = CustomizeOverlay._OW, CustomizeOverlay._OH
@@ -5703,7 +5732,7 @@ class MainWindow(QMainWindow):
             retheme_all_widgets(old, current_palette())
 
     def _apply_name_update(self, name: str, user_name: str, ui_color: str = "",
-                           voice: str = ""):
+                           voice: str = "", response_language: str = "English"):
         """Update all name/theme-dependent UI elements and persist to config."""
         self._assistant_name = name.strip() or "JARVIS"
         display = self._assistant_name.upper()
@@ -5737,6 +5766,7 @@ class MainWindow(QMainWindow):
             data = _read_full_config()
             data["assistant_name"] = self._assistant_name
             data["user_name"] = user_name.strip()
+            data["preferred_response_language"] = response_language
             if ui_color:
                 data["ui_color"] = ui_color.strip().lower()
             API_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
@@ -5745,6 +5775,7 @@ class MainWindow(QMainWindow):
                 self._log.append_log(f"SYS: UI colour applied — {ui_color}")
             if voice_changed:
                 self._log.append_log(f"SYS: Voice set — {voice}")
+            self._log.append_log(f"SYS: Preferred response language — {response_language}")
         except Exception as e:
             self._log.append_log(f"ERR: Config save failed — {e}")
 
