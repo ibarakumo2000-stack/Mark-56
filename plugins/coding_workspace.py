@@ -98,7 +98,8 @@ def run(parameters: dict, **_context) -> str:
     try:
         root = _root()
         if operation == "list":
-            path = _target(p.get("path") or ".")
+            requested = p.get("path") or "."
+            path = root if requested == "." else _target(requested)
             if path.is_file():
                 return json.dumps({"root": str(root), "files": [path.relative_to(root).as_posix()]})
             files = []
