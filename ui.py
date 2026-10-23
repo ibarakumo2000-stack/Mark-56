@@ -4814,8 +4814,8 @@ class MainWindow(QMainWindow):
         self._log_sig.emit("UPDATE: " + message)
         if hasattr(self, "_update_btn"):
             self._update_btn.setEnabled(True)
-            self._update_btn.setText("↻  UPDATE AVAILABLE" if result.get("update_available")
-                                     else "↻  AUTO UPDATE  ·  CHECK")
+            self._update_btn.setText("↻  UPDATE AVAILABLE · REVIEW" if result.get("update_available")
+                                     else "↻  CHECK FOR UPDATES NOW")
         if result.get("update_available"):
             box = QMessageBox(self)
             box.setWindowTitle("Mark 56 update available")
