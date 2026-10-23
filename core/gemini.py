@@ -474,6 +474,23 @@ def call(contents, tier: str = FAST, config=None,
     a silent None during a session nobody can debug is how the original problem
     stayed hidden.
     """
+    # Mark 56: allow one-shot side tasks to use OpenAI without changing the
+    # Gemini Live voice conversation. Gemini remains the default unless the
+    # user explicitly selects "text_provider": "openai" in local config.
+    try:
+        provider_settings = json.loads(_KEY_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        provider_settings = {}
+    if str(provider_settings.get("text_provider", "gemini")).strip().lower() == "openai":
+        try:
+            from core.openai_provider import generate as _openai_generate
+            return _Reply(_openai_generate(contents, config=config, timeout_ms=timeout_ms))
+        except Exception as e:
+            # Avoid printing request details or potentially sensitive exception text.
+            print(f"[OpenAI] one-shot request failed ({type(e).__name__}); "
+                  "check provider settings and connectivity.")
+            return None
+
     # `tier` is normally FAST or SMART. Anything else is taken to be an explicit
     # model name — screen_agent lets the user pick one in its settings — and it
     # is tried first, with the reasoning ladder behind it. So a user's choice is
