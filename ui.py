@@ -939,6 +939,24 @@ class HudCanvas(QWidget):
             rad = r * rr
             p.setPen(QPen(blend(main, alpha + (0.12 * amp if live else 0.0)), width))
             p.drawEllipse(QRectF(cx - rad, cy - rad, rad * 2, rad * 2))
+        # Precision aperture: eight restrained rotor vanes around the nucleus.
+        # The same two core colours are reused; the added depth comes from
+        # geometry and contrast, not another accent colour or a layout change.
+        aperture_lines = []
+        aperture_rotation = t * (7.0 if live else 1.6)
+        for i in range(8):
+            a = math.radians(i * 45.0 + aperture_rotation)
+            ca, sa = math.cos(a), math.sin(a)
+            aperture_lines.append(QLineF(cx + ca * r * 0.050, cy + sa * r * 0.050,
+                                         cx + ca * r * (0.118 if i % 2 else 0.102),
+                                         cy + sa * r * (0.118 if i % 2 else 0.102)))
+        p.setPen(QPen(blend(main, 0.30 + (0.12 * amp if live else 0.0)), 1.1))
+        p.drawLines(aperture_lines)
+        # A narrow inner bevel gives the optical chamber a machined-glass edge.
+        bevel = r * 0.128
+        p.setPen(QPen(blend(main, 0.16 + 0.10 * amp), 0.8))
+        p.drawEllipse(QRectF(cx - bevel, cy - bevel, bevel * 2, bevel * 2))
+
         core_rad = r * (0.035 + 0.012 * amp)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(blend(acc if live else main, 0.24 + 0.22 * amp)))
