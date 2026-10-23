@@ -22,3 +22,20 @@ A clean example configuration belongs in `config/api_keys.example.json`; actual 
 ## Development status
 
 See [MARK56_UPGRADE_PLAN.md](MARK56_UPGRADE_PLAN.md) for the staged roadmap and acceptance criteria. Features are only marked complete after implementation and testing.
+## Mark 56 changes currently in the repository
+
+- Optional OpenAI Responses API adapter for one-shot AI tasks in `core/openai_provider.py`.
+- `core/gemini.py` can route one-shot calls to OpenAI when local config sets `text_provider` to `openai`; Gemini remains the default.
+- The main Gemini Live voice conversation is unchanged and remains on Gemini Live.
+- Example settings are documented in `config/api_keys.example.json`.
+- Unit tests are in `tests/test_openai_provider.py`; run them from the project root with `python -m unittest discover -s tests`.
+
+### Enable OpenAI for one-shot tasks (optional)
+
+1. Copy `config/api_keys.example.json` to `config/api_keys.json` if you do not already have a local config. Do not overwrite an existing local config.
+2. In the local `config/api_keys.json`, set `"text_provider": "openai"`, add your own `"openai_api_key": "..."`, and optionally set `"openai_model": "gpt-4.1-mini"`.
+3. Install the updated dependencies with `python -m pip install -r requirements.txt`.
+4. Run the unit tests, then launch with `python main.py`.
+
+The real `config/api_keys.json` must remain local and ignored by Git. Never paste API keys into issues, chat logs, or commits. OpenAI usage may incur API charges. Switching this setting affects one-shot side tasks only; it does not switch the live voice conversation.
+
