@@ -1,0 +1,17 @@
+# Packages the app imports (or auto-installs on first launch via core/installer.py)
+# that are NOT listed in the project's requirements.txt. The build script appends
+# this file to requirements.txt so the shipped runtime already has them and the
+# end user never triggers a pip download.
+
+# core/installer.py "_CORE" + the default speech engines (stt=whisper, tts=edgetts)
+soundfile
+miniaudio
+edge-tts
+faster-whisper
+
+# plugins/_mail_oauth_setup.py (Outlook provider; see requirements2.txt)
+msal>=1.28.0
+
+# win10toast imports pkg_resources, which Python 3.12 no longer ships.
+# Pinned below 81 because newer setuptools drop pkg_resources.
+setuptools<81

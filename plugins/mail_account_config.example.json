@@ -1,0 +1,27 @@
+{
+  "provider": "gmail",
+  "account_email": "ibarakumo22@gmail.com",
+
+  "gmail": {
+    "client_id": "221633886505-n96atoknf1kuc5lg2ulfd4se5hoa5ieu.apps.googleusercontent.com",
+    "client_secret": "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",
+    "refresh_token": ""
+  },
+
+  "outlook": {
+    "client_id": "your-azure-app-client-id",
+    "client_secret": "your-azure-app-client-secret",
+    "tenant_id": "common",
+    "refresh_token": ""
+  },
+
+  "auto_send_enabled": false,
+  "poll_interval_seconds": 90,
+
+  "vip_senders": [],
+  "urgent_keywords": [
+    "urgent", "asap", "action required", "deadline",
+    "immediately", "final notice", "security alert", "payment failed"
+  ],
+  "promo_sender_patterns": ["no-?reply@", "newsletter@", "marketing@", "notifications@"]
+}
