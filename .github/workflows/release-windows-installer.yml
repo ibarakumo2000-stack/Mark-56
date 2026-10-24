@@ -18,7 +18,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: jarvis-desktop-release-${{ github.ref }}
+  group: jarvis-desktop-packaging-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
