@@ -4842,10 +4842,92 @@ class MainWindow(QMainWindow):
             self._update_result_sig.emit(result)
         threading.Thread(target=work, daemon=True, name="mark56-update-check").start()
 
+    def _start_update_prepare(self):
+        """Download and verify the offered release off the Qt thread, after user consent."""
+        if getattr(self, "_update_check_running", False):
+            return
+        self._update_check_running = True
+        if hasattr(self, "_update_btn"):
+            self._update_btn.setEnabled(False)
+            self._update_btn.setText("↻  DOWNLOADING & VERIFYING")
+        def work():
+            try:
+                from plugins.update_installer import prepare_update
+                prepared = prepare_update()
+                result = {
+                    "status": "prepared",
+                    "version": prepared.version,
+                    "asset_name": prepared.asset_name,
+                    "file_path": prepared.file_path,
+                    "sha256": prepared.sha256,
+                    "release_url": prepared.release_url,
+                    "message": "The update package was downloaded and its SHA-256 checksum verified. It has not been installed.",
+                }
+            except Exception as exc:
+                result = {
+                    "status": "prepare_failed",
+                    "message": f"Could not download and verify the update: {exc}",
+                    "release_url": "https://github.com/ibarakumo2000-stack/Mark-56/releases",
+                }
+            self._update_result_sig.emit(result)
+        threading.Thread(target=work, daemon=True, name="mark56-update-prepare").start()
+
     def _on_update_check_result(self, result):
         self._update_check_running = False
         message = str(result.get("message") or "Update check finished.")
         status = str(result.get("status") or "")
+
+        if hasattr(self, "_update_btn"):
+            self._update_btn.setEnabled(True)
+
+        if status == "prepared":
+            if hasattr(self, "_update_btn"):
+                self._update_btn.setText("↻  UPDATE VERIFIED · READY")
+                self._update_btn.setStyleSheet(self._BTN_PRI)
+            version = str(result.get("version") or "unknown")
+            box = QMessageBox(self)
+            box.setWindowTitle("Verified Mark 56 update")
+            box.setText(f"Mark 56 {version} has been downloaded and checksum-verified.")
+            box.setInformativeText(
+                "No files have been installed or replaced. Choose Open installer to hand off "
+                "to the platform installer, or Later to leave the verified package untouched."
+            )
+            install_btn = box.addButton("Open installer", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is install_btn:
+                try:
+                    from plugins.update_installer import PreparedUpdate
+                    from plugins.update_install_flow import handoff_to_installer
+                    prepared = PreparedUpdate(
+                        version=version,
+                        asset_name=str(result.get("asset_name") or ""),
+                        file_path=str(result.get("file_path") or ""),
+                        sha256=str(result.get("sha256") or ""),
+                        release_url=str(result.get("release_url") or
+                            "https://github.com/ibarakumo2000-stack/Mark-56/releases"),
+                    )
+                    handoff = handoff_to_installer(prepared, user_confirmed=True)
+                    QMessageBox.information(self, "Mark 56 update", handoff.message)
+                    self._log_sig.emit("UPDATE: " + handoff.message)
+                except Exception as exc:
+                    QMessageBox.warning(
+                        self, "Could not open update installer",
+                        f"The update was not launched. {exc}",
+                    )
+                    self._log_sig.emit(f"UPDATE: installer handoff failed: {exc}")
+            else:
+                self._log_sig.emit("UPDATE: verified package kept; installation postponed.")
+            return
+
+        if status == "prepare_failed":
+            if hasattr(self, "_update_btn"):
+                self._update_btn.setText("↻  UPDATE DOWNLOAD FAILED")
+                self._update_btn.setStyleSheet(self._BTN_DIM)
+            QMessageBox.warning(self, "Mark 56 update not prepared", message)
+            self._log_sig.emit("UPDATE: " + message)
+            return
+
         if not status:
             if result.get("update_available"):
                 status = "update_available"
@@ -4859,7 +4941,6 @@ class MainWindow(QMainWindow):
         self._log_sig.emit("UPDATE: " + message)
 
         if hasattr(self, "_update_btn"):
-            self._update_btn.setEnabled(True)
             if status == "update_available":
                 self._update_btn.setText("↻  UPDATE AVAILABLE · REVIEW")
                 self._update_btn.setStyleSheet(self._BTN_PRI)
@@ -4875,24 +4956,22 @@ class MainWindow(QMainWindow):
             box.setWindowTitle("Mark 56 update available")
             box.setText(message)
             box.setInformativeText(
-                "The release is available for review. Automatic installation is not enabled yet "
-                "because this build does not have a verified platform installer and restart-time "
-                "rollback path. Your current installation has not been changed."
+                "You can review the official release or download and verify the platform package. "
+                "Downloading does not install it. The installer is opened only after a second confirmation."
             )
-            open_btn = box.addButton("Open release page", QMessageBox.ButtonRole.AcceptRole)
+            download_btn = box.addButton("Download verified update", QMessageBox.ButtonRole.AcceptRole)
+            open_btn = box.addButton("Open release page", QMessageBox.ButtonRole.ActionRole)
             box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
             box.exec()
-            if box.clickedButton() is open_btn:
+            if box.clickedButton() is download_btn:
+                self._start_update_prepare()
+            elif box.clickedButton() is open_btn:
                 QDesktopServices.openUrl(QUrl(str(result.get("release_url") or
                     "https://github.com/ibarakumo2000-stack/Mark-56/releases")))
         elif show_result and status == "up_to_date":
             QMessageBox.information(self, "JARVIS is up to date", message)
         elif show_result:
-            QMessageBox.information(
-                self,
-                "Could not check for updates",
-                message,
-            )
+            QMessageBox.information(self, "Could not check for updates", message)
 
     def _warm_wake_state(self) -> None:
         """Work out the wake-word state off the UI thread, once.
