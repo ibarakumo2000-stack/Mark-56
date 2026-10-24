@@ -1,0 +1,7 @@
+
+{
+  "local_model_enabled": true,
+  "local_model_base_url": "http://127.0.0.1:11434",
+  "local_model_name": "qwen2.5:7b",
+  "local_vision_model_name": "llava:7b"
+}
