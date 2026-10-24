@@ -15,6 +15,7 @@ import time
 from typing import Any
 
 from plugins import desktop_capture, screen_agent
+from core import local_model
 
 MAX_TASK_SECONDS = 180
 MAX_TASK_STEPS = 12
@@ -95,10 +96,17 @@ def _vision_step(task: str, last_action: str | None, history: list[str]) -> dict
         f"recent_history={history[-5:]}. "
         "Allowed apps: krita,gimp,inkscape,pinta,kolourpaint,libreoffice_draw,firefox."
     )
-    response = gemini.call([
-        gtypes.Part.from_bytes(data=png, mime_type="image/png"), instruction,
-    ], tier=gemini.FAST, timeout_ms=20000)
-    raw = (getattr(response, "text", None) or "").strip()
+    if local_model.enabled():
+        # Explicit local mode is fail-closed: never send screenshots to a cloud model
+        # if Ollama or the configured local vision model is unavailable.
+        raw = local_model.generate(
+            instruction, images=[png], timeout_ms=20000
+        ).strip()
+    else:
+        response = gemini.call([
+            gtypes.Part.from_bytes(data=png, mime_type="image/png"), instruction,
+        ], tier=gemini.FAST, timeout_ms=20000)
+        raw = (getattr(response, "text", None) or "").strip()
     if raw.startswith("```"):
         raw = raw.strip("`")
         if raw.startswith("json"):
