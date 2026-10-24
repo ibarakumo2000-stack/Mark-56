@@ -85,7 +85,7 @@ class UpdateManagerTests(unittest.TestCase):
     def test_packaged_version_file_overrides_source_fallback(self):
         with TemporaryDirectory() as directory:
             version_file = Path(directory) / "VERSION"
-            version_file.write_text("56.2.0\\n", encoding="utf-8")
+            version_file.write_text("56.2.0", encoding="utf-8")
             self.assertEqual(update_manager._installed_version(version_file), "56.2.0")
 
     def test_missing_packaged_version_uses_source_fallback(self):
