@@ -11,6 +11,7 @@ import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 RELEASE_API = "https://api.github.com/repos/ibarakumo2000-stack/Mark-56/releases/latest"
@@ -45,18 +46,32 @@ def _unavailable(current_version: str, message: str) -> UpdateStatus:
     )
 
 
-def check_for_update(current_version: str = CURRENT_VERSION) -> UpdateStatus:
+def _installed_version(version_file: Path | None = None) -> str:
+    """Read the version embedded in an installed package, with a source fallback."""
+    candidate = version_file or (Path(__file__).resolve().parent.parent / "VERSION")
+    try:
+        value = candidate.read_text(encoding="utf-8").strip()
+        if _version(value) is not None:
+            return value.lstrip("v")
+    except (OSError, UnicodeError):
+        pass
+    return CURRENT_VERSION
+
+
+def check_for_update(current_version: str | None = None) -> UpdateStatus:
     """Check for a newer stable release without changing the installed app."""
-    current = _version(current_version)
+    installed_version = _installed_version() if current_version is None else str(current_version)
+    current = _version(installed_version)
     if current is None:
         return UpdateStatus(
-            current_version,
+            installed_version,
             None,
             False,
             RELEASES_PAGE,
             "The installed version could not be verified. Check the app version configuration.",
             "invalid_version",
         )
+    current_version = installed_version
 
     request = urllib.request.Request(
         RELEASE_API,
