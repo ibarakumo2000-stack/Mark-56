@@ -45,7 +45,7 @@ BIN_DIR="$HOME/.local/bin"
 APP_DIR="$HOME/.local/share/applications"
 echo "JARVIS / MARK 56 — Linux installer"
 echo "Install location: $INSTALL_ROOT"
-if command -v apt-get >/dev/null 2>&1 && [ "$JARVIS_INSTALL_SYSTEM_LIBS" = "1" ]; then
+if command -v apt-get >/dev/null 2>&1 && [ "${JARVIS_INSTALL_SYSTEM_LIBS:-0}" = "1" ]; then
   packages="libasound2 libpulse0 libegl1 libgl1 libportaudio2 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0"
   if [ "$(id -u)" -eq 0 ]; then
     apt-get update && apt-get install -y $packages
