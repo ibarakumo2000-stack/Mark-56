@@ -40,7 +40,7 @@ def _unavailable(current_version: str, message: str) -> UpdateStatus:
         None,
         False,
         RELEASES_PAGE,
-        message,
+        f"{message} The existing installation was not changed.",
         "unavailable",
     )
 
