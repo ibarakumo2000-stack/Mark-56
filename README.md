@@ -119,3 +119,8 @@ The `network_audit` plugin supports bounded host discovery and common TCP port/s
 ### Automatic update checks
 
 The Controls drawer now has a persistent `AUTO UPDATE: ON/OFF` switch and a separate `CHECK FOR UPDATES NOW` action. Enabled background checks run every six hours and once shortly after startup. The current release manager checks GitHub Releases metadata only. **Automatic installation and restart prompting are not yet enabled**: a signed, platform-specific installer, artifact verification, safe staging/rollback, and a tested restart handoff are still required. Do not treat a version being available as permission to execute downloaded code.
+
+
+### Provider-independent static website builder
+
+Mark 56 now includes `plugins/static_site_builder.py`, a local generator for responsive portfolio, business, landing, and church websites. It assembles HTML/CSS/JavaScript without an AI provider, previews before writing, escapes supplied text, confines output to `MARK56_WORKSPACE`, and refuses to overwrite existing destinations. See [Local static site builder](docs/LOCAL_STATIC_SITE_BUILDER.md) and run `python -m unittest tests.test_static_site_builder` (or the full test discovery suite).
