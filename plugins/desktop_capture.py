@@ -143,3 +143,18 @@ def capture_png() -> tuple[bytes, int, int]:
         "No usable desktop screenshot was captured. Blank/black frames are rejected."
         + hint + " Backend diagnostics: " + summary[:1400]
     )
+
+
+# Mark-56 plugin-template entry point. Kept alongside the helper API for the screen agent.
+PLUGIN = {
+    "name": "desktop_capture",
+    "description": "Capture the current desktop for screen-reading requests. Use when the user asks what is on their screen. Returns capture dimensions and a diagnostic; does not upload or store the screenshot.",
+    "parameters": {"type": "OBJECT", "properties": {}, "required": []},
+}
+
+def run(parameters: dict, player=None, session_memory=None) -> str:
+    try:
+        _png, width, height = capture_png()
+        return f"Desktop capture succeeded: {width}x{height} pixels. The screenshot is ready for the screen-analysis workflow."
+    except Exception as exc:
+        return f"Sir, desktop capture failed: {type(exc).__name__}: {exc}"
