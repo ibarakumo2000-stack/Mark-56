@@ -37,6 +37,15 @@ class LocalModelTests(unittest.TestCase):
         self.assertEqual(payload["model"], "qwen2.5:7b")
         self.assertFalse(payload["stream"])
 
+    def test_one_shot_gemini_router_uses_local_model_without_cloud_fallback(self):
+        from core import gemini
+        with patch.object(local_model, "enabled", return_value=True), patch.object(
+            local_model, "generate", return_value="offline answer"
+        ) as generate:
+            response = gemini.call("hello", timeout_ms=5000)
+        self.assertEqual(response.text, "offline answer")
+        generate.assert_called_once_with("hello", images=None, timeout_ms=5000)
+
     def test_image_uses_vision_model_and_base64(self):
         response = MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps(
