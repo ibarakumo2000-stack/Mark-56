@@ -474,6 +474,51 @@ def call(contents, tier: str = FAST, config=None,
     a silent None during a session nobody can debug is how the original problem
     stayed hidden.
     """
+    # Mark 56 offline-first mode: when enabled, all one-shot reasoning calls
+    # use Ollama locally and fail closed instead of silently sending data to a
+    # cloud provider. The persistent Gemini Live voice session is separate.
+    try:
+        from core import local_model
+        if local_model.enabled():
+            items = contents if isinstance(contents, (list, tuple)) else [contents]
+            prompt_parts = []
+            images = []
+            for item in items:
+                if isinstance(item, str):
+                    if item.strip():
+                        prompt_parts.append(item)
+                    continue
+                item_text = getattr(item, "text", None)
+                if isinstance(item_text, str) and item_text.strip():
+                    prompt_parts.append(item_text)
+                blob = getattr(item, "inline_data", None)
+                if blob is not None:
+                    data = getattr(blob, "data", None)
+                    if isinstance(data, bytes):
+                        images.append(data)
+                    elif isinstance(data, str):
+                        import base64
+                        try:
+                            images.append(base64.b64decode(data))
+                        except Exception:
+                            pass
+            instruction = ""
+            if isinstance(config, dict):
+                instruction = str(config.get("system_instruction") or "")
+            else:
+                instruction = str(getattr(config, "system_instruction", "") or "")
+            prompt = "\\n\\n".join(([instruction] if instruction else []) + prompt_parts)
+            result = local_model.generate(prompt, images=images or None, timeout_ms=timeout_ms)
+            return _Reply(result)
+    except Exception as e:
+        # Explicit offline mode must not silently route private data to the cloud.
+        try:
+            if local_model.enabled():
+                print(f"[Local model] one-shot request failed ({type(e).__name__}); cloud fallback is disabled.")
+                return None
+        except Exception:
+            pass
+
     # Mark 56: allow one-shot side tasks to use OpenAI without changing the
     # Gemini Live voice conversation. Gemini remains the default unless the
     # user explicitly selects "text_provider": "openai" in local config.

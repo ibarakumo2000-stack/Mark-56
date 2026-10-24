@@ -970,9 +970,11 @@ class JarvisLive:
             _cfg = json.loads(open(API_CONFIG_PATH, encoding="utf-8").read())
             self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip()
             _user_name = (_cfg.get("user_name") or "").strip()
+            _response_language = (_cfg.get("preferred_response_language") or "English").strip()
         except Exception:
             self._asst_name = "JARVIS"
             _user_name = ""
+            _response_language = "English"
 
         memory     = load_memory()
         mem_str    = format_memory_for_prompt(memory)
@@ -1025,7 +1027,17 @@ class JarvisLive:
             ),
         })
 
-        parts = [time_ctx, identity_ctx]
+        language_ctx = (
+            "[PREFERRED RESPONSE LANGUAGE]\n"
+            f"Always speak and formulate your replies in {_response_language}. "
+            "This preference overrides the language used in the user's message or detected speech. "
+            "Understand the user's input in whatever supported language they use, but reply in the selected language. "
+            "Do not switch languages just because the user does. Only use another language when the user explicitly "
+            "requests a one-off translation, quotation, or language-specific output; then return to the selected "
+            "language for the rest of the conversation. If a requested language is not fully supported by speech, "
+            "still use it for text and do not claim unsupported voice capability.\n\n"
+        )
+        parts = [time_ctx, identity_ctx, language_ctx]
         if mem_str:
             parts.append(mem_str)
         parts.append(sys_prompt)

@@ -1,0 +1,107 @@
+name: Build and publish JARVIS Windows installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semantic version to publish (example: 56.0.0)"
+        required: true
+        default: "56.0.0"
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jarvis-windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-windows-installer:
+    name: Build and validate Windows installer
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up build Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Determine release version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}".Trim()
+          } else {
+            $version = "${{ github.ref_name }}".TrimStart("v")
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Version must use MAJOR.MINOR.PATCH (for example 56.0.0)."
+          }
+
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+          Write-Host "Building JARVIS Windows installer version $version"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6"
+          if (-not (Test-Path (Join-Path $iscc "ISCC.exe"))) {
+            throw "Inno Setup 6 was not installed correctly."
+          }
+          $iscc >> $env:GITHUB_PATH
+
+      - name: Build, scan, and smoke-test packaged runtime
+        shell: pwsh
+        run: |
+          python scripts/build.py --version "$env:APP_VERSION"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installer build or its bundled-runtime smoke test failed."
+          }
+
+      - name: Upload installer build artifact for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-windows-installer-${{ env.APP_VERSION }}
+          path: |
+            dist/MARK-LV-Setup-${{ env.APP_VERSION }}.exe
+            dist/SHA256SUMS.txt
+            dist/build-info.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish release with installer and checksums
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.APP_VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: JARVIS v${{ env.APP_VERSION }}
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: true
+          body: |
+            JARVIS / Mark 56 Windows installer.
+
+            - Installer: MARK-LV-Setup-${{ env.APP_VERSION }}.exe
+            - SHA-256 checksum: see SHA256SUMS.txt
+            - Build metadata: see build-info.json
+
+            The build pipeline runs the package secret scan and bundled-runtime smoke test before publishing.
+            This installer is not code-signed unless a signing command is configured in the build process;
+            Windows may show a SmartScreen warning for unsigned software.
+
+            Linux and macOS installers are not included in this Windows release.
+          files: |
+            dist/MARK-LV-Setup-${{ env.APP_VERSION }}.exe
+            dist/SHA256SUMS.txt
+            dist/build-info.json
