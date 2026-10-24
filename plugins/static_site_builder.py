@@ -102,7 +102,7 @@ def run(parameters: dict, **_context) -> str:
             raise ValueError("Project destination escapes the configured workspace.")
         result={"ok":True,"operation":op,"name":name,"kind":p.get("kind") or "portfolio","destination":str(dest),"files":list(files),"requires_provider":False}
         if op=="preview":
-            result.update(message="Preview only; no files written.",preview_html=files["index.html"][:5000])
+            preview_html = files["index.html"].replace(\'<link rel="stylesheet" href="style.css">\', "<style>" + files["style.css"] + "</style>")\n            result.update(message="Preview only; no files written.",preview_html=preview_html[:30000])
             return json.dumps(result,ensure_ascii=False)
         if p.get("confirmed") is not True:
             result.update(ok=False,message="Creation requires confirmed=true after reviewing the preview.")
