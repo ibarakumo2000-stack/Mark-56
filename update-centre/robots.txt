@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://mark56-update-centre.vercel.app/sitemap.xml

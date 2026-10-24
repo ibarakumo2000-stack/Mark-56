@@ -10,5 +10,10 @@
   "output_device": "",
   "text_provider": "gemini",
   "openai_api_key": "",
-  "openai_model": "gpt-4.1-mini"
+  "openai_model": "gpt-4.1-mini",
+  "preferred_response_language": "English",
+  "local_model_enabled": false,
+  "local_model_base_url": "http://127.0.0.1:11434",
+  "local_model_name": "qwen2.5:7b",
+  "local_vision_model_name": "llava:7b"
 }

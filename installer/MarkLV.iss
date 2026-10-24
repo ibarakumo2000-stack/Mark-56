@@ -27,6 +27,9 @@
 #ifndef OutDir
   #define OutDir "..\dist"
 #endif
+#ifndef SetupIconFile
+  #define SetupIconFile "..\build\setup.ico"
+#endif
 
 #define AppName      "Jarvis"
 #define AppPublisher "MARK LV"
@@ -59,7 +62,7 @@ MinVersion=10.0
 
 OutputDir={#OutDir}
 OutputBaseFilename=MARK-LV-Setup-{#AppVersion}
-SetupIconFile={#StageDir}\config\jarvis.ico
+SetupIconFile="{#SetupIconFile}"
 UninstallDisplayIcon={app}\config\jarvis.ico
 UninstallDisplayName={#AppName}
 Uninstallable=yes

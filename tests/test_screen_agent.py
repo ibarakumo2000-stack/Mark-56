@@ -6,6 +6,12 @@ from plugins import screen_agent
 
 
 class ScreenAgentTests(unittest.TestCase):
+    def test_plugin_loader_contract_is_present(self):
+        self.assertEqual(screen_agent.PLUGIN["name"], "screen_agent")
+        self.assertTrue(screen_agent.PLUGIN["description"])
+        self.assertEqual(screen_agent.PLUGIN["parameters"]["type"], "OBJECT")
+        self.assertEqual(screen_agent.run({"mode": "unknown"}), screen_agent.screen_agent({"mode": "unknown"}))
+
     def test_unknown_mode_is_rejected(self):
         self.assertIn("Unknown mode", screen_agent.screen_agent({"mode": "launch"}))
 

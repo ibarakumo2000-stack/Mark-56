@@ -319,6 +319,50 @@ def find_iscc() -> Path:
         "(or set the ISCC environment variable to ISCC.exe).")
 
 
+def prepare_setup_icon() -> Path:
+    """Create a compact multi-size ICO for Inno Setup from the full app icon.
+
+    The application keeps its original icon in the installed files. The setup
+    executable uses a compact version because very large ICO resources can
+    exceed Inno Setup's executable resource-update limits.
+    """
+    source = STAGE / "config" / "jarvis.ico"
+    target = BUILD / "setup.ico"
+    python = STAGE / "runtime" / "python.exe"
+    if not source.is_file():
+        die(f"missing application icon: {source}")
+    if not python.is_file():
+        die(f"bundled Python not found for setup-icon conversion: {python}")
+
+    converter = r"""
+import sys
+from pathlib import Path
+from PIL import Image
+
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+target.parent.mkdir(parents=True, exist_ok=True)
+
+with Image.open(source) as original:
+    icon = original.convert("RGBA")
+    icon.thumbnail((64, 64), Image.Resampling.LANCZOS)
+    icon.save(
+        target,
+        format="ICO",
+        sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64)],
+    )
+
+print(f"  compact setup icon: {target} ({target.stat().st_size:,} bytes)")
+"""
+    run([python, "-c", converter, source, target])
+
+    if not target.is_file() or target.stat().st_size <= 0:
+        die("compact setup icon was not created")
+    if target.stat().st_size > 256_000:
+        die(f"compact setup icon is unexpectedly large: {target.stat().st_size:,} bytes")
+    return target
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", help="override installer\\version.txt")
@@ -386,12 +430,13 @@ def main() -> None:
         if not asset.is_file():
             die(f"missing installer asset: {asset}")
     print("  installer assets: OK")
+    setup_icon = prepare_setup_icon()
 
     step(8, "compile installer (Inno Setup)")
     iscc = find_iscc()
     DIST.mkdir(exist_ok=True)
     info = ".".join((version.split(".") + ["0"] * 4)[:4])      # Inno wants n.n.n.n for the exe's version resource
-    cmd = [iscc, f"/DAppVersion={version}", f"/DAppVersionInfo={info}", f"/DStageDir={STAGE}", f"/DOutDir={DIST}"]
+    cmd = [iscc, f"/DAppVersion={version}", f"/DAppVersionInfo={info}", f"/DStageDir={STAGE}", f"/DOutDir={DIST}", f"/DSetupIconFile={setup_icon}"]
     if args.sign_command:
         cmd += [f"/SMarkSign={args.sign_command}", "/DSignToolName=MarkSign"]
     run(cmd + [INSTALLER / "MarkLV.iss"])

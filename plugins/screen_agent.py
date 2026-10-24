@@ -14,6 +14,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from plugins import desktop_capture
+
 try:
     import pyautogui
     pyautogui.FAILSAFE = True
@@ -40,13 +42,8 @@ def _base_dir() -> Path:
 
 
 def _capture_png() -> tuple[bytes, int, int]:
-    if not _HAS_PYAUTOGUI:
-        raise RuntimeError("PyAutoGUI is unavailable; install project requirements in .venv.")
-    image = pyautogui.screenshot()
-    buf = io.BytesIO()
-    image.save(buf, format="PNG")
-    width, height = image.size
-    return buf.getvalue(), width, height
+    """Capture using native Wayland tools before X11/Python fallbacks."""
+    return desktop_capture.capture_png()
 
 
 def _text_from_response(response: Any) -> str:
@@ -75,10 +72,9 @@ def _observe(parameters: dict) -> str:
 def _read_text() -> str:
     if not _HAS_OCR:
         return "OCR unavailable. Install pytesseract and Pillow, plus the system Tesseract binary."
-    if not _HAS_PYAUTOGUI:
-        return "PyAutoGUI unavailable; cannot capture the screen."
-    image = pyautogui.screenshot()
     try:
+        png, _width, _height = _capture_png()
+        image = Image.open(io.BytesIO(png))
         text = pytesseract.image_to_string(image, timeout=8).strip()
     except Exception as exc:
         return f"OCR failed ({type(exc).__name__}). Check that the Tesseract binary is installed."
@@ -205,4 +201,17 @@ TOOL = {
         "required": ["mode"],
     },
     "handler": screen_agent,
+}
+
+
+
+def run(parameters: dict, **_context) -> str:
+    """Adapter required by core.plugin_loader."""
+    return screen_agent(parameters)
+
+
+PLUGIN = {
+    "name": "screen_agent",
+    "description": TOOL["description"],
+    "parameters": TOOL["parameters"],
 }

@@ -42,7 +42,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QConicalGradient, QDragEnterEvent, QDropEvent, QFont,
-    QFontDatabase, QKeySequence, QLinearGradient, QPainter, QPainterPath,
+    QFontDatabase, QKeySequence, QLinearGradient, QPainter, QPainterPath, QDesktopServices,
     QPen, QPixmap, QRadialGradient, QShortcut,
 )
 # Video playback for the HUD. Part of PyQt6, so it costs no new dependency —
@@ -60,7 +60,7 @@ except Exception as _e:            # noqa: BLE001 - reported, never fatal
 
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter,
+    QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter, QMessageBox,
     QGraphicsScene, QGraphicsView,
     QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar,
 )
@@ -95,6 +95,23 @@ def _read_ui_prefs() -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def _get_auto_update_enabled() -> bool:
+    value = _read_ui_prefs().get("auto_update_enabled", True)
+    return value if isinstance(value, bool) else True
+
+
+def _save_auto_update_enabled(enabled: bool) -> None:
+    try:
+        prefs = _read_ui_prefs()
+        prefs["auto_update_enabled"] = bool(enabled)
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _UI_PREFS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(prefs, indent=2), encoding="utf-8")
+        tmp.replace(_UI_PREFS_FILE)
+    except Exception as e:
+        print(f"[UI] Could not save auto-update preference: {e}")
 
 
 def _get_metrics_style() -> str:
@@ -901,10 +918,50 @@ class HudCanvas(QWidget):
         p.setPen(QPen(blend(acc if live else main, 0.25 + 0.5 * amp), 1.6))
         p.drawLines(spikes)
 
-        # 8. The inner ring the name sits in.
+        # 8. The inner ring and restrained iris assembly. Thin radial vanes,
+        #    nested precision rings and a small optical centre add mechanical
+        #    depth without introducing another colour or changing the layout.
         inner = r * 0.355
         p.setPen(QPen(blend(acc, 0.30 + 0.45 * amp), 1.5))
         p.drawEllipse(QRectF(cx - inner, cy - inner, inner * 2, inner * 2))
+
+        iris_outer, iris_inner = r * 0.285, r * 0.205
+        iris_lines = []
+        for i in range(12):
+            a = math.radians(i * 30.0 + (t * 2.2 if live else t * 0.45))
+            ca, sa = math.cos(a), math.sin(a)
+            iris_lines.append(QLineF(cx + ca * iris_inner, cy + sa * iris_inner,
+                                     cx + ca * (iris_outer if i % 3 else iris_outer * 0.91),
+                                     cy + sa * (iris_outer if i % 3 else iris_outer * 0.91)))
+        p.setPen(QPen(blend(main, 0.20 + 0.12 * amp), 1.0))
+        p.drawLines(iris_lines)
+        for rr, alpha, width in ((0.205, 0.24, 1.0), (0.145, 0.30, 1.0), (0.075, 0.42, 1.2)):
+            rad = r * rr
+            p.setPen(QPen(blend(main, alpha + (0.12 * amp if live else 0.0)), width))
+            p.drawEllipse(QRectF(cx - rad, cy - rad, rad * 2, rad * 2))
+        # Precision aperture: eight restrained rotor vanes around the nucleus.
+        # The same two core colours are reused; the added depth comes from
+        # geometry and contrast, not another accent colour or a layout change.
+        aperture_lines = []
+        aperture_rotation = t * (7.0 if live else 1.6)
+        for i in range(8):
+            a = math.radians(i * 45.0 + aperture_rotation)
+            ca, sa = math.cos(a), math.sin(a)
+            aperture_lines.append(QLineF(cx + ca * r * 0.050, cy + sa * r * 0.050,
+                                         cx + ca * r * (0.118 if i % 2 else 0.102),
+                                         cy + sa * r * (0.118 if i % 2 else 0.102)))
+        p.setPen(QPen(blend(main, 0.30 + (0.12 * amp if live else 0.0)), 1.1))
+        p.drawLines(aperture_lines)
+        # A narrow inner bevel gives the optical chamber a machined-glass edge.
+        bevel = r * 0.128
+        p.setPen(QPen(blend(main, 0.16 + 0.10 * amp), 0.8))
+        p.drawEllipse(QRectF(cx - bevel, cy - bevel, bevel * 2, bevel * 2))
+
+        core_rad = r * (0.035 + 0.012 * amp)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(blend(acc if live else main, 0.24 + 0.22 * amp)))
+        p.drawEllipse(QRectF(cx - core_rad, cy - core_rad, core_rad * 2, core_rad * 2))
+        p.setBrush(Qt.BrushStyle.NoBrush)
 
         # 9. The name, sized from the string rather than from the radius alone:
         #    "J.A.R.V.I.S" and a name someone renamed to "MAX" are very
@@ -1816,11 +1873,11 @@ class HueWheel(QWidget):
 class CustomizeOverlay(QWidget):
     """Floating overlay — change assistant name, user name, UI colour and voice."""
 
-    saved = pyqtSignal(str, str, str, str)   # assistant_name, user_name, ui_color, voice
-    _OW, _OH = 400, 588
+    saved = pyqtSignal(str, str, str, str, str)   # assistant_name, user_name, ui_color, voice, response_language
+    _OW, _OH = 420, 632
 
     def __init__(self, assistant_name="JARVIS", user_name="",
-                 ui_color=DEFAULT_UI_COLOR, voice="", parent=None):
+                 ui_color=DEFAULT_UI_COLOR, voice="", response_language="English", parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
@@ -1891,6 +1948,34 @@ class CustomizeOverlay(QWidget):
             voice_row.addWidget(b)
         lay.addLayout(voice_row)
         self._refresh_voice_btns()
+
+        # ── Preferred response language ───────────────────────────────────────
+        # Independent of the language the user speaks.
+        lay.addSpacing(4)
+        lay.addWidget(_lbl("PREFERRED RESPONSE LANGUAGE", 8, color=C.TEXT_DIM,
+                            align=Qt.AlignmentFlag.AlignLeft))
+        self._response_language = QComboBox()
+        self._response_languages = [
+            "English", "Yoruba", "Igbo", "Hausa", "French", "Spanish",
+            "Portuguese", "German", "Italian", "Arabic", "Hindi",
+            "Mandarin Chinese", "Japanese", "Korean", "Russian", "Turkish",
+            "Swahili", "Dutch", "Bengali", "Indonesian",
+        ]
+        self._response_language.addItems(self._response_languages)
+        selected_language = response_language if response_language in self._response_languages else "English"
+        self._response_language.setCurrentText(selected_language)
+        self._response_language.setFixedHeight(30)
+        self._response_language.setFont(QFont(_mono(), 9))
+        self._response_language.setStyleSheet(f"""
+            QComboBox {{ background: #000d12; color: {C.TEXT};
+                border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px; }}
+            QComboBox:focus {{ border: 1px solid {C.PRI}; }}
+            QComboBox QAbstractItemView {{ background: {C.PANEL}; color: {C.TEXT};
+                selection-background-color: {C.PRI_GHO}; selection-color: {C.PRI}; }}
+        """)
+        lay.addWidget(self._response_language)
+        lay.addWidget(_lbl("Replies stay in this language, regardless of your spoken language.",
+                            7, color=C.TEXT_DIM, align=Qt.AlignmentFlag.AlignLeft))
 
         # ── UI colour — colour wheel ─────────────────────────────────────────
         lay.addSpacing(4)
@@ -2027,7 +2112,7 @@ class CustomizeOverlay(QWidget):
     def _save(self):
         name = self._name_input.text().strip() or "JARVIS"
         user = self._user_input.text().strip()
-        self.saved.emit(name, user, self._sel_color or DEFAULT_UI_COLOR, self._sel_voice)
+        self.saved.emit(name, user, self._sel_color or DEFAULT_UI_COLOR, self._sel_voice, self._response_language.currentText())
         self.hide()
 
 
@@ -3212,6 +3297,7 @@ class MainWindow(QMainWindow):
     _quiz_sig       = pyqtSignal(str, object, object)  # (topic, questions, grader)
     _quiz_hide_sig  = pyqtSignal()
     _review_sig     = pyqtSignal(str, str, object, object)  # document review payload
+    _update_result_sig = pyqtSignal(object)  # background release-check result
 
     def __init__(self, face_path: str):
         super().__init__()
@@ -3481,6 +3567,7 @@ class MainWindow(QMainWindow):
         self._update_metrics()
 
         self._log_sig.connect(self._log.append_log)
+        self._update_result_sig.connect(self._on_update_check_result)
         self._state_sig.connect(self._apply_state)
         self._content_sig.connect(self._show_content)
         self._reconfig_sig.connect(self._show_setup)
@@ -4627,6 +4714,14 @@ class MainWindow(QMainWindow):
         settings_btn.clicked.connect(self._open_plugin_settings)
         lay.addWidget(settings_btn)
 
+        site_builder_btn = QPushButton("✦  WEBSITE BUILDER")
+        site_builder_btn.setFixedHeight(26)
+        site_builder_btn.setFont(QFont(_mono(), 7))
+        site_builder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        site_builder_btn.setStyleSheet(_BTN_STYLE_DIM)
+        site_builder_btn.clicked.connect(self._open_static_site_workspace)
+        lay.addWidget(site_builder_btn)
+
         w.adjustSize()
         return w
 
@@ -4683,8 +4778,121 @@ class MainWindow(QMainWindow):
         self._metrics_btn.clicked.connect(self._toggle_metrics_style)
         self._refresh_metrics_btn()
 
+        self._auto_update_btn = _row(QPushButton())
+        self._auto_update_btn.setToolTip("Enable or disable automatic background checks for official Mark 56 releases.")
+        self._auto_update_btn.clicked.connect(self._toggle_auto_update)
+        self._refresh_auto_update_btn()
+
+        self._update_btn = _row(QPushButton("↻  CHECK FOR UPDATES NOW"))
+        self._update_btn.setToolTip("Check the official Mark 56 release channel immediately.")
+        self._update_btn.clicked.connect(lambda _checked=False: self._start_update_check(show_result=True))
+        self._update_timer = QTimer(self)
+        self._update_timer.setInterval(6 * 60 * 60 * 1000)
+        self._update_timer.timeout.connect(self._start_update_check)
+        if _get_auto_update_enabled():
+            self._update_timer.start()
+            QTimer.singleShot(4500, self._start_update_check)
+
         w.adjustSize()
         return w
+
+    def _refresh_auto_update_btn(self):
+        enabled = _get_auto_update_enabled()
+        if hasattr(self, "_auto_update_btn"):
+            self._auto_update_btn.setText("↻  AUTO UPDATE: ON" if enabled else "↻  AUTO UPDATE: OFF")
+            self._auto_update_btn.setStyleSheet(self._BTN_PRI if enabled else self._BTN_DIM)
+
+    def _toggle_auto_update(self):
+        enabled = not _get_auto_update_enabled()
+        _save_auto_update_enabled(enabled)
+        if hasattr(self, "_update_timer"):
+            if enabled:
+                self._update_timer.start()
+                QTimer.singleShot(250, lambda: self._start_update_check(show_result=True))
+            else:
+                self._update_timer.stop()
+        self._refresh_auto_update_btn()
+        self._log_sig.emit("UPDATE: automatic background checks " + ("enabled" if enabled else "disabled"))
+
+    def _start_update_check(self, show_result: bool = False):
+        """Check release metadata away from the Qt thread; never block the HUD."""
+        # A manual click should show its result even if an automatic check is
+        # already running when the user clicks.
+        self._update_check_show_result = bool(
+            getattr(self, "_update_check_show_result", False) or show_result
+        )
+        if getattr(self, "_update_check_running", False):
+            return
+        self._update_check_running = True
+        if hasattr(self, "_update_btn"):
+            self._update_btn.setEnabled(False)
+            self._update_btn.setText("↻  CHECKING RELEASES")
+        def work():
+            try:
+                from plugins.update_manager import check_for_update, as_dict
+                result = as_dict(check_for_update())
+            except Exception:
+                result = {
+                    "status": "unavailable",
+                    "update_available": False,
+                    "release_url": "https://github.com/ibarakumo2000-stack/Mark-56/releases",
+                    "message": "Could not check for updates. Please try again later.",
+                    "auto_install_ready": False,
+                }
+            self._update_result_sig.emit(result)
+        threading.Thread(target=work, daemon=True, name="mark56-update-check").start()
+
+    def _on_update_check_result(self, result):
+        self._update_check_running = False
+        message = str(result.get("message") or "Update check finished.")
+        status = str(result.get("status") or "")
+        if not status:
+            if result.get("update_available"):
+                status = "update_available"
+            elif "up to date" in message.lower():
+                status = "up_to_date"
+            else:
+                status = "unavailable"
+
+        show_result = bool(getattr(self, "_update_check_show_result", False))
+        self._update_check_show_result = False
+        self._log_sig.emit("UPDATE: " + message)
+
+        if hasattr(self, "_update_btn"):
+            self._update_btn.setEnabled(True)
+            if status == "update_available":
+                self._update_btn.setText("↻  UPDATE AVAILABLE · REVIEW")
+                self._update_btn.setStyleSheet(self._BTN_PRI)
+            elif status == "up_to_date":
+                self._update_btn.setText("✓  JARVIS IS UP TO DATE")
+                self._update_btn.setStyleSheet(self._BTN_PRI)
+            else:
+                self._update_btn.setText("↻  UPDATE CHECK UNAVAILABLE")
+                self._update_btn.setStyleSheet(self._BTN_DIM)
+
+        if status == "update_available":
+            box = QMessageBox(self)
+            box.setWindowTitle("Mark 56 update available")
+            box.setText(message)
+            box.setInformativeText(
+                "The release is available for review. Automatic installation is not enabled yet "
+                "because this build does not have a verified platform installer and restart-time "
+                "rollback path. Your current installation has not been changed."
+            )
+            open_btn = box.addButton("Open release page", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is open_btn:
+                QDesktopServices.openUrl(QUrl(str(result.get("release_url") or
+                    "https://github.com/ibarakumo2000-stack/Mark-56/releases")))
+        elif show_result and status == "up_to_date":
+            QMessageBox.information(self, "JARVIS is up to date", message)
+        elif show_result:
+            QMessageBox.information(
+                self,
+                "Could not check for updates",
+                message,
+            )
 
     def _warm_wake_state(self) -> None:
         """Work out the wake-word state off the UI thread, once.
@@ -5682,6 +5890,7 @@ class MainWindow(QMainWindow):
             cfg.get("user_name", ""),
             cfg.get("ui_color", "") or DEFAULT_UI_COLOR,
             cfg.get("voice_name", ""),
+            cfg.get("preferred_response_language", "English"),
             parent=cw,
         )
         ow, oh = CustomizeOverlay._OW, CustomizeOverlay._OH
@@ -5703,7 +5912,7 @@ class MainWindow(QMainWindow):
             retheme_all_widgets(old, current_palette())
 
     def _apply_name_update(self, name: str, user_name: str, ui_color: str = "",
-                           voice: str = ""):
+                           voice: str = "", response_language: str = "English"):
         """Update all name/theme-dependent UI elements and persist to config."""
         self._assistant_name = name.strip() or "JARVIS"
         display = self._assistant_name.upper()
@@ -5733,10 +5942,13 @@ class MainWindow(QMainWindow):
                 save_voice(voice)
                 voice_changed = True
 
+        language_changed = False
         try:
             data = _read_full_config()
+            language_changed = response_language != (data.get("preferred_response_language") or "English")
             data["assistant_name"] = self._assistant_name
             data["user_name"] = user_name.strip()
+            data["preferred_response_language"] = response_language
             if ui_color:
                 data["ui_color"] = ui_color.strip().lower()
             API_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
@@ -5745,10 +5957,11 @@ class MainWindow(QMainWindow):
                 self._log.append_log(f"SYS: UI colour applied — {ui_color}")
             if voice_changed:
                 self._log.append_log(f"SYS: Voice set — {voice}")
+            self._log.append_log(f"SYS: Preferred response language — {response_language}")
         except Exception as e:
             self._log.append_log(f"ERR: Config save failed — {e}")
 
-        if voice_changed and self.on_voice_change:
+        if (voice_changed or language_changed) and self.on_voice_change:
             self.on_voice_change()
 
     def _centre_overlay(self, ov) -> None:
@@ -5829,6 +6042,15 @@ class MainWindow(QMainWindow):
         ov.show()
         ov.raise_()
         self._plugin_manager_overlay = ov   # keep a reference so it isn't GC'd
+
+    def _open_static_site_workspace(self):
+        """Open the provider-independent visual static website builder."""
+        try:
+            from plugins.static_site_workspace import StaticSiteWorkspaceDialog
+            dialog = StaticSiteWorkspaceDialog(self)
+            dialog.exec()
+        except Exception as exc:
+            self._log.append_log(f"ERR: Website Builder could not open — {type(exc).__name__}: {exc}")
 
     def _open_plugin_settings(self):
         sections = self.get_plugin_settings() if self.get_plugin_settings else []

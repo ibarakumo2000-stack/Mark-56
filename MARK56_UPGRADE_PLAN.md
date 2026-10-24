@@ -87,3 +87,55 @@ Implemented in `plugins/screen_agent.py` with a `screen_agent` tool entry point:
 - `execute`: requires `confirmed=true` and allows only click, bounded text typing, or a small navigation-key allowlist. Coordinates are checked against screen bounds; no shell, hotkey, deletion, submit, purchase, or credential-entry action is allowed.
 
 Safety tests are in `tests/test_screen_agent.py`. Local test execution is still required; a GitHub commit is not evidence that desktop capture or plugin auto-discovery works on the target Ubuntu session. The agent is intentionally conservative and is not yet an autonomous multi-step computer-use system.
+
+
+## Build automation and coding workspace implementation
+
+Implemented on branch `mark56-build-automation` (not yet merged):
+
+- Added `.github/workflows/mark56-ci.yml` to run unit tests, compile checks, and example-config JSON validation on Python 3.12 and 3.13.
+- Added `plugins/coding_workspace.py`, discovered by the existing `core.plugin_loader` contract. It confines file operations to `MARK56_WORKSPACE` (or the current working directory), bounds file sizes, provides read/list/propose/apply/test operations, uses unified diffs and SHA-256 stale-file checks, requires explicit confirmation before applying edits, and restricts test commands to unittest, pytest, and compileall.
+- Registered `plugins/screen_agent.py` with the existing plugin loader using the expected `PLUGIN` and `run(parameters, ...)` contract.
+- Added coding workspace unit tests and documented local testing/release steps.
+
+Not yet verified: executing the tests locally or in GitHub Actions; screen capture/OCR in the user's Wayland session; manual regression of voice, HUD, memory, dashboard, and all legacy plugins. Do not mark release-ready until those checks pass.
+
+
+## Stage 4 implementation update — bounded desktop task controller
+
+Implemented on `mark56-build-automation`:
+
+- Explicit task states and operations: start, awaiting_confirmation, running, paused, completed, stopped, timeout, and error; pause/resume/stop/status/step/confirm are exposed by the plugin.
+- Bounded task memory for goal, recent actions, current application estimate, and remaining work.
+- Fresh screenshot feedback through a multi-backend capture adapter with timeouts and image validation.
+- Fixed approved application launch list, coordinate bounds, bounded drawing drags, text/key limits, and step/time budgets.
+- Consequential-goal approval gate and a thread-safe stop-request hook.
+- Unit tests for pause/resume, approval, stop requests, false completion, capture errors, and action bounds.
+
+Still requires local verification before the stage can be called complete:
+
+- Wire the stop-request hook into the actual voice/UI intent handler so a spoken stop command interrupts task orchestration.
+- Test the capture adapter on the target GNOME Wayland session. This fallback does not prove the existing GNOME portal crash is repaired; capture must show the full desktop.
+- Test real keyboard/mouse input under Wayland. PyAutoGUI may be restricted even if capture works.
+- Run unit tests and syntax checks locally and inspect the CI run for this commit.
+
+
+## Stage 5 implementation update — provider-independent starter projects
+
+Implemented `plugins/project_builder.py` with list, preview, and confirmed-create operations for portfolio websites, small browser web apps, and browser games. Templates are local constants and need no external AI provider. Project creation stays inside the configured workspace and never overwrites an existing directory. This provides deterministic starter projects, not provider-free general reasoning or a guarantee of production readiness. Tests are in `tests/test_project_builder.py`.
+
+## Stage 7 implementation update — background update preferences
+
+The Controls drawer now stores an auto-update-check preference and separates enabling background checks from checking immediately. When enabled, metadata checks run at startup and every six hours. The existing updater currently compares GitHub Releases versions only; automatic installation is intentionally not marked complete until signed release metadata, verified platform-specific installers, staging, rollback, and a restart handoff are implemented and tested.
+
+## Stage 9 implementation update — scoped Linux network inventory
+
+Added `plugins/network_audit.py` and tests. It is Linux-only for scan operations, requires explicit authorization confirmation, limits scope to private/loopback/link-local IPv4 CIDRs of at most 256 addresses, and supports host discovery plus common TCP port/service inventory. It does not exploit discovered devices, run intrusive NSE vulnerability scripts, brute force, or use stealth. Use a deliberately vulnerable lab for exploit training.
+
+## Remaining requested work
+
+- Build a signed release pipeline and platform-specific update installers; verify signatures and artifact hashes before staging; ask for restart only after successful staging; implement rollback.
+- Connect the coding workflow to test/lint/build feedback loops and add more starter types; a local model is needed for general-purpose provider-independent reasoning.
+- Wire the desktop stop hook into voice/UI intent handling and verify full-desktop capture and input on GNOME Wayland.
+- Refine the reactor-core rendering without changing the current layout, then manually check animation performance and accessibility.
+- Add an authorized lab workflow for vulnerability verification and evidence reporting; do not automate exploitation of other devices discovered on a LAN.

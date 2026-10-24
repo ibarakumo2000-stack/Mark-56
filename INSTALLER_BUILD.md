@@ -124,10 +124,35 @@ installer task, otherwise on first use).
 * **Signing:** unsigned installers trigger Windows SmartScreen. With a
   certificate: `scripts\build_installer.bat --sign-command "signtool sign /f my.pfx /p PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 $f"`.
   Nothing claims to be signed unless this is used.
-* **Auto-update:** not implemented. The groundwork is in place — a `VERSION`
-  file and a SHA-256 in `dist\build-info.json`. A safe design is: app fetches a
-  small JSON from your server, compares versions, downloads the new setup `.exe`,
-  verifies its SHA-256 (and signature), then runs it with `/SILENT`.
+* **Update check:** the desktop control now treats GitHub's `404` response for
+  `/releases/latest` as the expected "no stable release published yet" state and
+  reports that Mark 56 is up to date. A genuine network/service failure remains
+  "could not check for updates" and never claims success. The check does not modify
+  the installed application.
+* **Automatic installation:** not implemented yet. The current UI can report a newer
+  version and open its official release page, but it does not install a downloaded
+  package. Before enabling auto-install, implement and test a platform-specific
+  download, SHA-256/signature verification, user confirmation, installer hand-off,
+  and rollback/restart behavior.
+
+## Publish the Windows installer
+
+The repository includes `.github/workflows/release-windows-installer.yml`. After the
+installer workflow is merged to the default branch, you can publish a version using
+GitHub Actions → **Build and publish JARVIS Windows installer** → **Run workflow**.
+Use `56.0.0` for the first release so the initial release tag matches the version
+checked by `plugins/update_manager.py`. Later releases should use a higher semantic
+version such as `56.1.0`.
+
+The workflow runs the existing secret scan, builds the bundled Windows runtime,
+runs the bundled-runtime smoke test, then publishes the installer, SHA-256 file,
+and build metadata as a stable GitHub Release. The website discovers those release
+assets automatically and sends Windows visitors directly to the `.exe` download.
+Do not publish if the build step fails. The public installer is unsigned unless a
+signing command and certificate are configured.
+
+This workflow currently produces **Windows only**. The website keeps Linux and macOS
+downloads disabled until matching platform installers are built and published.
 
 ## Test it
 
