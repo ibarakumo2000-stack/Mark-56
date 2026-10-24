@@ -4714,6 +4714,14 @@ class MainWindow(QMainWindow):
         settings_btn.clicked.connect(self._open_plugin_settings)
         lay.addWidget(settings_btn)
 
+        site_builder_btn = QPushButton("✦  WEBSITE BUILDER")
+        site_builder_btn.setFixedHeight(26)
+        site_builder_btn.setFont(QFont(_mono(), 7))
+        site_builder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        site_builder_btn.setStyleSheet(_BTN_STYLE_DIM)
+        site_builder_btn.clicked.connect(self._open_static_site_workspace)
+        lay.addWidget(site_builder_btn)
+
         w.adjustSize()
         return w
 
@@ -5998,6 +6006,15 @@ class MainWindow(QMainWindow):
         ov.show()
         ov.raise_()
         self._plugin_manager_overlay = ov   # keep a reference so it isn't GC'd
+
+    def _open_static_site_workspace(self):
+        """Open the provider-independent visual static website builder."""
+        try:
+            from plugins.static_site_workspace import StaticSiteWorkspaceDialog
+            dialog = StaticSiteWorkspaceDialog(self)
+            dialog.exec()
+        except Exception as exc:
+            self._log.append_log(f"ERR: Website Builder could not open — {type(exc).__name__}: {exc}")
 
     def _open_plugin_settings(self):
         sections = self.get_plugin_settings() if self.get_plugin_settings else []
