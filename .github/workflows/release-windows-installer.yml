@@ -19,7 +19,7 @@ permissions:
 
 concurrency:
   group: jarvis-desktop-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   determine-version:
