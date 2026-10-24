@@ -77,7 +77,7 @@ def _read_text() -> str:
         image = Image.open(io.BytesIO(png))
         text = pytesseract.image_to_string(image, timeout=8).strip()
     except Exception as exc:
-        return f"OCR failed ({type(exc).__name__}). Check that the Tesseract binary is installed."
+        return f"OCR failed ({type(exc).__name__}: {str(exc)[:500]}). Check that the Tesseract binary is installed."
     return text[:12000] if text else "No readable text detected on the current screen."
 
 
@@ -99,7 +99,7 @@ def _analyze(parameters: dict) -> str:
         text = _text_from_response(response) if response is not None else ""
         return text or "Screen analysis failed: the configured AI provider returned no response."
     except Exception as exc:
-        return f"Screen analysis failed ({type(exc).__name__}). Check the configured AI provider and desktop session."
+        return f"Screen analysis failed ({type(exc).__name__}: {str(exc)[:900]}). Check the configured AI provider and desktop session."
 
 
 def _propose(parameters: dict) -> str:
@@ -173,7 +173,7 @@ def screen_agent(parameters: dict, response=None, player=None, session_memory=No
             return _execute(params)
         return "Unknown mode. Use observe, read_text, analyze, propose, or execute."
     except Exception as exc:
-        return f"Screen agent error ({type(exc).__name__}); no further actions were attempted."
+        return f"Screen agent error ({type(exc).__name__}: {str(exc)[:900]}); no further actions were attempted."
 
 
 TOOL = {
