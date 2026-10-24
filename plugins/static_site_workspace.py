@@ -18,6 +18,7 @@ class StaticSiteWorkspaceDialog(QDialog):
         self.setWindowTitle("Mark 56 · Local Website Builder")
         self.resize(980, 760)
         self._last_preview = None
+        self._last_preview_params = None
         self.setStyleSheet("""
             QDialog { background: #080d16; color: #edf4fb; }
             QLabel { color: #a9b8c9; }
@@ -92,6 +93,7 @@ class StaticSiteWorkspaceDialog(QDialog):
             QMessageBox.warning(self, "Cannot preview", result.get("message", "Invalid website settings."))
             return
         self._last_preview = result
+        self._last_preview_params = self._parameters("preview")
         self.preview.setHtml(result.get("preview_html", ""))
         self.status.setText(
             "Preview only — nothing has been written. Files: " + ", ".join(result["files"])
@@ -102,8 +104,8 @@ class StaticSiteWorkspaceDialog(QDialog):
             QMessageBox.information(self, "Preview first", "Generate and review the website preview before creating files.")
             return
         params = self._parameters("create")
-        if params["name"] != self._last_preview["name"]:
-            QMessageBox.information(self, "Preview changed", "Settings changed since preview. Preview again before creating.")
+        if self._last_preview_params != self._parameters("preview"):
+            QMessageBox.information(self, "Preview changed", "One or more settings changed since preview. Preview again before creating.")
             return
         answer = QMessageBox.question(
             self, "Create local website?",
