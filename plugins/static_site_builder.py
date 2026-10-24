@@ -30,7 +30,7 @@ def _files(p):
     tagline = _clean(p.get("tagline"), defaults[1], 220)
     about = _clean(p.get("about"), "We bring thoughtful ideas to life through clear planning, careful craft, and a focus on people.", 600)
     email = _clean(p.get("email"), "hello@example.com", 120)
-    if not re.fullmatch(r"[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+", email):
+    if not re.fullmatch(r"[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+", email):
         raise ValueError("Provide a valid-looking contact email.")
     accent_key = str(p.get("accent") or "cyan").lower()
     if accent_key not in ACCENTS:
