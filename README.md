@@ -124,3 +124,8 @@ The Controls drawer now has a persistent `AUTO UPDATE: ON/OFF` switch and a sepa
 ### Provider-independent static website builder
 
 Mark 56 now includes `plugins/static_site_builder.py`, a local generator for responsive portfolio, business, landing, and church websites. It assembles HTML/CSS/JavaScript without an AI provider, previews before writing, escapes supplied text, confines output to `MARK56_WORKSPACE`, and refuses to overwrite existing destinations. See [Local static site builder](docs/LOCAL_STATIC_SITE_BUILDER.md) and run `python -m unittest tests.test_static_site_builder` (or the full test discovery suite).
+
+
+### Offline-first local model mode
+
+Mark 56 includes an optional Ollama adapter in `core/local_model.py`. Configure `local_model_enabled`, `local_model_name`, and `local_vision_model_name` in your local `config/api_keys.json` to use local inference for screenshot-based desktop task reasoning. When enabled, the desktop task agent does not fall back to a cloud model if local inference fails. See [Offline-first mode](docs/OFFLINE_MODE.md) for setup and limitations. The main Gemini Live voice session and cloud-backed plugins still require their configured services; fully offline voice recognition/synthesis remains a separate integration step.
