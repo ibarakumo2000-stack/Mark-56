@@ -20,6 +20,7 @@ Model size affects speed and memory use. Choose a smaller quantized model for mo
 ## Current integration
 
 - `core/local_model.py` provides local text/image inference and a local model status check using only Python's standard library.
+- `core/gemini.py` routes supported one-shot text/image reasoning calls through the local model when offline mode is enabled. If local inference fails, those calls return no result rather than falling through to OpenAI/Gemini cloud APIs.
 - When `local_model_enabled` is true, `desktop_task_agent` uses the configured local vision model for screenshot reasoning and does not silently fall back to a cloud model if the local model fails.
 - Existing screenshot capture, allowlisted actions, coordinate validation, time/action limits, and user confirmation protections remain in force.
 - The deterministic static website builder, coding workspace, file operations, and local app launching do not require an AI provider.
