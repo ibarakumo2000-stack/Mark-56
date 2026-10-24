@@ -277,3 +277,24 @@ class StaticSiteWorkspaceDialog(QDialog):
     def _open_workspace(self):
         from plugins.static_site_builder import _root
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(_root())))
+
+
+# Mark-56 plugin-template entry point: open the interactive Website Studio.
+PLUGIN = {
+    "name": "static_site_workspace",
+    "description": "Open the Mark 56 Website Studio UI so the user can configure, preview, and explicitly create a local static website. Use for requests to open the website builder interface.",
+    "parameters": {"type": "OBJECT", "properties": {}, "required": []},
+}
+
+def run(parameters: dict, player=None, session_memory=None) -> str:
+    try:
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is None:
+            return "Sir, Website Studio cannot open because the desktop application has no active Qt event loop."
+        parent = player if hasattr(player, "window") else None
+        dialog = StaticSiteWorkspaceDialog(parent)
+        dialog.exec()
+        return "Website Studio was closed. Any website creation still requires the user's confirmation in the studio."
+    except Exception as exc:
+        return f"Sir, Website Studio could not open: {type(exc).__name__}: {exc}"
