@@ -135,6 +135,25 @@ installer task, otherwise on first use).
   download, SHA-256/signature verification, user confirmation, installer hand-off,
   and rollback/restart behavior.
 
+## Publish the Windows installer
+
+The repository includes `.github/workflows/release-windows-installer.yml`. After the
+installer workflow is merged to the default branch, you can publish a version using
+GitHub Actions → **Build and publish JARVIS Windows installer** → **Run workflow**.
+Use `56.0.0` for the first release so the initial release tag matches the version
+checked by `plugins/update_manager.py`. Later releases should use a higher semantic
+version such as `56.1.0`.
+
+The workflow runs the existing secret scan, builds the bundled Windows runtime,
+runs the bundled-runtime smoke test, then publishes the installer, SHA-256 file,
+and build metadata as a stable GitHub Release. The website discovers those release
+assets automatically and sends Windows visitors directly to the `.exe` download.
+Do not publish if the build step fails. The public installer is unsigned unless a
+signing command and certificate are configured.
+
+This workflow currently produces **Windows only**. The website keeps Linux and macOS
+downloads disabled until matching platform installers are built and published.
+
 ## Test it
 
 Automated (on a fresh VM, e.g. Windows Sandbox):
