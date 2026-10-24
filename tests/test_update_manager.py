@@ -5,6 +5,8 @@ import json
 import urllib.error
 import unittest
 from unittest.mock import MagicMock, patch
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from plugins import update_manager
 
@@ -79,6 +81,17 @@ class UpdateManagerTests(unittest.TestCase):
 
         self.assertEqual(result.status, "invalid_version")
         self.assertFalse(result.update_available)
+
+    def test_packaged_version_file_overrides_source_fallback(self):
+        with TemporaryDirectory() as directory:
+            version_file = Path(directory) / "VERSION"
+            version_file.write_text("56.2.0\\n", encoding="utf-8")
+            self.assertEqual(update_manager._installed_version(version_file), "56.2.0")
+
+    def test_missing_packaged_version_uses_source_fallback(self):
+        with TemporaryDirectory() as directory:
+            missing = Path(directory) / "VERSION"
+            self.assertEqual(update_manager._installed_version(missing), update_manager.CURRENT_VERSION)
 
     @patch("plugins.update_manager.urllib.request.urlopen")
     def test_plugin_result_exposes_status_for_ui(self, urlopen):
