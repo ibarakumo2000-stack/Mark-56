@@ -4785,7 +4785,7 @@ class MainWindow(QMainWindow):
 
         self._update_btn = _row(QPushButton("↻  CHECK FOR UPDATES NOW"))
         self._update_btn.setToolTip("Check the official Mark 56 release channel immediately.")
-        self._update_btn.clicked.connect(self._start_update_check)
+        self._update_btn.clicked.connect(lambda _checked=False: self._start_update_check(show_result=True))
         self._update_timer = QTimer(self)
         self._update_timer.setInterval(6 * 60 * 60 * 1000)
         self._update_timer.timeout.connect(self._start_update_check)
@@ -4808,14 +4808,19 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_update_timer"):
             if enabled:
                 self._update_timer.start()
-                QTimer.singleShot(250, self._start_update_check)
+                QTimer.singleShot(250, lambda: self._start_update_check(show_result=True))
             else:
                 self._update_timer.stop()
         self._refresh_auto_update_btn()
         self._log_sig.emit("UPDATE: automatic background checks " + ("enabled" if enabled else "disabled"))
 
-    def _start_update_check(self):
+    def _start_update_check(self, show_result: bool = False):
         """Check release metadata away from the Qt thread; never block the HUD."""
+        # A manual click should show its result even if an automatic check is
+        # already running when the user clicks.
+        self._update_check_show_result = bool(
+            getattr(self, "_update_check_show_result", False) or show_result
+        )
         if getattr(self, "_update_check_running", False):
             return
         self._update_check_running = True
@@ -4826,23 +4831,46 @@ class MainWindow(QMainWindow):
             try:
                 from plugins.update_manager import check_for_update, as_dict
                 result = as_dict(check_for_update())
-            except Exception as exc:
-                result = {"update_available": False, "release_url":
-                          "https://github.com/ibarakumo2000-stack/Mark-56/releases",
-                          "message": f"Update check failed ({type(exc).__name__}).",
-                          "auto_install_ready": False}
+            except Exception:
+                result = {
+                    "status": "unavailable",
+                    "update_available": False,
+                    "release_url": "https://github.com/ibarakumo2000-stack/Mark-56/releases",
+                    "message": "Could not check for updates. Please try again later.",
+                    "auto_install_ready": False,
+                }
             self._update_result_sig.emit(result)
         threading.Thread(target=work, daemon=True, name="mark56-update-check").start()
 
     def _on_update_check_result(self, result):
         self._update_check_running = False
         message = str(result.get("message") or "Update check finished.")
+        status = str(result.get("status") or "")
+        if not status:
+            if result.get("update_available"):
+                status = "update_available"
+            elif "up to date" in message.lower():
+                status = "up_to_date"
+            else:
+                status = "unavailable"
+
+        show_result = bool(getattr(self, "_update_check_show_result", False))
+        self._update_check_show_result = False
         self._log_sig.emit("UPDATE: " + message)
+
         if hasattr(self, "_update_btn"):
             self._update_btn.setEnabled(True)
-            self._update_btn.setText("↻  UPDATE AVAILABLE · REVIEW" if result.get("update_available")
-                                     else "↻  CHECK FOR UPDATES NOW")
-        if result.get("update_available"):
+            if status == "update_available":
+                self._update_btn.setText("↻  UPDATE AVAILABLE · REVIEW")
+                self._update_btn.setStyleSheet(self._BTN_PRI)
+            elif status == "up_to_date":
+                self._update_btn.setText("✓  JARVIS IS UP TO DATE")
+                self._update_btn.setStyleSheet(self._BTN_PRI)
+            else:
+                self._update_btn.setText("↻  UPDATE CHECK UNAVAILABLE")
+                self._update_btn.setStyleSheet(self._BTN_DIM)
+
+        if status == "update_available":
             box = QMessageBox(self)
             box.setWindowTitle("Mark 56 update available")
             box.setText(message)
@@ -4857,6 +4885,14 @@ class MainWindow(QMainWindow):
             if box.clickedButton() is open_btn:
                 QDesktopServices.openUrl(QUrl(str(result.get("release_url") or
                     "https://github.com/ibarakumo2000-stack/Mark-56/releases")))
+        elif show_result and status == "up_to_date":
+            QMessageBox.information(self, "JARVIS is up to date", message)
+        elif show_result:
+            QMessageBox.information(
+                self,
+                "Could not check for updates",
+                message,
+            )
 
     def _warm_wake_state(self) -> None:
         """Work out the wake-word state off the UI thread, once.
