@@ -67,7 +67,6 @@ REQUIRED = [
     "PyPDF2",
     "docx",
     "pynvml",
-    "pygetwindow",
     "googleapiclient",
     "google_auth_oauthlib",
     "msal",
@@ -98,6 +97,15 @@ OPTIONAL = {
     "pytesseract",
     "duckduckgo_search",
     "providers",
+    # These are imported by Windows-specific actions; the Windows import
+    # checks above still require them on Windows, but other platforms must not.
+    "comtypes",
+    "pycaw",
+    "pywinauto",
+    "wmi",
+    "win32com",
+    "win10toast",
+    "pygetwindow",
 }
 
 
@@ -257,6 +265,8 @@ def main():
     mods = REQUIRED + (
         REQUIRED_WINDOWS if os.name == "nt" else []
     )
+    if sys.platform == "linux":
+        warnings.append("pygetwindow is not available on Linux; window-manager automation is disabled")
 
     for m in mods:
         try:
