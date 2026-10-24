@@ -45,4 +45,4 @@ After inspecting the preview, repeat the same parameters with `"operation": "cre
 - User-provided text is HTML-escaped.
 - Static-only: no backend, database, login, server-side contact form, or deployment is created.
 - The generated email link opens the user's email client; it does not submit a form.
-- This increment adds the generator plugin and automated tests. A dedicated graphical editor/preview panel inside the PyQt UI is a separate integration step; the plugin is callable through the existing plugin/tool interface but is not itself a visual editor.
+- The PyQt controls panel includes a **WEBSITE BUILDER** launcher for a visual form, styled HTML preview, explicit create confirmation, and workspace-folder opening. The same generator is also exposed as a plugin for JARVIS chat/voice when the plugin is enabled. The preview uses the same deterministic generator and creation requires the settings to remain unchanged since preview.
