@@ -196,7 +196,7 @@ PLUGIN = {
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "operation": {"type": "STRING", "description": "check"}
+            "operation": {"type": "STRING", "description": "check or prepare (prepare only after explicit user consent)"}
         },
         "required": ["operation"],
     },
@@ -204,8 +204,27 @@ PLUGIN = {
 
 
 def run(parameters: dict, **_context) -> str:
-    if str((parameters or {}).get("operation") or "check").lower() != "check":
-        return json.dumps(
-            {"ok": False, "status": "unsupported", "message": "Only check is supported."}
-        )
-    return json.dumps(as_dict(check_for_update()), ensure_ascii=False)
+    operation = str((parameters or {}).get("operation") or "check").lower()
+    if operation == "check":
+        return json.dumps(as_dict(check_for_update()), ensure_ascii=False)
+    if operation == "prepare":
+        # Lazy import avoids changing normal application startup behavior.
+        try:
+            from plugins.update_installer import prepare_update
+            prepared = prepare_update()
+            return json.dumps({
+                "ok": True, "status": "prepared", "version": prepared.version,
+                "asset_name": prepared.asset_name, "file_path": prepared.file_path,
+                "sha256": prepared.sha256, "release_url": prepared.release_url,
+                "installed": False,
+                "message": "Update downloaded and SHA-256 verified. It has NOT been installed; ask for explicit confirmation before launching the platform installer.",
+            }, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps({
+                "ok": False, "status": "prepare_failed", "message": str(exc),
+                "installed": False,
+            }, ensure_ascii=False)
+    return json.dumps({
+        "ok": False, "status": "unsupported",
+        "message": "Supported operations are check and prepare."
+    })
