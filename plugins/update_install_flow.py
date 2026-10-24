@@ -62,3 +62,15 @@ def handoff_to_installer(update: PreparedUpdate, *, user_confirmed: bool) -> Ins
         subprocess.Popen(["open", str(path)], shell=False)
         return InstallHandoff("manual_install_required", "The verified disk image was opened. Follow its installation instructions. Mark 56 has not confirmed installation or restart.", str(path))
     raise RuntimeError(f"Installer handoff is not supported on {system}.")
+
+
+# Mark-56 plugin-template entry point: explain the consent handoff safely.
+PLUGIN = {
+    "name": "update_install_flow",
+    "description": "Check the staged update handoff state and explain the explicit-consent install process. Never installs or launches an installer without a separate confirmed UI action.",
+    "parameters": {"type": "OBJECT", "properties": {}, "required": []},
+}
+
+def run(parameters: dict, player=None, session_memory=None) -> str:
+    return ("Update installation is consent-gated. Open the update prompt, review the release and verified installer details, "
+            "and confirm there before installation can begin. This helper will not launch an installer from a voice command alone.")
