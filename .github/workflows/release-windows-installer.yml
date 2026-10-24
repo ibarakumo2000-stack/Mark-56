@@ -65,7 +65,8 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup --yes --no-progress
-          $iscc = Join-Path \${env:ProgramFiles(x86)} "Inno Setup 6"
+          $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
+          $iscc = Join-Path $programFilesX86 "Inno Setup 6"
           if (-not (Test-Path (Join-Path $iscc "ISCC.exe"))) {
             throw "Inno Setup 6 was not installed correctly."
           }
