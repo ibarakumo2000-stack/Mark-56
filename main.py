@@ -1,9 +1,16 @@
 import os
+import platform as _platform
+
+# Qt's xcb platform plugin is Linux-specific. Let Windows use the native
+# Windows plugin and macOS use Cocoa; on Linux, respect an explicit override
+# (for example QT_QPA_PLATFORM=offscreen in tests) and otherwise use xcb.
 os.environ["QT_QPA_PLATFORMTHEME"] = ""
-os.environ["QT_QPA_PLATFORM"] = "xcb"
+if _platform.system() == "Linux":
+    os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+else:
+    os.environ.pop("QT_QPA_PLATFORM", None)
 os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
 os.environ.pop("QT_PLUGIN_PATH", None)
-import platform as _platform
 import subprocess as _subprocess
 
 # ── Nuclear: force CREATE_NO_WINDOW on EVERY subprocess call on Windows ───────
