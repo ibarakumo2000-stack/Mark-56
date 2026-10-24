@@ -10,6 +10,7 @@ import json
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 def _base_dir() -> Path:
@@ -35,8 +36,11 @@ def enabled() -> bool:
 def _base_url(settings: dict | None = None) -> str:
     settings = settings if settings is not None else _settings()
     value = str(settings.get("local_model_base_url") or "http://127.0.0.1:11434").strip().rstrip("/")
-    if not value.startswith(("http://127.0.0.1", "http://localhost", "http://[::1]")):
+    parsed = urlparse(value)
+    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
         raise ValueError("Local model URL must point to loopback; remote model servers are not accepted.")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("Local model URL cannot contain credentials, a query, or a fragment.")
     return value
 
 
