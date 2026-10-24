@@ -264,7 +264,7 @@ def _sanitize_keys(requested: list) -> list[str]:
 # --------------------------------------------------------------------------
 
 PLUGIN = {
-    "name": "game_autoplay",
+    "name": "game_autoplay_plugin",
     "description": (
         "Takes over keyboard/mouse control of a game and plays it autonomously: "
         "repeatedly looks at the screen, decides the next move using the control "
