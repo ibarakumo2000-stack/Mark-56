@@ -46,7 +46,7 @@ APP_DIR="$HOME/.local/share/applications"
 echo "JARVIS / MARK 56 — Linux installer"
 echo "Install location: $INSTALL_ROOT"
 if command -v apt-get >/dev/null 2>&1 && [ "$JARVIS_INSTALL_SYSTEM_LIBS" = "1" ]; then
-  packages="libasound2 libegl1 libgl1 libportaudio2 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0"
+  packages="libasound2 libpulse0 libegl1 libgl1 libportaudio2 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0"
   if [ "$(id -u)" -eq 0 ]; then
     apt-get update && apt-get install -y $packages
   elif command -v sudo >/dev/null 2>&1; then
@@ -280,7 +280,13 @@ def build(target: str, version: str) -> None:
     ])
 
     helpers.step(4, "smoke-test bundled runtime")
-    helpers.run([python, INSTALLER / "smoke_test.py", STAGE])
+    smoke_command = [python, INSTALLER / "smoke_test.py", STAGE]
+    if target == "linux-x86_64":
+        xvfb = shutil.which("xvfb-run")
+        if not xvfb:
+            helpers.die("xvfb-run is required for the headless Linux smoke test")
+        smoke_command = [xvfb, "-a", *smoke_command]
+    helpers.run(smoke_command)
     make_png_icon(python)
 
     if target == "linux-x86_64":
