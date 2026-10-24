@@ -166,3 +166,19 @@ def prepare_update(*, current_version: str | None = None, staging_dir: str | Pat
             except OSError:
                 pass
             raise
+
+
+# Mark-56 plugin-template entry point: stage and verify an official release, never install it.
+PLUGIN = {
+    "name": "update_installer",
+    "description": "Prepare a verified Mark 56 release installer in a staging folder. This only downloads an official release asset and checks its checksum; it never runs or installs the file.",
+    "parameters": {"type": "OBJECT", "properties": {}, "required": []},
+}
+
+def run(parameters: dict, player=None, session_memory=None) -> str:
+    try:
+        prepared = prepare_update()
+        return (f"Verified update installer staged for version {prepared.version}: {prepared.asset_name}. "
+                f"SHA-256 verification succeeded. Review the release details and use the explicit update confirmation UI to install.")
+    except Exception as exc:
+        return f"Sir, update staging failed safely: {type(exc).__name__}: {exc}"
