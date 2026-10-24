@@ -28,6 +28,9 @@ _DEFAULT_PARAMS = {"type": "OBJECT", "properties": {}}
 _BEHAVIORS = ("BLOCKING", "NON_BLOCKING")
 _SCHEDULING = ("WHEN_IDLE", "SILENT", "INTERRUPT")
 
+# Support/UI modules intentionally do not expose PLUGIN/run() and are not tools.
+_SUPPORT_MODULES = {"desktop_capture.py", "static_site_workspace.py", "update_install_flow.py", "update_installer.py"}
+
 
 def _opt_upper(value, allowed: tuple[str, ...]) -> Optional[str]:
     v = str(value or "").strip().upper()
