@@ -20,6 +20,14 @@ class LocalModelTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "loopback"):
                 local_model.generate("hello", model="test")
 
+    def test_rejects_lookalike_remote_loopback_hostname(self):
+        with patch.object(local_model, "_settings", return_value={
+            "local_model_enabled": True,
+            "local_model_base_url": "http://127.0.0.1.attacker.example:11434"
+        }):
+            with self.assertRaisesRegex(ValueError, "loopback"):
+                local_model.generate("hello", model="test")
+
     def test_generate_posts_to_local_ollama(self):
         response = MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps(
