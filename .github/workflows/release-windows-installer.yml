@@ -9,6 +9,8 @@ on:
         default: "56.0.0"
         type: string
   push:
+    branches:
+      - "mark56-build-automation"
     tags:
       - "v*"
 
@@ -39,8 +41,10 @@ jobs:
         run: |
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
             $version = "${{ inputs.version }}".Trim()
+          } elseif ("$env:GITHUB_REF_TYPE" -eq "tag") {
+            $version = "$env:GITHUB_REF_NAME".TrimStart("v")
           } else {
-            $version = "${{ github.ref_name }}".TrimStart("v")
+            $version = "56.0.0"
           }
 
           if ($version -notmatch '^\d+\.\d+\.\d+$') {
@@ -80,6 +84,7 @@ jobs:
           retention-days: 14
 
       - name: Publish release with installer and checksums
+        if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION }}
