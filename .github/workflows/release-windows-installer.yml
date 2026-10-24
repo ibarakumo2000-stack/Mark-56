@@ -100,7 +100,7 @@ jobs:
       - name: Install native libraries for Qt and audio smoke tests
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2 libegl1 libgl1 libportaudio2 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0
+          sudo apt-get install -y xvfb libasound2 libpulse0 libegl1 libgl1 libportaudio2 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0
       - name: Build and smoke-test Linux package
         run: python scripts/build_portable.py --target linux-x86_64 --version "${{ needs.determine-version.outputs.version }}"
       - name: Upload Linux installer
