@@ -127,14 +127,6 @@ def install_plugin_file(
             save_plugin_removed(target.name, False, plugin_name=metadata["name"])
         return target, metadata
 
-    # A removed stock plugin may be restored by an app update. Permit replacing
-    # that inactive file only when its filename is explicitly marked as removed.
-    if target.exists():
-        if target.name not in removed:
-            raise PluginFileError(f"'{target.name}' already exists in the plugin directory; no file was overwritten.")
-        backup = _backup_destination(root.parent / ".plugin-backups", target.name)
-        shutil.move(str(target), str(backup))
-
     for existing in sorted(root.glob("*.py")):
         if existing.name == target.name or existing.name in removed or existing.name.startswith("_"):
             continue
@@ -146,6 +138,14 @@ def install_plugin_file(
             raise PluginFileError(
                 f"Plugin name '{metadata['name']}' is already provided by '{existing.name}'."
             )
+
+    # A removed stock plugin may be restored by an app update. Permit replacing
+    # that inactive file only when its filename is explicitly marked as removed.
+    if target.exists():
+        if target.name not in removed:
+            raise PluginFileError(f"'{target.name}' already exists in the plugin directory; no file was overwritten.")
+        backup = _backup_destination(root.parent / ".plugin-backups", target.name)
+        shutil.move(str(target), str(backup))
 
     try:
         shutil.copy2(source_path, target)
