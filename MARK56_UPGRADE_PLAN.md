@@ -73,8 +73,30 @@
 - [ ] Linux and Windows smoke tests performed
 - [ ] README clearly distinguishes implemented features from planned features
 
-## Current status
-Planning and repository bootstrap only. The code baseline must be copied and validated before marking the application upgrade as started in implementation terms. Later stages are not yet implemented or tested.
+## Current implementation status (2026-10-25)
+
+The repository is beyond the initial bootstrap, but this is **not yet a fully completed Mark 56 release**. Source code, automated tests, and OS-level acceptance are tracked separately.
+
+### Implemented or present in the codebase
+- Sanitized example configuration and local-only runtime configuration conventions.
+- Optional OpenAI Responses API support for one-shot tasks; Gemini Live remains the baseline voice session.
+- Selectable Gemini Live voices and local wake-word support.
+- Plugin loader that validates `PLUGIN` metadata and a callable `run()`, tracks invalid plugins, and supports enable/disable settings.
+- Guarded `screen_agent` modes for observe/read/analyze/propose/limited confirmed execute.
+- A Website Studio setup plugin with a separate OS-keyring credential store, and a permission-based Wayland ScreenCast plugin. These require real desktop validation on each supported OS/session.
+- In the current development branch: add/remove controls for local Python plugins, persistent removal state, installer checks for required plugin files, and background/manual GitHub-release update notifications.
+
+### Still not complete or not yet verified
+- Secret rotation and a complete history audit/removal of any old credentials from previous repository history.
+- Local/self-hosted inference and a final GPU-server location.
+- Proof that continuous screen observation works reliably through the user's Ubuntu Wayland session; the agent is still guarded and is not an unrestricted autonomous multi-step computer operator.
+- A fully sandboxed coding agent with enforced workspace isolation, reviewable diffs, and restricted command execution for every generated project path.
+- Full self-update: downloading artifacts inside the app, verifying artifact hashes/signatures before use, safe installation sequencing, settings/memory backup, and rollback. Current update notifications only open the platform download URL and never install silently.
+- Phone-to-PC control with secure pairing, revocation, TLS, least privilege, and an audit log.
+- A complete defensive security workflow with clear scope enforcement and confirmation gates across every scan/system-change path.
+- Clean-machine install and regression tests on Windows, Linux, and macOS, plus manual testing of voice, wake word, screen capture, plugin add/remove, and upgrade preservation.
+
+The release acceptance checklist remains unchecked until each item is run and recorded. A passing unit-test workflow is not evidence that OS permissions, screen capture, installers, and desktop hardware work correctly.
 
 ## Step 2 implementation: guarded screen agent
 
