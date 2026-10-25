@@ -17,6 +17,17 @@ _lock = threading.RLock()
 _session: "WaylandScreenCast | None" = None
 
 
+def _unwrap_variants(value):
+    """Convert dbus-next Variant wrappers into ordinary Python values."""
+    if hasattr(value, "signature") and hasattr(value, "value"):
+        return _unwrap_variants(value.value)
+    if isinstance(value, dict):
+        return {key: _unwrap_variants(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_unwrap_variants(item) for item in value)
+    return value
+
+
 class WaylandScreenCast:
     def __init__(self) -> None:
         self._bus = None
@@ -79,7 +90,7 @@ class WaylandScreenCast:
             if code != 0:
                 reason = "cancelled by user" if code == 1 else f"response code {code}"
                 raise RuntimeError(f"ScreenCast permission/request was {reason}.")
-            return results, {}
+            return _unwrap_variants(results), {}
 
         return asyncio.run(call_request())
 
