@@ -6010,7 +6010,7 @@ class MainWindow(QMainWindow):
     def _open_website_studio(self):
         """Open the safe, local Website Studio preview-and-create workspace."""
         try:
-            from plugins.static_site_workspace import StaticSiteWorkspaceDialog
+            from core.static_site_workspace import StaticSiteWorkspaceDialog
             dialog = StaticSiteWorkspaceDialog(self)
             dialog.exec()
         except Exception as exc:
