@@ -382,3 +382,46 @@ def save_plugin_enabled(plugin_name: str, enabled: bool) -> None:
     plugins_cfg[plugin_name] = enabled
     data["plugins_enabled"] = plugins_cfg
     CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+
+def get_removed_plugin_files() -> set[str]:
+    """Return filenames the user explicitly removed, even if a later upgrade restores them."""
+    raw = load_api_keys().get("removed_plugin_files", {})
+    if isinstance(raw, dict):
+        values = raw.keys()
+    elif isinstance(raw, list):  # tolerate the early list-based format, if present
+        values = raw
+    else:
+        values = ()
+    return {
+        str(name) for name in values
+        if isinstance(name, str) and name.endswith(".py") and Path(name).name == name
+    }
+
+
+def save_plugin_removed(filename: str, removed: bool, plugin_name: str | None = None) -> None:
+    """Persist a plugin removal choice without overwriting other user settings."""
+    name = str(filename or "").strip()
+    if not name.endswith(".py") or Path(name).name != name:
+        raise ValueError("Invalid plugin filename.")
+    ensure_config_dir()
+    data: dict = {}
+    if CONFIG_FILE.exists():
+        try:
+            loaded = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+        except Exception:
+            data = {}
+    raw = data.get("removed_plugin_files", {})
+    if isinstance(raw, list):
+        removed_files = {str(item): "" for item in raw if isinstance(item, str)}
+    elif isinstance(raw, dict):
+        removed_files = {str(key): str(value or "") for key, value in raw.items()}
+    else:
+        removed_files = {}
+    if removed:
+        removed_files[name] = str(plugin_name or Path(name).stem)
+    else:
+        removed_files.pop(name, None)
+    data["removed_plugin_files"] = removed_files
+    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
