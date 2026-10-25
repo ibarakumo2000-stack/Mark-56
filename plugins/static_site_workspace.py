@@ -10,7 +10,7 @@ import json
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices, QFont
 from PyQt6.QtWidgets import (
-    QComboBox, QDialog, QFormLayout, QFrame, QHBoxLayout, QLabel,
+    QComboBox, QDialog, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QMessageBox, QPushButton, QScrollArea, QSizePolicy,
     QTextBrowser, QTextEdit, QVBoxLayout, QWidget,
 )
@@ -124,7 +124,10 @@ class StaticSiteWorkspaceDialog(QDialog):
         self.services = QLineEdit("Brand identity, Web design, Creative development")
         self.services.setPlaceholderText("Separate cards with commas")
         self.accent = QComboBox()
-        self.accent.addItems(["cyan", "violet", "amber", "green"])
+        self.accent.addItems(["cyan", "violet", "amber", "green", "rose", "blue"])
+        self.visual_style = QComboBox()
+        self.visual_style.addItems(["editorial", "minimal", "studio"])
+        self.visual_style.setToolTip("Changes typography rhythm, spacing, and corner treatment.")
 
         def field_label(text):
             label = QLabel(text)
@@ -139,6 +142,7 @@ class StaticSiteWorkspaceDialog(QDialog):
         form.addRow(field_label("Contact email"), self.email)
         form.addRow(field_label("Content cards"), self.services)
         form.addRow(field_label("Accent palette"), self.accent)
+        form.addRow(field_label("Design direction"), self.visual_style)
 
         form_scroll = QScrollArea()
         form_scroll.setWidgetResizable(True)
@@ -161,6 +165,11 @@ class StaticSiteWorkspaceDialog(QDialog):
         open_btn.setObjectName("secondary")
         open_btn.clicked.connect(self._open_workspace)
         secondary_actions.addWidget(open_btn)
+        self.export_btn = QPushButton("Export preview")
+        self.export_btn.setObjectName("secondary")
+        self.export_btn.setEnabled(False)
+        self.export_btn.clicked.connect(self._export_preview)
+        secondary_actions.addWidget(self.export_btn)
         actions.addLayout(secondary_actions)
         setup_layout.addLayout(actions)
 
@@ -224,12 +233,14 @@ class StaticSiteWorkspaceDialog(QDialog):
             "tagline": self.tagline.text().strip(), "about": self.about.toPlainText().strip(),
             "email": self.email.text().strip(), "services": services,
             "accent": self.accent.currentText(),
+            "visual_style": self.visual_style.currentText(),
         }
 
     def _preview(self):
         try:
             result = json.loads(static_site_builder.run(self._parameters("preview")))
         except Exception as exc:
+            self.status.setText(f"Preview failed: {type(exc).__name__}: {exc}")
             QMessageBox.warning(self, "Preview unavailable", f"The website preview could not be generated.\n\n{type(exc).__name__}: {exc}")
             return
         if not result.get("ok"):
@@ -241,7 +252,27 @@ class StaticSiteWorkspaceDialog(QDialog):
         self.preview_state.setText("PREVIEW READY")
         self.preview_state.setStyleSheet("color:#73e5b1; background:#0c2824; border:1px solid #1d5949; border-radius:7px; padding:6px 8px; font-size:9px; font-weight:800;")
         self.create_btn.setEnabled(True)
+        self.export_btn.setEnabled(True)
         self.status.setText("Preview generated · " + ", ".join(result.get("files", [])) + " · No files have been written yet.")
+
+    def _export_preview(self):
+        if not self._last_preview or not self._last_preview.get("preview_html"):
+            QMessageBox.information(self, "Preview first", "Generate a preview before exporting it.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export website preview", "website-preview.html", "HTML files (*.html)"
+        )
+        if not path:
+            return
+        try:
+            from pathlib import Path
+            Path(path).write_text(self._last_preview["preview_html"], encoding="utf-8")
+        except OSError as exc:
+            self.status.setText(f"Export failed: {exc}")
+            QMessageBox.warning(self, "Export failed", f"The preview could not be exported.\n\n{exc}")
+            return
+        self.status.setText(f"Preview exported to {path}")
+        QMessageBox.information(self, "Preview exported", f"Saved preview to:\n{path}")
 
     def _create(self):
         if self._last_preview is None:
