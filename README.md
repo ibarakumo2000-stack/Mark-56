@@ -48,3 +48,12 @@ python -m compileall -q main.py ui.py core actions plugins dashboard memory test
 ```
 
 Local OCR is optional and requires the Tesseract system package plus Python packages `pytesseract` and `Pillow`. Screen capture needs a logged-in graphical desktop session; it may not work in a headless terminal or restricted Wayland environment.
+
+
+### Plugin management
+
+Open **Controls → Plugins** to enable/disable discovered plugins. You can also add a local `.py` plugin file or remove an existing plugin. The manager validates the plugin contract without executing its code during installation, backs up removed files under `.plugin-backups/`, and records removals in your local settings so an app update does not silently re-enable a removed built-in plugin. **Only install Python plugins from sources you trust:** once loaded, a plugin runs with the same file and network permissions as JARVIS. Restart JARVIS after adding or removing a plugin so its tool list is refreshed.
+
+### Desktop update notifications
+
+Packaged builds check GitHub Releases in the background and show a download prompt when a newer stable version is published. **Controls → Check for updates** also lets you check manually. Choosing Download opens the release asset in your browser; the app does not automatically install or execute an installer. The first update that adds this feature must be installed manually once by users on older builds, then future releases can notify them inside the app. See [INSTALLER_BUILD.md](INSTALLER_BUILD.md) for the release-publishing checklist.

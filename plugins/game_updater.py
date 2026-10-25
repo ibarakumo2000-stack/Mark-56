@@ -2469,7 +2469,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
 
 # ── Plugin declaration (auto-discovered by core/plugin_loader.py) ───────────
 PLUGIN = {
-    "name": "game_updater",
+    "name": "game_updater_plugin",
     "description": (
         "THE ONLY tool for ANY Steam or Epic Games request: installing and "
         "downloading games, updating them, listing what is installed, reporting "

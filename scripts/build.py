@@ -39,7 +39,7 @@ INSTALLER = ROOT / "installer"
 DEFAULT_PYTHON = "3.14.6"   # last 3.14 with binary installers; all wheels exist for it
 
 # ── what must never ship ──────────────────────────────────────────────────────
-GENERIC_SKIP_DIRS = {".git", ".vscode", ".idea", "__pycache__", "venv", ".venv", "node_modules"}
+GENERIC_SKIP_DIRS = {".git", ".vscode", ".idea", "__pycache__", "venv", ".venv", "node_modules", ".plugin-backups"}
 ROOT_SKIP_DIRS = {"installer", "scripts", "build", "dist"}
 SKIP_PREFIXES = ("config/certs", "config/whatsapp_web", "cache", "uploads", "logs")
 SKIP_FILES = {
