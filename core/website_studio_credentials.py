@@ -6,7 +6,6 @@ Gemini/OpenAI provider configuration.
 """
 from __future__ import annotations
 
-import json
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -90,8 +89,9 @@ def validate_api_key(api_key: str) -> None:
 def save_api_key(api_key: str) -> None:
     """Validate first, then persist the key in the OS keyring."""
     key = str(api_key or "").strip()
-    validate_api_key(key)
+    # Confirm secure storage exists before transmitting a credential for validation.
     keyring = _keyring_module()
+    validate_api_key(key)
     try:
         keyring.set_password(_SERVICE, _ACCOUNT, key)
     except Exception:
