@@ -68,6 +68,78 @@ def _file_capture(command_builder, timeout: float = 8.0) -> tuple[bytes, int, in
         path.unlink(missing_ok=True)
 
 
+
+def _portal_capture_wayland(timeout: float = 35.0) -> tuple[bytes, int, int]:
+    """Capture through xdg-desktop-portal, the supported GNOME Wayland API.
+
+    The desktop may show a permission/selection prompt. This is intentional:
+    Wayland does not permit arbitrary silent screenshots by default.
+    """
+    import asyncio
+    from urllib.parse import unquote, urlparse
+
+    from dbus_next import BusType, Variant
+    from dbus_next.aio import MessageBus
+
+    async def request_capture() -> tuple[bytes, int, int]:
+        bus = await MessageBus(bus_type=BusType.SESSION).connect()
+        try:
+            introspection = await bus.introspect(
+                "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop"
+            )
+            portal = bus.get_proxy_object(
+                "org.freedesktop.portal.Desktop",
+                "/org/freedesktop/portal/desktop",
+                introspection,
+            ).get_interface("org.freedesktop.portal.Screenshot")
+            handle = await portal.call_screenshot(
+                "", {"interactive": Variant("b", True)}
+            )
+            request_xml = await bus.introspect("org.freedesktop.portal.Desktop", handle)
+            request = bus.get_proxy_object(
+                "org.freedesktop.portal.Desktop", handle, request_xml
+            ).get_interface("org.freedesktop.portal.Request")
+            loop = asyncio.get_running_loop()
+            response_future = loop.create_future()
+
+            def on_response(code, results):
+                if not response_future.done():
+                    response_future.set_result((code, results))
+
+            request.on_response(on_response)
+            try:
+                code, results = await asyncio.wait_for(response_future, timeout=timeout)
+            finally:
+                request.off_response(on_response)
+            if code != 0:
+                if code == 1:
+                    raise RuntimeError("Screenshot was cancelled in the desktop permission dialog.")
+                raise RuntimeError(f"Desktop screenshot portal returned response code {code}.")
+            uri = results.get("uri")
+            if not uri:
+                raise RuntimeError("Screenshot portal succeeded but returned no image URI.")
+            parsed = urlparse(uri)
+            if parsed.scheme != "file":
+                raise RuntimeError(f"Screenshot portal returned an unsupported URI scheme: {parsed.scheme!r}.")
+            path = Path(unquote(parsed.path))
+            if not path.is_file():
+                raise RuntimeError("Screenshot portal image path does not exist.")
+            return _decode_png(path.read_bytes())
+        finally:
+            bus.disconnect()
+
+    try:
+        return asyncio.run(request_capture())
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(
+            f"xdg-desktop-portal screenshot request failed ({type(exc).__name__}: {exc}). "
+            "Check that xdg-desktop-portal and the GNOME portal backend are installed and running, "
+            "and launch Jarvis inside your logged-in graphical session."
+        ) from exc
+
+
 def _python_capture_mss() -> tuple[bytes, int, int]:
     import mss
     from PIL import Image
@@ -94,14 +166,20 @@ def capture_png() -> tuple[bytes, int, int]:
     wayland = session == "wayland" or bool(os.environ.get("WAYLAND_DISPLAY"))
     is_gnome = "gnome" in os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
 
-    # GNOME Wayland should try its own screenshot utility first. grim is for
-    # wlroots compositors and generally cannot capture a GNOME Shell desktop.
-    if wayland and is_gnome and shutil.which("gnome-screenshot"):
+    # GNOME Wayland: use the desktop portal first. This is the supported
+    # permission-aware API; gnome-screenshot can crash on broken portal setups.
+    if wayland and is_gnome:
         try:
-            exe = shutil.which("gnome-screenshot") or "gnome-screenshot"
-            return _file_capture(lambda p: [exe, "--file", p])
+            return _portal_capture_wayland()
         except Exception as exc:
-            failures.append(f"gnome-screenshot: {type(exc).__name__}: {exc}")
+            failures.append(f"xdg-desktop-portal: {type(exc).__name__}: {exc}")
+
+    # grim is appropriate for wlroots compositors, not GNOME Shell.
+    if wayland and not is_gnome and shutil.which("grim"):
+        try:
+            return _run_capture([shutil.which("grim") or "grim", "-"], timeout=5.0)
+        except Exception as exc:
+            failures.append(f"grim: {type(exc).__name__}: {exc}")
 
     if wayland and not is_gnome and shutil.which("grim"):
         try:
