@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from memory.config_manager import get_plugin_enabled, get_plugin_config
+from memory.config_manager import get_plugin_enabled, get_plugin_config, get_removed_plugin_files
 
 _NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,63}$")
 _DEFAULT_PARAMS = {"type": "OBJECT", "properties": {}}
@@ -233,8 +233,9 @@ def discover_plugins(plugins_dir: Path, core_tool_names: set[str],
     all_records: list[PluginRecord] = []
 
     files = sorted(plugins_dir.glob("*.py"), key=lambda p: p.name)  # deterministic order
+    removed_files = get_removed_plugin_files()
     for path in files:
-        if path.name.startswith("_"):
+        if path.name.startswith("_") or path.name in removed_files:
             continue
         try:
             module_name = f"plugins.{path.stem}"
