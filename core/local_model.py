@@ -23,11 +23,19 @@ def _base_dir() -> Path:
 
 
 def _settings() -> dict:
-    """Read local model settings from config/local_model.json."""
+    """Read local model settings from config/api_keys.json."""
     try:
-        config_path = _base_dir() / "config" / "local_model.json"
-        value = json.loads(config_path.read_text(encoding="utf-8"))
-        return value if isinstance(value, dict) else {}
+        base = _base_dir() / "config"
+        # The app's canonical settings file is api_keys.json. Older local-model
+        # experiments used local_model.json, so retain it as a compatibility fallback.
+        for config_path in (base / "api_keys.json", base / "local_model.json"):
+            try:
+                value = json.loads(config_path.read_text(encoding="utf-8"))
+                if isinstance(value, dict):
+                    return value
+            except (OSError, ValueError, TypeError):
+                continue
+        return {}
     except (OSError, ValueError, TypeError):
         return {}
 
@@ -119,7 +127,7 @@ def generate(
 
     if settings.get("local_model_enabled") is not True:
         raise RuntimeError(
-            "Local model mode is disabled in config/local_model.json."
+            "Local model mode is disabled in config/api_keys.json."
         )
 
     model_setting = (
@@ -132,7 +140,7 @@ def generate(
     if not selected_model:
         raise RuntimeError(
             "Set local_model_name (and local_vision_model_name "
-            "for screenshots) in config/local_model.json."
+            "for screenshots) in config/api_keys.json."
         )
 
     message = {
