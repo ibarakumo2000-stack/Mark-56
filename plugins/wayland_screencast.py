@@ -244,14 +244,18 @@ class WaylandScreenCast:
             if self._bus is not None:
                 if self._session_handle:
                     try:
-                        from dbus_next import Message
-                        # Explicitly close the portal session so the desktop
-                        # stops sharing when the user/task ends monitoring.
-                        asyncio.run(self._bus.call(Message(
-                            destination="org.freedesktop.portal.Desktop",
-                            path=self._session_handle,
-                            interface="org.freedesktop.portal.Session",
-                            member="Close", signature="", body=[])))
+                        import subprocess
+                        # Use gdbus here because the setup coroutine's event
+                        # loop has ended; do not reuse its D-Bus connection on
+                        # a different asyncio loop.
+                        subprocess.run(
+                            ["gdbus", "call", "--session",
+                             "--dest", "org.freedesktop.portal.Desktop",
+                             "--object-path", self._session_handle,
+                             "--method", "org.freedesktop.portal.Session.Close"],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, timeout=3, check=False,
+                        )
                     except Exception:
                         pass
                     self._session_handle = None
