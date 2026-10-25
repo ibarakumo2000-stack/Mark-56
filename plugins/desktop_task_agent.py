@@ -36,7 +36,7 @@ _state_lock = threading.RLock()
 _state: dict[str, Any] = {
     "active": False, "task": None, "step": 0, "started_at": None,
     "last_action": None, "status": "idle", "current_app": None,
-    "history": [], "remaining_work": "No active task.", "approval_required": False,
+    "history": [], "remaining_work": "No active task.", "approval_required": False, "auto_run": False,
 }
 _stop_event = threading.Event()
 _worker_lock = threading.Lock()
@@ -246,7 +246,7 @@ def run(parameters: dict, **_context) -> str:
             _state.update(active=True, task=task, step=0, started_at=time.monotonic(),
                           last_action=None, status="awaiting_confirmation" if needs_approval else "running",
                           current_app=None, history=[], stop_reason=None,
-                          approval_required=needs_approval,
+                          approval_required=needs_approval, auto_run=auto_run,
                           remaining_work="Awaiting explicit user approval." if needs_approval else
                           ("Starting automatic observe-act-verify loop." if auto_run else
                            "Observe current desktop and take one safe action."))
@@ -262,7 +262,11 @@ def run(parameters: dict, **_context) -> str:
                 return json.dumps({"active": _state["active"], "status": _state["status"], "message": "No pending approval."})
             _state.update(status="running", approval_required=False,
                           remaining_work="Approved; observe-act-verify loop may proceed.")
-            return json.dumps(_snapshot(), ensure_ascii=False)
+            should_auto_run = bool(_state.get("auto_run"))
+            result = json.dumps(_snapshot(), ensure_ascii=False)
+        if should_auto_run:
+            _start_auto_worker()
+        return result
     if operation != "step":
         return "Unknown operation. Use start, confirm, step, status, pause, resume, stop, or completed."
 
