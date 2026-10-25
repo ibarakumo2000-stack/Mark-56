@@ -59,7 +59,7 @@ except Exception as _e:            # noqa: BLE001 - reported, never fatal
     print(f"[Video] playback unavailable ({_e}) — the HUD will not show video.")
 
 from PyQt6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QComboBox, QDialog, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter, QMessageBox,
     QGraphicsScene, QGraphicsView,
     QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar,
@@ -6130,13 +6130,31 @@ class MainWindow(QMainWindow):
         self._plugin_manager_overlay = ov   # keep a reference so it isn't GC'd
 
     def _open_static_site_workspace(self):
-        """Open the provider-independent visual static website builder."""
+        """Require Website Studio's separate OpenAI credential on first launch."""
         try:
+            from core import website_studio_credentials as credentials
+            from plugins.website_studio_setup import WebsiteStudioSetupDialog
+
+            if not credentials.is_configured():
+                setup = WebsiteStudioSetupDialog(self)
+                if setup.exec() != QDialog.DialogCode.Accepted:
+                    return
+                if not credentials.is_configured():
+                    QMessageBox.warning(
+                        self, "Website Studio not connected",
+                        "No Website Studio credential is available in secure storage."
+                    )
+                    return
+
             from plugins.static_site_workspace import StaticSiteWorkspaceDialog
             dialog = StaticSiteWorkspaceDialog(self)
             dialog.exec()
         except Exception as exc:
             self._log.append_log(f"ERR: Website Builder could not open — {type(exc).__name__}: {exc}")
+            QMessageBox.warning(
+                self, "Website Studio unavailable",
+                "Website Studio could not start. Check the application log for details."
+            )
 
     def _open_plugin_settings(self):
         sections = self.get_plugin_settings() if self.get_plugin_settings else []
