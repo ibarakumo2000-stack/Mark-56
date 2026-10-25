@@ -201,7 +201,7 @@ def _execute(parameters: dict) -> str:
 def screen_agent(parameters: dict, response=None, player=None, session_memory=None) -> str:
     """Tool entry point: diagnose | observe | read_text | analyze | propose | execute."""
     params = parameters or {}
-    mode = str(params.get("mode") or "observe").strip().lower()
+    mode = str(params.get("mode") or "analyze").strip().lower()
     try:
         if mode == "diagnose":
             return _diagnose()
@@ -223,15 +223,16 @@ def screen_agent(parameters: dict, response=None, player=None, session_memory=No
 TOOL = {
     "name": "screen_agent",
     "description": (
-        "Mark 56 guarded screen agent. Diagnose desktop/model readiness, observe screenshots, read visible text with local OCR, "
-        "analyze the screen, propose one next step without acting, or execute a narrowly "
+        "Mark 56 screen vision agent. When asked what is on screen, default to analyze the captured image and describe visible content; "
+        "observe only captures metadata. Diagnose desktop/model readiness, read visible text with local OCR, "
+        "propose one next step without acting, or execute a narrowly "
         "allowlisted reversible action only after explicit confirmed=true. Never automatically "
         "executes a proposal."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "mode": {"type": "STRING", "description": "diagnose | observe | read_text | analyze | propose | execute"},
+            "mode": {"type": "STRING", "description": "analyze (default: visually describe current desktop) | diagnose | observe (capture metadata only) | read_text | propose | execute"},
             "path": {"type": "STRING", "description": "Optional PNG screenshot path inside home directory"},
             "prompt": {"type": "STRING", "description": "Question for screen analysis (max 1000 chars)"},
             "task": {"type": "STRING", "description": "Goal to plan without taking action"},
