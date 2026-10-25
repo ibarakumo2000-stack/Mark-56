@@ -56,13 +56,33 @@ import threading
 import time
 from pathlib import Path
 
-try:
-    import pyautogui
-    pyautogui.FAILSAFE = True
-    pyautogui.PAUSE = 0.05
+# Initialize desktop input lazily. Importing pyautogui can access X11,
+# which must not prevent Mark 56 from discovering plugins or reporting status.
+pyautogui = None
+_PYAUTOGUI = False
+_PYAUTOGUI_ERROR = ""
+
+
+def _ensure_pyautogui() -> bool:
+    """Initialize desktop input only when actual game control is requested."""
+    global pyautogui, _PYAUTOGUI, _PYAUTOGUI_ERROR
+
+    if _PYAUTOGUI and pyautogui is not None:
+        return True
+
+    try:
+        import pyautogui as _pyautogui
+        _pyautogui.FAILSAFE = True
+        _pyautogui.PAUSE = 0.05
+    except Exception as exc:
+        _PYAUTOGUI = False
+        _PYAUTOGUI_ERROR = f"{type(exc).__name__}: {exc}"
+        return False
+
+    pyautogui = _pyautogui
     _PYAUTOGUI = True
-except ImportError:
-    _PYAUTOGUI = False
+    _PYAUTOGUI_ERROR = ""
+    return True
 
 try:
     import mss
@@ -347,8 +367,16 @@ class _GameAutoplayer:
             if self._thread is not None and self._thread.is_alive():
                 return f"Already playing {self.game_name}, sir. Say stop first if you want to switch games."
 
-            if not _PYAUTOGUI:
-                return "Can't take over the game — pyautogui isn't installed. Run: pip install pyautogui"
+            if not _ensure_pyautogui():
+                details = (
+                    f" Details: {_PYAUTOGUI_ERROR}"
+                    if _PYAUTOGUI_ERROR else ""
+                )
+                return (
+                    "Can't take over the game — graphical input could not be "
+                    "initialized in this session. Run Mark 56 from your logged-in "
+                    f"desktop session and try again.{details}"
+                )
             if not (_MSS and _PIL):
                 return "Can't take over the game — mss/pillow aren't installed. Run: pip install mss pillow"
 
