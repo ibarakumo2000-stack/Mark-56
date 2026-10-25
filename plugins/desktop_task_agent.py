@@ -96,21 +96,16 @@ def _vision_step(task: str, last_action: str | None, history: list[str]) -> dict
         f"recent_history={history[-5:]}. "
         "Allowed apps: krita,gimp,inkscape,pinta,kolourpaint,libreoffice_draw,firefox."
     )
-    if local_model.enabled():
-        # Explicit local mode is fail-closed: never send screenshots to a cloud model
-        # if Ollama or the configured local vision model is unavailable.
-        raw = local_model.generate(
-            instruction, images=[png], timeout_ms=20000
-        ).strip()
-    else:
-        # Import cloud SDK only when cloud mode is selected. Offline operation
-        # must still work when cloud packages/credentials are absent.
-        from google.genai import types as gtypes
-        from core import gemini
-        response = gemini.call([
-            gtypes.Part.from_bytes(data=png, mime_type="image/png"), instruction,
-        ], tier=gemini.FAST, timeout_ms=20000)
-        raw = (getattr(response, "text", None) or "").strip()
+    if not local_model.enabled():
+        raise RuntimeError(
+            "Local vision mode is disabled. Enable a local image-capable model before "
+            "starting desktop automation; screenshots are not sent to a cloud provider automatically."
+        )
+    # Fail closed: never send screenshots to a cloud model if the local model is
+    # disabled, unavailable, or does not support image input.
+    raw = local_model.generate(
+        instruction, images=[png], timeout_ms=20000
+    ).strip()
     if raw.startswith("```"):
         raw = raw.strip("`")
         if raw.startswith("json"):
