@@ -18,7 +18,7 @@ class InstallerUpgradeSafetyTests(unittest.TestCase):
         cls.source = SCRIPT.read_text(encoding="utf-8")
 
     def test_installer_has_one_inno_code_section(self):
-        sections = re.findall(r"(?m)^\\[Code\\]\\s*$", self.source)
+        sections = re.findall(r"(?m)^\[Code\]\s*$", self.source)
         self.assertEqual(
             len(sections),
             1,
