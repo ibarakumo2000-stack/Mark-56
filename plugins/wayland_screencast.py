@@ -40,60 +40,6 @@ class WaylandScreenCast:
         self._closed = False
         self._node_id = None
 
-    @staticmethod
-    def _portal_call(bus, interface: str, member: str, signature: str, body: list,
-                     timeout: float = 35.0) -> tuple[Any, dict]:
-        from dbus_next import Message, MessageType
-        from dbus_next import Variant
-        from dbus_next.aio import MessageBus
-
-        async def call_request():
-            loop = asyncio.get_running_loop()
-            future = loop.create_future()
-            reply = await bus.call(Message(
-                destination="org.freedesktop.portal.Desktop",
-                path="/org/freedesktop/portal/desktop",
-                interface=interface, member=member,
-                signature=signature, body=body,
-            ))
-            if reply.message_type == MessageType.ERROR:
-                detail = reply.body[0] if reply.body else "unknown portal error"
-                raise RuntimeError(f"{member} failed ({reply.error_name}): {detail}")
-            if not reply.body or not isinstance(reply.body[0], str):
-                raise RuntimeError(f"{member} did not return a request handle.")
-            handle = reply.body[0]
-            rule = ("type='signal',sender='org.freedesktop.portal.Desktop',"
-                    f"path='{handle}',interface='org.freedesktop.portal.Request',member='Response'")
-
-            def handler(message):
-                if (message.message_type == MessageType.SIGNAL and message.path == handle
-                    and message.interface == "org.freedesktop.portal.Request"
-                    and message.member == "Response" and message.signature == "ua{sv}"):
-                    if not future.done():
-                        future.set_result((message.body[0], message.body[1]))
-                return False
-
-            bus.add_message_handler(handler)
-            match = await bus.call(Message(
-                destination="org.freedesktop.DBus", path="/org/freedesktop/DBus",
-                interface="org.freedesktop.DBus", member="AddMatch", signature="s", body=[rule]))
-            if match.message_type == MessageType.ERROR:
-                bus.remove_message_handler(handler)
-                raise RuntimeError(f"Could not subscribe to portal response: {match.body}")
-            try:
-                code, results = await asyncio.wait_for(future, timeout=timeout)
-            finally:
-                await bus.call(Message(
-                    destination="org.freedesktop.DBus", path="/org/freedesktop/DBus",
-                    interface="org.freedesktop.DBus", member="RemoveMatch", signature="s", body=[rule]))
-                bus.remove_message_handler(handler)
-            if code != 0:
-                reason = "cancelled by user" if code == 1 else f"response code {code}"
-                raise RuntimeError(f"ScreenCast permission/request was {reason}.")
-            return _unwrap_variants(results), {}
-
-        return asyncio.run(call_request())
-
     def start(self) -> None:
         from dbus_next import BusType, Message, MessageType, Variant
         from dbus_next.aio import MessageBus
