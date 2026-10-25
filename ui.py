@@ -2215,8 +2215,8 @@ class PluginManagerOverlay(QWidget):
             self, "Trust this plugin?",
             "Python plugins can run code with the same permissions as JARVIS, "
             "including access to files and network services. Only install a plugin "
-            "from a source you trust.\\n\\n"
-            f"Plugin: {metadata.get('name')}\\n{metadata.get('description', '')[:500]}\\n\\n"
+            "from a source you trust.\n\n"
+            f"Plugin: {metadata.get('name')}\n{metadata.get('description', '')[:500]}\n\n"
             "Continue installing this file?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -2231,7 +2231,7 @@ class PluginManagerOverlay(QWidget):
             return
         QMessageBox.information(
             self, "Plugin added",
-            f"Installed {target.name}. Restart JARVIS to discover and load it.\\n\\n"
+            f"Installed {target.name}. Restart JARVIS to discover and load it.\n\n"
             "The selected file was validated without executing its code during installation."
         )
         self._close()
@@ -2242,7 +2242,7 @@ class PluginManagerOverlay(QWidget):
             return
         answer = QMessageBox.question(
             self, "Remove plugin?",
-            f"Remove '{filename}' from the active plugins? A backup will be kept in .plugin-backups.\\n\\n"
+            f"Remove '{filename}' from the active plugins? A backup will be kept in .plugin-backups.\n\n"
             "The plugin is disabled immediately, but restart JARVIS to refresh its tool list.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -2257,7 +2257,7 @@ class PluginManagerOverlay(QWidget):
             return
         QMessageBox.information(
             self, "Plugin removed",
-            f"Moved {filename} to a backup at:\\n{backup}\\n\\n"
+            f"Moved {filename} to a backup at:\n{backup}\n\n"
             "JARVIS disabled it immediately. Restart to update the list of available tools."
         )
         self._close()
