@@ -2039,7 +2039,7 @@ class PluginManagerOverlay(QWidget):
     a long plugin list grew taller than the window and pushed both the header
     and the CLOSE button off-screen, leaving no way to dismiss it."""
 
-    _OW = 640
+    _OW = 900
 
     def __init__(self, plugins: list[dict], parent=None):
         super().__init__(parent)
@@ -2053,20 +2053,20 @@ class PluginManagerOverlay(QWidget):
             }}
         """)
         parent_width = parent.width() if parent is not None else self._OW
-        panel_width = max(520, min(self._OW, parent_width - 36))
+        panel_width = min(self._OW, max(360, parent_width - 36))
         self.setFixedWidth(panel_width)
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(24, 20, 24, 20)
-        lay.setSpacing(12)
+        lay.setContentsMargins(28, 24, 28, 24)
+        lay.setSpacing(16)
 
         top = QHBoxLayout()
         hdr = QLabel("🧩  Plugin Library")
-        hdr.setFont(_sans_font(12, True, 0.6))
+        hdr.setFont(_sans_font(13, True, 0.6))
         hdr.setStyleSheet(f"color: {C.PRI}; background: transparent;")
         top.addWidget(hdr)
         subtitle = QLabel(f"{len(plugins)} integrations · Manage capabilities")
-        subtitle.setFont(_sans_font(8))
+        subtitle.setFont(_sans_font(9))
         subtitle.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
         top.addWidget(subtitle)
         top.addStretch()
@@ -2088,7 +2088,7 @@ class PluginManagerOverlay(QWidget):
 
         hint = QLabel("Add a trusted .py plugin or remove one below. Changes to newly added plugins take effect after restarting JARVIS.")
         hint.setWordWrap(True)
-        hint.setFont(_sans_font(8))
+        hint.setFont(_sans_font(9))
         hint.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
         lay.addWidget(hint)
 
@@ -2127,7 +2127,7 @@ class PluginManagerOverlay(QWidget):
         lay.addWidget(scroll, stretch=1)
 
         add_btn = QPushButton("＋  Add plugin (.py)")
-        add_btn.setFixedHeight(34)
+        add_btn.setFixedHeight(40)
         add_btn.setFont(_sans_font(9, True, 0.4))
         add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_btn.setStyleSheet(f"""
@@ -2138,7 +2138,7 @@ class PluginManagerOverlay(QWidget):
         lay.addWidget(add_btn)
 
         close_btn = QPushButton("Close")
-        close_btn.setFixedHeight(34)
+        close_btn.setFixedHeight(40)
         close_btn.setFont(_sans_font(9, True, 0.6))
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setStyleSheet(f"""
@@ -2155,7 +2155,7 @@ class PluginManagerOverlay(QWidget):
         win_h = parent.height() if parent is not None else 700
         avail = max(240, win_h - 32)
         rows_h = rows_w.sizeHint().height()
-        scroll.setFixedHeight(max(120, min(rows_h + 4, avail - 150)))
+        scroll.setFixedHeight(max(120, min(rows_h + 4, avail - 176)))
         self.adjustSize()
 
     def _close(self):
@@ -2163,7 +2163,7 @@ class PluginManagerOverlay(QWidget):
         self.deleteLater()
 
     def _build_row(self, p: dict) -> QHBoxLayout:
-        row = QHBoxLayout(); row.setSpacing(14)
+        row = QHBoxLayout(); row.setSpacing(18)
 
         label_text = p["name"] if p["valid"] else f"{p['name']}  (⚠ {p['file']})"
         lbl = QLabel(label_text)
@@ -2175,7 +2175,7 @@ class PluginManagerOverlay(QWidget):
         row.addWidget(lbl, stretch=1)
 
         btn = QPushButton()
-        btn.setFixedSize(78, 30)
+        btn.setFixedSize(88, 34)
         btn.setFont(_sans_font(8, True))
         if not p["valid"]:
             btn.setText("BROKEN")
@@ -2193,7 +2193,7 @@ class PluginManagerOverlay(QWidget):
         row.addWidget(btn)
 
         remove_btn = QPushButton("REMOVE")
-        remove_btn.setFixedSize(66, 24)
+        remove_btn.setFixedSize(78, 28)
         remove_btn.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
         remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         remove_btn.setToolTip("Back up and remove this plugin file")
