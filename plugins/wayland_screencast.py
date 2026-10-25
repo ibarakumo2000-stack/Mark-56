@@ -242,6 +242,19 @@ class WaylandScreenCast:
                     pass
                 self._remote_fd = None
             if self._bus is not None:
+                if self._session_handle:
+                    try:
+                        from dbus_next import Message
+                        # Explicitly close the portal session so the desktop
+                        # stops sharing when the user/task ends monitoring.
+                        asyncio.run(self._bus.call(Message(
+                            destination="org.freedesktop.portal.Desktop",
+                            path=self._session_handle,
+                            interface="org.freedesktop.portal.Session",
+                            member="Close", signature="", body=[])))
+                    except Exception:
+                        pass
+                    self._session_handle = None
                 try:
                     self._bus.disconnect()
                 except Exception:
