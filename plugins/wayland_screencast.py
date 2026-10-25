@@ -259,3 +259,44 @@ def stop_monitoring() -> str:
         return "No persistent ScreenCast session is active."
     stream.stop()
     return "Persistent ScreenCast session closed."
+
+
+# ── Plugin entry point (discovered from this .py file by core/plugin_loader.py) ──
+PLUGIN = {
+    "name": "wayland_screencast",
+    "description": (
+        "Manage the permission-based GNOME Wayland ScreenCast stream. Use action "
+        "'start' to request desktop portal permission and start a persistent monitor "
+        "stream, 'status' to check whether it is active, 'capture' to verify a fresh "
+        "frame is available, or 'stop' to close the stream. This never bypasses the "
+        "desktop permission dialog and never uploads screenshots by itself."
+    ),
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "action": {"type": "STRING", "description": "start | status | capture | stop (default: status)"}
+        },
+        "required": [],
+    },
+}
+
+def run(parameters: dict, player=None, session_memory=None) -> str:
+    """Plugin-loader entry point; desktop permissions remain user-controlled."""
+    params = parameters or {}
+    action = str(params.get("action") or "status").strip().lower()
+    try:
+        if action == "start":
+            return start_monitoring()
+        if action == "status":
+            return "Wayland ScreenCast is active." if monitoring_active() else "Wayland ScreenCast is not active."
+        if action == "capture":
+            frame = capture_monitor_frame()
+            if frame is None:
+                return "No ScreenCast stream is active. Use action 'start' and approve the desktop permission prompt first."
+            _png, width, height = frame
+            return f"ScreenCast frame captured successfully: {width}x{height} pixels."
+        if action == "stop":
+            return stop_monitoring()
+        return "Unknown action. Use start, status, capture, or stop."
+    except Exception as exc:
+        return f"Wayland ScreenCast failed: {type(exc).__name__}: {exc}"
