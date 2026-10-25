@@ -13,6 +13,15 @@ class LocalModelTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "disabled"):
                 local_model.generate("hello")
 
+    def test_settings_reads_canonical_api_keys_config(self):
+        from pathlib import Path
+        payload = json.dumps({"local_model_enabled": True, "local_model_name": "local-test"})
+        with patch.object(local_model, "_base_dir", return_value=Path("/mark56")), patch.object(
+            Path, "read_text", return_value=payload
+        ) as read_text:
+            self.assertTrue(local_model.enabled())
+            read_text.assert_called_with(encoding="utf-8")
+
     def test_rejects_remote_url(self):
         with patch.object(local_model, "_settings", return_value={
             "local_model_enabled": True, "local_model_base_url": "https://example.com"
