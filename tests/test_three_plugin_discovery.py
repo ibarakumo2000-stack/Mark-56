@@ -37,6 +37,7 @@ class ThreePluginDiscoveryTests(unittest.TestCase):
             directory = Path(temp)
             for filename in (
                 "game_autoplay.py",
+                "game_updater.py",
                 "wayland_screencast.py",
                 "website_studio_setup.py",
             ):
