@@ -419,9 +419,20 @@ def save_plugin_removed(filename: str, removed: bool, plugin_name: str | None = 
         removed_files = {str(key): str(value or "") for key, value in raw.items()}
     else:
         removed_files = {}
+    resolved_plugin_name = str(plugin_name or removed_files.get(name) or Path(name).stem)
     if removed:
-        removed_files[name] = str(plugin_name or Path(name).stem)
+        removed_files[name] = resolved_plugin_name
     else:
         removed_files.pop(name, None)
     data["removed_plugin_files"] = removed_files
+
+    # A removed plugin may still be present in the in-memory registry until
+    # restart. Disable its tool immediately; restoring the file re-enables it.
+    enabled_cfg = data.get("plugins_enabled")
+    if not isinstance(enabled_cfg, dict):
+        enabled_cfg = {}
+    if resolved_plugin_name:
+        enabled_cfg[resolved_plugin_name] = not removed
+        data["plugins_enabled"] = enabled_cfg
+
     CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
