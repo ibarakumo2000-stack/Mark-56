@@ -181,12 +181,6 @@ def capture_png() -> tuple[bytes, int, int]:
         except Exception as exc:
             failures.append(f"grim: {type(exc).__name__}: {exc}")
 
-    if wayland and not is_gnome and shutil.which("grim"):
-        try:
-            return _run_capture([shutil.which("grim") or "grim", "-"], timeout=5.0)
-        except Exception as exc:
-            failures.append(f"grim: {type(exc).__name__}: {exc}")
-
     if shutil.which("gnome-screenshot") and not (wayland and is_gnome):
         try:
             exe = shutil.which("gnome-screenshot") or "gnome-screenshot"
