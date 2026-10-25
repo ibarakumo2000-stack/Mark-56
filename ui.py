@@ -2039,7 +2039,7 @@ class PluginManagerOverlay(QWidget):
     a long plugin list grew taller than the window and pushed both the header
     and the CLOSE button off-screen, leaving no way to dismiss it."""
 
-    _OW = 420
+    _OW = 580
 
     def __init__(self, plugins: list[dict], parent=None):
         super().__init__(parent)
@@ -2080,6 +2080,12 @@ class PluginManagerOverlay(QWidget):
         top.addWidget(x_btn)
         lay.addLayout(top)
 
+        hint = QLabel("Add a trusted .py plugin or remove one below. Changes to newly added plugins take effect after restarting JARVIS.")
+        hint.setWordWrap(True)
+        hint.setFont(_sans_font(8))
+        hint.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+        lay.addWidget(hint)
+
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
         sep.setStyleSheet(f"color: {C.BORDER};")
         lay.addWidget(sep)
@@ -2113,6 +2119,17 @@ class PluginManagerOverlay(QWidget):
         scroll.setWidget(rows_w)
         scroll.viewport().setStyleSheet("background: transparent;")
         lay.addWidget(scroll, stretch=1)
+
+        add_btn = QPushButton("＋  Add plugin (.py)")
+        add_btn.setFixedHeight(34)
+        add_btn.setFont(_sans_font(9, True, 0.4))
+        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_btn.setStyleSheet(f\"\"\"
+            QPushButton {{ background: {C.PRI_GHO}; color: {C.PRI}; border: 1px solid {C.PRI_DIM}; border-radius: 9px; }}
+            QPushButton:hover {{ background: {C.PRI_DIM}; color: {C.DARK}; }}
+        \"\"\")
+        add_btn.clicked.connect(self._add_plugin)
+        lay.addWidget(add_btn)
 
         close_btn = QPushButton("Close")
         close_btn.setFixedHeight(34)
@@ -2151,7 +2168,7 @@ class PluginManagerOverlay(QWidget):
         row.addWidget(lbl, stretch=1)
 
         btn = QPushButton()
-        btn.setFixedSize(72, 24)
+        btn.setFixedSize(64, 24)
         btn.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
         if not p["valid"]:
             btn.setText("BROKEN")
@@ -2167,7 +2184,83 @@ class PluginManagerOverlay(QWidget):
             self._style_toggle(btn, p["enabled"])
             btn.clicked.connect(lambda _, name=p["name"], b=btn: self._toggle(name, b))
         row.addWidget(btn)
+
+        remove_btn = QPushButton("REMOVE")
+        remove_btn.setFixedSize(66, 24)
+        remove_btn.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
+        remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        remove_btn.setToolTip("Back up and remove this plugin file")
+        remove_btn.setStyleSheet(f\"\"\"
+            QPushButton {{ background: transparent; color: {C.TEXT_DIM}; border: 1px solid {C.BORDER}; border-radius: 3px; }}
+            QPushButton:hover {{ color: #ff8b8b; border-color: #a94c4c; background: rgba(169,76,76,0.10); }}
+        \"\"\")
+        remove_btn.clicked.connect(lambda _, file=p.get("file", ""), name=p.get("name", ""): self._remove_plugin(file, name))
+        row.addWidget(remove_btn)
         return row
+
+    def _add_plugin(self):
+        source, _ = QFileDialog.getOpenFileName(
+            self, "Select a Python plugin", str(Path.home()), "Python plugin files (*.py)"
+        )
+        if not source:
+            return
+        try:
+            from core.plugin_files import validate_plugin_file, install_plugin_file
+            metadata = validate_plugin_file(source)
+        except Exception as exc:
+            QMessageBox.warning(self, "Plugin cannot be added", str(exc))
+            return
+
+        answer = QMessageBox.warning(
+            self, "Trust this plugin?",
+            "Python plugins can run code with the same permissions as JARVIS, "
+            "including access to files and network services. Only install a plugin "
+            "from a source you trust.\\n\\n"
+            f"Plugin: {metadata.get('name')}\\n{metadata.get('description', '')[:500]}\\n\\n"
+            "Continue installing this file?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            target, _metadata = install_plugin_file(source)
+        except Exception as exc:
+            QMessageBox.warning(self, "Plugin was not installed", str(exc))
+            return
+        QMessageBox.information(
+            self, "Plugin added",
+            f"Installed {target.name}. Restart JARVIS to discover and load it.\\n\\n"
+            "The selected file was validated without executing its code during installation."
+        )
+        self._close()
+
+    def _remove_plugin(self, filename: str, plugin_name: str):
+        if not filename:
+            QMessageBox.warning(self, "Cannot remove plugin", "The plugin filename is unavailable.")
+            return
+        answer = QMessageBox.question(
+            self, "Remove plugin?",
+            f"Remove '{filename}' from the active plugins? A backup will be kept in .plugin-backups.\\n\\n"
+            "The plugin is disabled immediately, but restart JARVIS to refresh its tool list.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            from core.plugin_files import remove_plugin_file
+            backup = remove_plugin_file(filename, plugin_name=plugin_name)
+        except Exception as exc:
+            QMessageBox.warning(self, "Plugin was not removed", str(exc))
+            return
+        QMessageBox.information(
+            self, "Plugin removed",
+            f"Moved {filename} to a backup at:\\n{backup}\\n\\n"
+            "JARVIS disabled it immediately. Restart to update the list of available tools."
+        )
+        self._close()
 
     def _style_toggle(self, btn: QPushButton, enabled: bool):
         if enabled:
