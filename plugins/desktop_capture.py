@@ -70,47 +70,88 @@ def _file_capture(command_builder, timeout: float = 8.0) -> tuple[bytes, int, in
 
 
 def _portal_capture_wayland(timeout: float = 35.0) -> tuple[bytes, int, int]:
-    """Capture through xdg-desktop-portal, the supported GNOME Wayland API.
+    """Capture through xdg-desktop-portal without parsing its introspection XML.
 
-    The desktop may show a permission/selection prompt. This is intentional:
-    Wayland does not permit arbitrary silent screenshots by default.
+    Some GNOME portal versions expose a hyphenated property in introspection
+    XML (for example, power-saver-enabled), which dbus-next 0.2.x rejects
+    while parsing the entire interface. Use the stable D-Bus method signatures
+    directly instead. The desktop may show a permission/selection prompt.
     """
     import asyncio
     from urllib.parse import unquote, urlparse
 
-    from dbus_next import BusType, Variant
+    from dbus_next import BusType, Message, MessageType, Variant
     from dbus_next.aio import MessageBus
 
     async def request_capture() -> tuple[bytes, int, int]:
         bus = await MessageBus(bus_type=BusType.SESSION).connect()
+        match_rule = None
+        response_handler = None
         try:
-            introspection = await bus.introspect(
-                "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop"
-            )
-            portal = bus.get_proxy_object(
-                "org.freedesktop.portal.Desktop",
-                "/org/freedesktop/portal/desktop",
-                introspection,
-            ).get_interface("org.freedesktop.portal.Screenshot")
-            handle = await portal.call_screenshot(
-                "", {"interactive": Variant("b", True)}
-            )
-            request_xml = await bus.introspect("org.freedesktop.portal.Desktop", handle)
-            request = bus.get_proxy_object(
-                "org.freedesktop.portal.Desktop", handle, request_xml
-            ).get_interface("org.freedesktop.portal.Request")
             loop = asyncio.get_running_loop()
             response_future = loop.create_future()
 
-            def on_response(code, results):
-                if not response_future.done():
-                    response_future.set_result((code, results))
+            reply = await bus.call(Message(
+                destination="org.freedesktop.portal.Desktop",
+                path="/org/freedesktop/portal/desktop",
+                interface="org.freedesktop.portal.Screenshot",
+                member="Screenshot",
+                signature="sa{sv}",
+                body=["", {"interactive": Variant("b", True)}],
+            ))
+            if reply.message_type == MessageType.ERROR:
+                detail = reply.body[0] if reply.body else "unknown D-Bus error"
+                raise RuntimeError(f"Screenshot portal D-Bus error {reply.error_name}: {detail}")
+            if not reply.body or not isinstance(reply.body[0], str):
+                raise RuntimeError("Screenshot portal returned no request handle.")
+            handle = reply.body[0]
 
-            request.on_response(on_response)
+            def on_message(message):
+                if (
+                    message.message_type == MessageType.SIGNAL
+                    and message.path == handle
+                    and message.interface == "org.freedesktop.portal.Request"
+                    and message.member == "Response"
+                    and message.signature == "ua{sv}"
+                ):
+                    if not response_future.done():
+                        response_future.set_result((message.body[0], message.body[1]))
+                return False
+
+            response_handler = on_message
+            bus.add_message_handler(response_handler)
+            match_rule = (
+                "type='signal',"
+                "sender='org.freedesktop.portal.Desktop',"
+                f"path='{handle}',"
+                "interface='org.freedesktop.portal.Request',"
+                "member='Response'"
+            )
+            match_reply = await bus.call(Message(
+                destination="org.freedesktop.DBus",
+                path="/org/freedesktop/DBus",
+                interface="org.freedesktop.DBus",
+                member="AddMatch",
+                signature="s",
+                body=[match_rule],
+            ))
+            if match_reply.message_type == MessageType.ERROR:
+                detail = match_reply.body[0] if match_reply.body else "unknown D-Bus error"
+                raise RuntimeError(f"Could not subscribe to screenshot response: {detail}")
+
             try:
                 code, results = await asyncio.wait_for(response_future, timeout=timeout)
             finally:
-                request.off_response(on_response)
+                await bus.call(Message(
+                    destination="org.freedesktop.DBus",
+                    path="/org/freedesktop/DBus",
+                    interface="org.freedesktop.DBus",
+                    member="RemoveMatch",
+                    signature="s",
+                    body=[match_rule],
+                ))
+                match_rule = None
+
             if code != 0:
                 if code == 1:
                     raise RuntimeError("Screenshot was cancelled in the desktop permission dialog.")
@@ -126,6 +167,20 @@ def _portal_capture_wayland(timeout: float = 35.0) -> tuple[bytes, int, int]:
                 raise RuntimeError("Screenshot portal image path does not exist.")
             return _decode_png(path.read_bytes())
         finally:
+            if match_rule:
+                try:
+                    await bus.call(Message(
+                        destination="org.freedesktop.DBus",
+                        path="/org/freedesktop/DBus",
+                        interface="org.freedesktop.DBus",
+                        member="RemoveMatch",
+                        signature="s",
+                        body=[match_rule],
+                    ))
+                except Exception:
+                    pass
+            if response_handler is not None:
+                bus.remove_message_handler(response_handler)
             bus.disconnect()
 
     try:
