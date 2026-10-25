@@ -42,6 +42,8 @@ pyperclip
 Pillow>=12,<13
 opencv-python>=4.8,<5
 mss>=9,<11
+# GNOME Wayland screenshot portal (permission-aware desktop capture)
+dbus-next>=0.2.3,<1; sys_platform == "linux"
 
 # ── System, files & documents ─────────────────────────────────────────────────
 psutil>=5.9,<8
