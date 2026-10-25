@@ -127,9 +127,10 @@ class WaylandScreenCast:
             self._remote_fd = remote.unix_fds[0]
             import gi
             gi.require_version("Gst", "1.0")
-            from gi.repository import Gst
+            from gi.repository import Gst, GstVideo
             Gst.init(None)
             self._Gst = Gst
+            self._GstVideo = GstVideo
             self._pipeline = Gst.parse_launch(
                 "pipewiresrc name=source do-timestamp=true ! "
                 "videoconvert ! video/x-raw,format=RGB ! "
@@ -215,7 +216,9 @@ class WaylandScreenCast:
             raise RuntimeError("Could not read the current PipeWire video frame.")
         try:
             from PIL import Image
-            image = Image.frombytes("RGB", (width, height), mapped.data)
+            video_info = self._GstVideo.VideoInfo.new_from_caps(caps)
+            stride = int(video_info.stride[0])
+            image = Image.frombytes("RGB", (width, height), mapped.data, "raw", "RGB", stride, 1)
             out = io.BytesIO()
             image.save(out, format="PNG")
             from plugins.desktop_capture import _decode_png
