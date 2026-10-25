@@ -43,7 +43,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
     QBrush, QColor, QConicalGradient, QDragEnterEvent, QDropEvent, QFont,
     QFontDatabase, QKeySequence, QLinearGradient, QPainter, QPainterPath,
-    QPen, QPixmap, QRadialGradient, QShortcut,
+    QPen, QPixmap, QRadialGradient, QShortcut, QDesktopServices,
 )
 # Video playback for the HUD. Part of PyQt6, so it costs no new dependency —
 # but the multimedia plugins are a separate piece of the Qt install and can be
@@ -62,7 +62,7 @@ from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter,
     QGraphicsScene, QGraphicsView,
-    QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar,
+    QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar, QMessageBox,
 )
 
 try:
@@ -3212,6 +3212,7 @@ class MainWindow(QMainWindow):
     _quiz_sig       = pyqtSignal(str, object, object)  # (topic, questions, grader)
     _quiz_hide_sig  = pyqtSignal()
     _review_sig     = pyqtSignal(str, str, object, object)  # document review payload
+    _update_check_sig = pyqtSignal(object, bool)  # update result, whether user requested it
 
     def __init__(self, face_path: str):
         super().__init__()
@@ -3498,6 +3499,8 @@ class MainWindow(QMainWindow):
         self._quiz_sig.connect(self._show_quiz)
         self._quiz_hide_sig.connect(self._hide_quiz)
         self._review_sig.connect(self._show_review)
+        self._update_check_sig.connect(self._show_update_result)
+        QTimer.singleShot(12000, self._start_auto_update_check)
         self._cam_stop = threading.Event()
 
         # Camera preview overlay (child of central widget, positioned in resizeEvent)
@@ -4683,6 +4686,9 @@ class MainWindow(QMainWindow):
         self._metrics_btn.clicked.connect(self._toggle_metrics_style)
         self._refresh_metrics_btn()
 
+        self._check_update_btn = _row(QPushButton("↻  CHECK FOR UPDATES"), self._BTN_DIM)
+        self._check_update_btn.clicked.connect(self._check_for_updates)
+
         w.adjustSize()
         return w
 
@@ -5809,6 +5815,94 @@ class MainWindow(QMainWindow):
             resolve(bool(accepted))
         except Exception as e:
             self._log.append_log(f"ERR: Confirmation failed — {e}")
+
+    def _start_auto_update_check(self):
+        """Check once after startup without blocking the Qt/audio threads."""
+        self._start_update_check(interactive=False)
+
+    def _check_for_updates(self):
+        self._start_update_check(interactive=True)
+
+    def _start_update_check(self, interactive: bool = False):
+        if getattr(self, "_update_check_running", False):
+            if interactive:
+                self._log_sig.emit("SYS: An update check is already running.")
+            return
+        self._update_check_running = True
+        button = getattr(self, "_check_update_btn", None)
+        if button is not None:
+            button.setEnabled(False)
+            button.setText("CHECKING FOR UPDATES…")
+
+        def work():
+            try:
+                from core.update_checker import check_for_update
+                result = check_for_update()
+            except Exception as exc:
+                result = {"status": "error", "message": f"Update check failed: {exc}"}
+            self._update_check_sig.emit(result, interactive)
+
+        threading.Thread(target=work, daemon=True, name="jarvis-update-check").start()
+
+    def _show_update_result(self, result, interactive: bool = False):
+        """Display update results on the UI thread; never install silently."""
+        self._update_check_running = False
+        button = getattr(self, "_check_update_btn", None)
+        if button is not None:
+            button.setEnabled(True)
+            button.setText("↻  CHECK FOR UPDATES")
+        if not isinstance(result, dict):
+            return
+
+        status = result.get("status")
+        if status == "available":
+            current = str(result.get("current_version") or "unknown")
+            latest = str(result.get("latest_version") or "unknown")
+            notes = str(result.get("notes") or "Open the release page to review the changes.")
+            asset = str(result.get("asset_name") or "View downloads for your platform")
+            message = (
+                f"A newer JARVIS release is available.\n\n"
+                f"Installed version: {current}\n"
+                f"Latest version: {latest}\n"
+                f"Package: {asset}\n\n"
+                f"{notes[:1100]}\n\n"
+                "Download opens your browser. JARVIS will not install it automatically."
+            )
+            box = QMessageBox(self)
+            box.setWindowTitle("JARVIS update available")
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText(message)
+            download = box.addButton("Download update", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is download:
+                target = str(result.get("download_url") or result.get("release_url") or "")
+                if target:
+                    opened = QDesktopServices.openUrl(QUrl(target))
+                    if not opened:
+                        self._log_sig.emit(f"SYS: Could not open the download link: {target}")
+            self._log_sig.emit(f"SYS: JARVIS {latest} update is available.")
+        elif status == "current":
+            if interactive:
+                QMessageBox.information(
+                    self, "JARVIS is up to date",
+                    f"You're using version {result.get('current_version', 'unknown')}, "
+                    "which is the latest stable release."
+                )
+        elif status == "error":
+            detail = str(result.get("message") or "The release check failed.")
+            if interactive:
+                QMessageBox.warning(self, "Could not check for updates", detail)
+            else:
+                self._log_sig.emit(f"SYS: Update check skipped: {detail}")
+        elif status == "unsupported" and interactive:
+            QMessageBox.information(
+                self, "JARVIS downloads",
+                "Open the JARVIS release page to choose an available installer."
+            )
+            target = str(result.get("release_url") or "")
+            if target:
+                QDesktopServices.openUrl(QUrl(target))
 
     def _open_plugin_manager(self):
         plugins = self.get_plugins() if self.get_plugins else []
