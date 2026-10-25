@@ -49,7 +49,8 @@ class ThreePluginDiscoveryTests(unittest.TestCase):
             registry = discover_plugins(directory, set(), logger=logs.append)
             records = {record["file"]: record for record in registry.list_for_ui()}
             expected = {
-                "game_autoplay.py": "game_autoplay",
+                "game_autoplay.py": "game_autoplay_plugin",
+                "game_updater.py": "game_updater_plugin",
                 "wayland_screencast.py": "wayland_screencast",
                 "website_studio_setup.py": "website_studio_setup",
             }
@@ -58,7 +59,7 @@ class ThreePluginDiscoveryTests(unittest.TestCase):
                 self.assertTrue(records[filename]["valid"], records[filename]["error"])
                 self.assertEqual(records[filename]["name"], plugin_name)
                 self.assertTrue(registry.has(plugin_name), f"{plugin_name} was not registered")
-            self.assertTrue(any("Plugin discovery complete: 3 active" in line for line in logs))
+            self.assertTrue(any("Plugin discovery complete: 4 active" in line for line in logs))
 
     def test_game_autoplay_status_does_not_start_game(self):
         module = _load_module("game_autoplay.py", "test_game_autoplay_repair")
