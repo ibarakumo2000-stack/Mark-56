@@ -94,10 +94,10 @@ class ThreePluginDiscoveryTests(unittest.TestCase):
         module = _load_module("website_studio_setup.py", "test_website_studio_setup_no_qt_app")
         fake_credentials = type("FakeCredentials", (), {"is_configured": staticmethod(lambda: False)})
         core_package = importlib.import_module("core")
-        with patch.object(core_package, "website_studio_credentials", fake_credentials(), create=True), \
-             patch("PyQt6.QtWidgets.QApplication.instance", return_value=None):
+        with patch.object(core_package, "website_studio_credentials", fake_credentials(), create=True), \\
+             patch.object(module, "_QT_AVAILABLE", False):
             result = module.run({"action": "setup"})
-        self.assertIn("running mark 56 desktop application", result.lower())
+        self.assertIn("requires pyqt6", result.lower())
 
 
 if __name__ == "__main__":
