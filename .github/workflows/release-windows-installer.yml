@@ -150,7 +150,10 @@ jobs:
 
   publish-release:
     name: Publish verified installers
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
+    # The build workflow also runs on the packaging branch. Publish after those
+    # successful builds too, otherwise the artifacts are uploaded but the release
+    # job is skipped on every normal branch push.
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/mark56-build-automation' }}
     needs:
       - determine-version
       - build-windows
