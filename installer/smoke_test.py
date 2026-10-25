@@ -339,9 +339,18 @@ def main():
         except Exception:
             found = False
 
+        # These imports are used only by the Linux Wayland screen-capture
+        # backend. They are intentionally absent from the Windows runtime and
+        # must not make a Windows installer fail its source-import audit.
+        windows_only_missing_ok = (
+            os.name == "nt"
+            and m in {"dbus_next", "gi"}
+        )
+
         if (
             not found
             and m not in OPTIONAL
+            and not windows_only_missing_ok
             and not (
                 m == "win32com"
                 and os.name != "nt"
