@@ -132,14 +132,11 @@ def _analyze(parameters: dict) -> str:
         # Offline mode must not import or contact a cloud provider. Use the local
         # vision model directly and fail closed if Ollama/model setup is broken.
         from core import local_model
-        if local_model.enabled():
-            return local_model.generate(instruction, images=[png], timeout_ms=20000)
-        from google.genai import types as gtypes
-        from core import gemini
-        request = [gtypes.Part.from_bytes(data=png, mime_type="image/png"), instruction]
-        response = gemini.call(request, tier=gemini.FAST, timeout_ms=20000)
-        text = _text_from_response(response) if response is not None else ""
-        return text or "Screen analysis failed: the configured AI provider returned no response."
+        if not local_model.enabled():
+            return ("Screen analysis not run: local vision mode is disabled. Enable/configure a "
+                    "local image-capable model first. Desktop screenshots will not be sent to a "
+                    "cloud provider automatically.")
+        return local_model.generate(instruction, images=[png], timeout_ms=20000)
     except Exception as exc:
         return f"Screen analysis failed ({type(exc).__name__}: {str(exc)[:900]}). Check the configured local/cloud model and desktop session."
 
