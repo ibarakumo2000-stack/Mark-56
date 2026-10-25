@@ -66,6 +66,23 @@ class ThreePluginDiscoveryTests(unittest.TestCase):
             result = module.run({"action": "status"})
         self.assertIn("not playing", result.lower())
 
+    def test_game_autoplay_start_fails_safely_when_display_unavailable(self):
+        module = _load_module("game_autoplay.py", "test_game_autoplay_no_display")
+
+        with (
+            patch.object(module, "_ensure_pyautogui", return_value=False),
+            patch.object(module, "_focus_window") as focus,
+        ):
+            result = module.run({
+                "action": "start",
+                "game_name": "Example game",
+                "controls": "left and right arrows",
+            })
+
+        self.assertIn("graphical input", result.lower())
+        focus.assert_not_called()
+        self.assertFalse(module._autoplayer.is_running())
+
     def test_wayland_status_and_stop_are_safe_without_a_portal_session(self):
         module = _load_module("wayland_screencast.py", "test_wayland_screencast_repair")
         with patch.object(module, "monitoring_active", return_value=False):
