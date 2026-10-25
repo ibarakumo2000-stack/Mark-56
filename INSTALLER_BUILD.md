@@ -124,10 +124,9 @@ installer task, otherwise on first use).
 * **Signing:** unsigned installers trigger Windows SmartScreen. With a
   certificate: `scripts\build_installer.bat --sign-command "signtool sign /f my.pfx /p PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 $f"`.
   Nothing claims to be signed unless this is used.
-* **Auto-update:** not implemented. The groundwork is in place — a `VERSION`
-  file and a SHA-256 in `dist\build-info.json`. A safe design is: app fetches a
-  small JSON from your server, compares versions, downloads the new setup `.exe`,
-  verifies its SHA-256 (and signature), then runs it with `/SILENT`.
+* **Update notifications:** the app checks the latest stable GitHub Release in the background and offers a platform-specific download link. It does not silently install the file. The first release containing this checker must be installed manually by users on older builds; later releases can be announced from inside the app.
+* **Release publishing:** the Windows release workflow creates a **draft**. Attach the Linux and macOS packages built for the same tag before publishing the draft as the latest stable release; otherwise those users will not have a matching package to download. The checker uses the `VERSION` file stamped into the installed build and the public `releases/latest` API.
+* **Full self-update:** downloading and validating packages inside the application, verifying SHA-256 before installation, backup/rollback, and automatically launching the installer remain unimplemented. Continue to keep installation explicit until those checks are built and tested.
 
 ## Test it
 
