@@ -1,13 +1,19 @@
 """First-run OpenAI setup dialog for Mark 56 Website Studio."""
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QDesktopServices
-from PyQt6.QtCore import QUrl
-from PyQt6.QtWidgets import (
-    QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-    QPushButton, QVBoxLayout,
-)
+try:
+    from PyQt6.QtCore import Qt, QUrl
+    from PyQt6.QtGui import QDesktopServices
+    from PyQt6.QtWidgets import (
+        QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
+        QPushButton, QVBoxLayout,
+    )
+    _QT_AVAILABLE = True
+except ImportError:
+    # The plugin loader must still be able to discover status in headless/test environments.
+    _QT_AVAILABLE = False
+    class QDialog:  # type: ignore[no-redef]
+        pass
 
 from core import website_studio_credentials as credentials
 
@@ -16,6 +22,8 @@ class WebsiteStudioSetupDialog(QDialog):
     """Collect, validate, and securely save the Website Studio-only API key."""
 
     def __init__(self, parent=None):
+        if not _QT_AVAILABLE:
+            raise RuntimeError("Website Studio setup UI requires PyQt6.")
         super().__init__(parent)
         self.setWindowTitle("Mark 56 · Connect Website Studio")
         self.setModal(True)
@@ -154,6 +162,8 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
             return ("Website Studio OpenAI credential is configured." if credentials.is_configured()
                     else "Website Studio is not connected. Open Website Builder to configure its OpenAI key.")
         if action == "setup":
+            if not _QT_AVAILABLE:
+                return "Website Studio setup UI requires PyQt6. Install the desktop app dependencies and retry."
             # A dialog needs a live Qt application; do not create a hidden GUI app
             # from the model/tool thread because that can crash Qt on some platforms.
             from PyQt6.QtWidgets import QApplication
