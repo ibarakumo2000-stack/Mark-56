@@ -164,35 +164,40 @@ def _perform(decision: dict) -> str:
 
 
 def _auto_run_worker() -> None:
-    """Keep observing, acting, and verifying until complete, stopped, or failed.
-
-    Runs in a daemon thread so the voice/UI loop can still receive pause/stop
-    commands while a desktop task is progressing.
-    """
-    while True:
-        if _stop_event.is_set():
-            return
-        current = _snapshot()
-        status = current.get("status")
-        if not current.get("active") or status in {"completed", "stopped", "timeout", "error", "idle"}:
-            return
-        if status == "paused":
-            _stop_event.wait(0.25)
-            continue
-        if status == "awaiting_confirmation":
-            return
-        if status != "running":
-            return
-        result = run({"operation": "step"})
-        try:
-            state = json.loads(result)
-        except (TypeError, json.JSONDecodeError):
-            _stop("Automatic task loop received an invalid step result.", "error")
-            return
-        if state.get("status") != "running":
-            return
-        # Give the voice/UI thread time to process stop and pause between actions.
-        _stop_event.wait(0.8)
+    """Open one permissioned ScreenCast session, then observe-act-verify until done."""
+    from plugins import wayland_screencast
+    try:
+        # The GNOME portal prompts for monitor selection/permission once for this
+        # task. All subsequent observations consume fresh PipeWire frames.
+        wayland_screencast.start_monitoring()
+        while True:
+            if _stop_event.is_set():
+                return
+            current = _snapshot()
+            status = current.get("status")
+            if not current.get("active") or status in {"completed", "stopped", "timeout", "error", "idle"}:
+                return
+            if status == "paused":
+                _stop_event.wait(0.25)
+                continue
+            if status == "awaiting_confirmation":
+                return
+            if status != "running":
+                return
+            result = run({"operation": "step"})
+            try:
+                state = json.loads(result)
+            except (TypeError, json.JSONDecodeError):
+                _stop("Automatic task loop received an invalid step result.", "error")
+                return
+            if state.get("status") != "running":
+                return
+            # Allow the voice/UI loop to process pause/stop between actions.
+            _stop_event.wait(0.8)
+    except Exception as exc:
+        _stop(f"ScreenCast/task loop failed safely: {type(exc).__name__}: {str(exc)[:220]}", "error")
+    finally:
+        wayland_screencast.stop_monitoring()
 
 
 def _start_auto_worker() -> None:
