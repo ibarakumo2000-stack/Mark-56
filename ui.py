@@ -2039,7 +2039,7 @@ class PluginManagerOverlay(QWidget):
     a long plugin list grew taller than the window and pushed both the header
     and the CLOSE button off-screen, leaving no way to dismiss it."""
 
-    _OW = 580
+    _OW = 640
 
     def __init__(self, plugins: list[dict], parent=None):
         super().__init__(parent)
@@ -2052,17 +2052,23 @@ class PluginManagerOverlay(QWidget):
                 border-radius: 12px;
             }}
         """)
-        self.setFixedWidth(self._OW)
+        parent_width = parent.width() if parent is not None else self._OW
+        panel_width = max(520, min(self._OW, parent_width - 36))
+        self.setFixedWidth(panel_width)
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(18, 14, 18, 14)
-        lay.setSpacing(8)
+        lay.setContentsMargins(24, 20, 24, 20)
+        lay.setSpacing(12)
 
         top = QHBoxLayout()
-        hdr = QLabel("🧩  Plugin Manager")
+        hdr = QLabel("🧩  Plugin Library")
         hdr.setFont(_sans_font(12, True, 0.6))
         hdr.setStyleSheet(f"color: {C.PRI}; background: transparent;")
         top.addWidget(hdr)
+        subtitle = QLabel(f"{len(plugins)} integrations · Manage capabilities")
+        subtitle.setFont(_sans_font(8))
+        subtitle.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+        top.addWidget(subtitle)
         top.addStretch()
         x_btn = QPushButton("✕")
         x_btn.setFixedSize(28, 28)
@@ -2094,8 +2100,8 @@ class PluginManagerOverlay(QWidget):
         rows_w = QWidget()
         rows_w.setStyleSheet("background: transparent;")
         rows = QVBoxLayout(rows_w)
-        rows.setContentsMargins(0, 0, 8, 0)
-        rows.setSpacing(6)
+        rows.setContentsMargins(2, 4, 10, 4)
+        rows.setSpacing(10)
         if not plugins:
             empty = QLabel("No plugins found in /plugins.")
             empty.setFont(_sans_font(9))
@@ -2149,7 +2155,7 @@ class PluginManagerOverlay(QWidget):
         win_h = parent.height() if parent is not None else 700
         avail = max(240, win_h - 32)
         rows_h = rows_w.sizeHint().height()
-        scroll.setFixedHeight(max(120, min(rows_h + 4, avail - 110)))
+        scroll.setFixedHeight(max(120, min(rows_h + 4, avail - 150)))
         self.adjustSize()
 
     def _close(self):
@@ -2157,19 +2163,20 @@ class PluginManagerOverlay(QWidget):
         self.deleteLater()
 
     def _build_row(self, p: dict) -> QHBoxLayout:
-        row = QHBoxLayout(); row.setSpacing(6)
+        row = QHBoxLayout(); row.setSpacing(14)
 
         label_text = p["name"] if p["valid"] else f"{p['name']}  (⚠ {p['file']})"
         lbl = QLabel(label_text)
-        lbl.setFont(QFont(_mono(), 8))
+        lbl.setFont(_sans_font(9, True))
         lbl.setStyleSheet(f"color: {C.TEXT if p['valid'] else C.TEXT_DIM}; background: transparent;")
         lbl.setToolTip(p["description"] if p["valid"] else p["error"])
         lbl.setWordWrap(False)
+        lbl.setMinimumWidth(0)
         row.addWidget(lbl, stretch=1)
 
         btn = QPushButton()
-        btn.setFixedSize(64, 24)
-        btn.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
+        btn.setFixedSize(78, 30)
+        btn.setFont(_sans_font(8, True))
         if not p["valid"]:
             btn.setText("BROKEN")
             btn.setEnabled(False)
@@ -4782,6 +4789,9 @@ class MainWindow(QMainWindow):
         self._check_update_btn = _row(QPushButton("↻  CHECK FOR UPDATES"), self._BTN_DIM)
         self._check_update_btn.clicked.connect(self._check_for_updates)
 
+        self._website_studio_btn = _row(QPushButton("✦  WEBSITE STUDIO"), self._BTN_DIM)
+        self._website_studio_btn.clicked.connect(self._open_website_studio)
+
         w.adjustSize()
         return w
 
@@ -5996,6 +6006,19 @@ class MainWindow(QMainWindow):
             target = str(result.get("release_url") or "")
             if target:
                 QDesktopServices.openUrl(QUrl(target))
+
+    def _open_website_studio(self):
+        """Open the safe, local Website Studio preview-and-create workspace."""
+        try:
+            from core.static_site_workspace import StaticSiteWorkspaceDialog
+            dialog = StaticSiteWorkspaceDialog(self)
+            dialog.exec()
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Website Studio unavailable",
+                f"Could not open the local Website Studio.\n\n{type(exc).__name__}: {exc}",
+            )
 
     def _open_plugin_manager(self):
         plugins = self.get_plugins() if self.get_plugins else []
