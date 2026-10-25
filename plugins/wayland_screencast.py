@@ -50,7 +50,7 @@ class WaylandScreenCast:
             options = {"handle_token": Variant("s", token),
                        "session_handle_token": Variant("s", token + "_session")}
             results, _ = await self._request(
-                "org.freedesktop.portal.Session", "CreateSession", "a{sv}", [options])
+                "org.freedesktop.portal.ScreenCast", "CreateSession", "a{sv}", [options])
             handle = results.get("session_handle")
             if not handle:
                 raise RuntimeError("ScreenCast portal returned no session handle.")
