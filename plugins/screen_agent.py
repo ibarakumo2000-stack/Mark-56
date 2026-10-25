@@ -205,6 +205,17 @@ def screen_agent(parameters: dict, response=None, player=None, session_memory=No
     try:
         if mode == "diagnose":
             return _diagnose()
+        if mode == "monitor_start":
+            from plugins import wayland_screencast
+            return wayland_screencast.start_monitoring()
+        if mode == "monitor_stop":
+            from plugins import wayland_screencast
+            return wayland_screencast.stop_monitoring()
+        if mode == "monitor_status":
+            from plugins import wayland_screencast
+            return json.dumps({"active": wayland_screencast.monitoring_active(),
+                               "message": "Persistent ScreenCast is active." if wayland_screencast.monitoring_active()
+                               else "No persistent ScreenCast session is active."})
         if mode == "observe":
             return _observe(params)
         if mode == "read_text":
@@ -232,7 +243,7 @@ TOOL = {
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "mode": {"type": "STRING", "description": "analyze (default: visually describe current desktop) | diagnose | observe (capture metadata only) | read_text | propose | execute"},
+            "mode": {"type": "STRING", "description": "analyze (default: visually describe current desktop) | diagnose | observe (capture metadata only) | monitor_start | monitor_status | monitor_stop | read_text | propose | execute"},
             "path": {"type": "STRING", "description": "Optional PNG screenshot path inside home directory"},
             "prompt": {"type": "STRING", "description": "Question for screen analysis (max 1000 chars)"},
             "task": {"type": "STRING", "description": "Goal to plan without taking action"},
