@@ -170,8 +170,8 @@ def remove_plugin_file(
     root = Path(plugins_dir).resolve() if plugins_dir is not None else get_plugins_dir().resolve()
     if not filename or Path(filename).name != filename:
         raise PluginFileError("Invalid plugin filename.")
-    if not filename.endswith(".py") or filename.startswith("_") or not _NAME_RE.fullmatch(Path(filename).stem):
-        raise PluginFileError("Only normal top-level plugin .py files can be removed; helper files are protected.")
+    if not filename.endswith(".py") or filename.startswith("_"):
+        raise PluginFileError("Only top-level plugin .py files can be removed; helper files are protected.")
     target = root / filename
     if not target.is_file() or target.resolve().parent != root:
         raise PluginFileError(f"Plugin file '{filename}' was not found in the plugin directory.")
