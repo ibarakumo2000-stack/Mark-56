@@ -132,14 +132,11 @@ def _analyze(parameters: dict) -> str:
         # Offline mode must not import or contact a cloud provider. Use the local
         # vision model directly and fail closed if Ollama/model setup is broken.
         from core import local_model
-        if local_model.enabled():
-            return local_model.generate(instruction, images=[png], timeout_ms=20000)
-        from google.genai import types as gtypes
-        from core import gemini
-        request = [gtypes.Part.from_bytes(data=png, mime_type="image/png"), instruction]
-        response = gemini.call(request, tier=gemini.FAST, timeout_ms=20000)
-        text = _text_from_response(response) if response is not None else ""
-        return text or "Screen analysis failed: the configured AI provider returned no response."
+        if not local_model.enabled():
+            return ("Screen analysis not run: local vision mode is disabled. Enable/configure a "
+                    "local image-capable model first. Desktop screenshots will not be sent to a "
+                    "cloud provider automatically.")
+        return local_model.generate(instruction, images=[png], timeout_ms=20000)
     except Exception as exc:
         return f"Screen analysis failed ({type(exc).__name__}: {str(exc)[:900]}). Check the configured local/cloud model and desktop session."
 
@@ -205,6 +202,17 @@ def screen_agent(parameters: dict, response=None, player=None, session_memory=No
     try:
         if mode == "diagnose":
             return _diagnose()
+        if mode == "monitor_start":
+            from plugins import wayland_screencast
+            return wayland_screencast.start_monitoring()
+        if mode == "monitor_stop":
+            from plugins import wayland_screencast
+            return wayland_screencast.stop_monitoring()
+        if mode == "monitor_status":
+            from plugins import wayland_screencast
+            return json.dumps({"active": wayland_screencast.monitoring_active(),
+                               "message": "Persistent ScreenCast is active." if wayland_screencast.monitoring_active()
+                               else "No persistent ScreenCast session is active."})
         if mode == "observe":
             return _observe(params)
         if mode == "read_text":
@@ -232,7 +240,7 @@ TOOL = {
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "mode": {"type": "STRING", "description": "analyze (default: visually describe current desktop) | diagnose | observe (capture metadata only) | read_text | propose | execute"},
+            "mode": {"type": "STRING", "description": "analyze (default: visually describe current desktop) | diagnose | observe (capture metadata only) | monitor_start | monitor_status | monitor_stop | read_text | propose | execute"},
             "path": {"type": "STRING", "description": "Optional PNG screenshot path inside home directory"},
             "prompt": {"type": "STRING", "description": "Question for screen analysis (max 1000 chars)"},
             "task": {"type": "STRING", "description": "Goal to plan without taking action"},

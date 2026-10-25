@@ -215,7 +215,17 @@ def _python_capture_pyautogui() -> tuple[bytes, int, int]:
 
 
 def capture_png() -> tuple[bytes, int, int]:
-    """Return a verified screenshot and dimensions, or raise actionable details."""
+    """Return a verified fresh frame, preferring an already-authorized ScreenCast stream."""
+    try:
+        from plugins import wayland_screencast
+        frame = wayland_screencast.capture_monitor_frame()
+        if frame is not None:
+            return frame
+    except Exception as exc:
+        # An active stream failure must be surfaced rather than silently opening
+        # another portal prompt or switching to an unrelated capture backend.
+        raise RuntimeError(f"Persistent ScreenCast frame failed: {type(exc).__name__}: {exc}") from exc
+
     failures: list[str] = []
     session = os.environ.get("XDG_SESSION_TYPE", "").lower()
     wayland = session == "wayland" or bool(os.environ.get("WAYLAND_DISPLAY"))

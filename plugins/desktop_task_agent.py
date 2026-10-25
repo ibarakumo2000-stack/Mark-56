@@ -96,21 +96,16 @@ def _vision_step(task: str, last_action: str | None, history: list[str]) -> dict
         f"recent_history={history[-5:]}. "
         "Allowed apps: krita,gimp,inkscape,pinta,kolourpaint,libreoffice_draw,firefox."
     )
-    if local_model.enabled():
-        # Explicit local mode is fail-closed: never send screenshots to a cloud model
-        # if Ollama or the configured local vision model is unavailable.
-        raw = local_model.generate(
-            instruction, images=[png], timeout_ms=20000
-        ).strip()
-    else:
-        # Import cloud SDK only when cloud mode is selected. Offline operation
-        # must still work when cloud packages/credentials are absent.
-        from google.genai import types as gtypes
-        from core import gemini
-        response = gemini.call([
-            gtypes.Part.from_bytes(data=png, mime_type="image/png"), instruction,
-        ], tier=gemini.FAST, timeout_ms=20000)
-        raw = (getattr(response, "text", None) or "").strip()
+    if not local_model.enabled():
+        raise RuntimeError(
+            "Local vision mode is disabled. Enable a local image-capable model before "
+            "starting desktop automation; screenshots are not sent to a cloud provider automatically."
+        )
+    # Fail closed: never send screenshots to a cloud model if the local model is
+    # disabled, unavailable, or does not support image input.
+    raw = local_model.generate(
+        instruction, images=[png], timeout_ms=20000
+    ).strip()
     if raw.startswith("```"):
         raw = raw.strip("`")
         if raw.startswith("json"):
@@ -164,35 +159,40 @@ def _perform(decision: dict) -> str:
 
 
 def _auto_run_worker() -> None:
-    """Keep observing, acting, and verifying until complete, stopped, or failed.
-
-    Runs in a daemon thread so the voice/UI loop can still receive pause/stop
-    commands while a desktop task is progressing.
-    """
-    while True:
-        if _stop_event.is_set():
-            return
-        current = _snapshot()
-        status = current.get("status")
-        if not current.get("active") or status in {"completed", "stopped", "timeout", "error", "idle"}:
-            return
-        if status == "paused":
-            _stop_event.wait(0.25)
-            continue
-        if status == "awaiting_confirmation":
-            return
-        if status != "running":
-            return
-        result = run({"operation": "step"})
-        try:
-            state = json.loads(result)
-        except (TypeError, json.JSONDecodeError):
-            _stop("Automatic task loop received an invalid step result.", "error")
-            return
-        if state.get("status") != "running":
-            return
-        # Give the voice/UI thread time to process stop and pause between actions.
-        _stop_event.wait(0.8)
+    """Open one permissioned ScreenCast session, then observe-act-verify until done."""
+    from plugins import wayland_screencast
+    try:
+        # The GNOME portal prompts for monitor selection/permission once for this
+        # task. All subsequent observations consume fresh PipeWire frames.
+        wayland_screencast.start_monitoring()
+        while True:
+            if _stop_event.is_set():
+                return
+            current = _snapshot()
+            status = current.get("status")
+            if not current.get("active") or status in {"completed", "stopped", "timeout", "error", "idle"}:
+                return
+            if status == "paused":
+                _stop_event.wait(0.25)
+                continue
+            if status == "awaiting_confirmation":
+                return
+            if status != "running":
+                return
+            result = run({"operation": "step"})
+            try:
+                state = json.loads(result)
+            except (TypeError, json.JSONDecodeError):
+                _stop("Automatic task loop received an invalid step result.", "error")
+                return
+            if state.get("status") != "running":
+                return
+            # Allow the voice/UI loop to process pause/stop between actions.
+            _stop_event.wait(0.8)
+    except Exception as exc:
+        _stop(f"ScreenCast/task loop failed safely: {type(exc).__name__}: {str(exc)[:220]}", "error")
+    finally:
+        wayland_screencast.stop_monitoring()
 
 
 def _start_auto_worker() -> None:
