@@ -2124,10 +2124,10 @@ class PluginManagerOverlay(QWidget):
         add_btn.setFixedHeight(34)
         add_btn.setFont(_sans_font(9, True, 0.4))
         add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_btn.setStyleSheet(f\"\"\"
+        add_btn.setStyleSheet(f"""
             QPushButton {{ background: {C.PRI_GHO}; color: {C.PRI}; border: 1px solid {C.PRI_DIM}; border-radius: 9px; }}
             QPushButton:hover {{ background: {C.PRI_DIM}; color: {C.DARK}; }}
-        \"\"\")
+        """)
         add_btn.clicked.connect(self._add_plugin)
         lay.addWidget(add_btn)
 
@@ -2190,10 +2190,10 @@ class PluginManagerOverlay(QWidget):
         remove_btn.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
         remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         remove_btn.setToolTip("Back up and remove this plugin file")
-        remove_btn.setStyleSheet(f\"\"\"
+        remove_btn.setStyleSheet(f"""
             QPushButton {{ background: transparent; color: {C.TEXT_DIM}; border: 1px solid {C.BORDER}; border-radius: 3px; }}
             QPushButton:hover {{ color: #ff8b8b; border-color: #a94c4c; background: rgba(169,76,76,0.10); }}
-        \"\"\")
+        """)
         remove_btn.clicked.connect(lambda _, file=p.get("file", ""), name=p.get("name", ""): self._remove_plugin(file, name))
         row.addWidget(remove_btn)
         return row
