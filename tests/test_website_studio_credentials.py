@@ -17,8 +17,8 @@ class WebsiteStudioCredentialTests(unittest.TestCase):
 
     def test_saves_only_after_successful_validation(self):
         response = MagicMock()
-        response.status = 200
-        response.read.return_value = b"{}"
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.read.return_value = b"{}"
         with patch.object(credentials, "_keyring_module", return_value=self.keyring), \
              patch.object(credentials, "urlopen", return_value=response) as open_url:
             credentials.save_api_key("sk-test-example")
