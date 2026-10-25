@@ -39,6 +39,8 @@ _state: dict[str, Any] = {
     "history": [], "remaining_work": "No active task.", "approval_required": False,
 }
 _stop_event = threading.Event()
+_worker_lock = threading.Lock()
+_worker_thread: threading.Thread | None = None
 
 
 def _snapshot() -> dict:
@@ -160,8 +162,54 @@ def _perform(decision: dict) -> str:
     raise ValueError("Unsupported model-proposed action; task stopped safely.")
 
 
+
+def _auto_run_worker() -> None:
+    """Keep observing, acting, and verifying until complete, stopped, or failed.
+
+    Runs in a daemon thread so the voice/UI loop can still receive pause/stop
+    commands while a desktop task is progressing.
+    """
+    while True:
+        if _stop_event.is_set():
+            return
+        current = _snapshot()
+        status = current.get("status")
+        if not current.get("active") or status in {"completed", "stopped", "timeout", "error", "idle"}:
+            return
+        if status == "paused":
+            _stop_event.wait(0.25)
+            continue
+        if status == "awaiting_confirmation":
+            return
+        if status != "running":
+            return
+        result = run({"operation": "step"})
+        try:
+            state = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            _stop("Automatic task loop received an invalid step result.", "error")
+            return
+        if state.get("status") != "running":
+            return
+        # Give the voice/UI thread time to process stop and pause between actions.
+        _stop_event.wait(0.8)
+
+
+def _start_auto_worker() -> None:
+    global _worker_thread
+    with _worker_lock:
+        if _worker_thread is not None and _worker_thread.is_alive():
+            return
+        _worker_thread = threading.Thread(
+            target=_auto_run_worker, name="mark56-desktop-task", daemon=True
+        )
+        _worker_thread.start()
+
 def run(parameters: dict, **_context) -> str:
-    """Operations: start, confirm, step, status, pause, resume, stop, completed."""
+    """Operations: start, run, confirm, step, status, pause, resume, stop, completed.
+
+    run starts a background observe-act-verify loop. start preserves manual step mode.
+    """
     p = parameters or {}
     operation = str(p.get("operation") or "status").strip().lower()
     if operation == "status":
@@ -185,7 +233,8 @@ def run(parameters: dict, **_context) -> str:
             if _state["status"] != "completed":
                 return json.dumps({"active": _state["active"], "status": _state["status"], "message": "Task cannot be marked completed without visual verification."})
             return json.dumps(_snapshot(), ensure_ascii=False)
-    if operation == "start":
+    if operation in {"start", "run"}:
+        auto_run = operation == "run"
         task = str(p.get("task") or "").strip()
         if not task or len(task) > 1000:
             return "Provide a task between 1 and 1000 characters."
@@ -198,8 +247,13 @@ def run(parameters: dict, **_context) -> str:
                           last_action=None, status="awaiting_confirmation" if needs_approval else "running",
                           current_app=None, history=[], stop_reason=None,
                           approval_required=needs_approval,
-                          remaining_work="Awaiting explicit user approval." if needs_approval else "Observe current desktop and take one safe action.")
-        return json.dumps(_snapshot(), ensure_ascii=False)
+                          remaining_work="Awaiting explicit user approval." if needs_approval else
+                          ("Starting automatic observe-act-verify loop." if auto_run else
+                           "Observe current desktop and take one safe action."))
+        result = json.dumps(_snapshot(), ensure_ascii=False)
+        if auto_run and not needs_approval:
+            _start_auto_worker()
+        return result
     if operation == "confirm":
         if p.get("confirmed") is not True:
             return "Blocked: explicit user approval is required; pass confirmed=true only after the user approves the task."
@@ -255,14 +309,13 @@ def run(parameters: dict, **_context) -> str:
 PLUGIN = {
     "name": "desktop_task_agent",
     "description": (
-        "Closed-loop desktop task controller with start/confirm/step/status/pause/resume/stop/completed. "
-        "Uses fresh screenshot feedback, a short action history, approved app launch, bounded clicks/drawing drags, "
-        "and explicit approval for consequential goals. Stops on capture errors, timeout, or action budget."
+        "Desktop task controller. Use operation=run for a task that should continue autonomously: it repeatedly captures and analyzes the desktop, takes one bounded action, then re-observes until visually complete or stopped. "
+        "Use status/pause/resume/stop while it runs. operation=start is manual one-step mode. Uses bounded clicks/drawing drags, approved app launch, and explicit approval for consequential goals; stops on capture errors, timeout, or action budget."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "operation": {"type": "STRING", "description": "start | confirm | step | status | pause | resume | stop | completed"},
+            "operation": {"type": "STRING", "description": "run (autonomous observe-act-verify loop) | start (manual step mode) | confirm | step | status | pause | resume | stop | completed"},
             "task": {"type": "STRING", "description": "Goal to complete (for start; max 1000 chars)"},
             "confirmed": {"type": "BOOLEAN", "description": "Explicit user approval for a consequential task"},
         },
