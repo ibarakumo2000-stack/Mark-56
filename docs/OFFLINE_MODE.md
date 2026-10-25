@@ -25,6 +25,12 @@ Model size affects speed and memory use. Choose a smaller quantized model for mo
 - Existing screenshot capture, allowlisted actions, coordinate validation, time/action limits, and user confirmation protections remain in force.
 - The deterministic static website builder, coding workspace, file operations, and local app launching do not require an AI provider.
 
+## Screen agent diagnostics
+
+The screen agent exposes a `diagnose` mode. Ask Mark 56 to run the screen agent diagnostic; it reports the active Linux desktop/session, whether PyAutoGUI can query the screen, installed screenshot/input utilities, screenshot-capture success or the backend error, and local Ollama/model status. This is the first check to run if the screen agent reports a blank screen or cannot move the mouse.
+
+Offline screenshot analysis now routes directly to the configured local vision model. The desktop task agent also imports cloud SDK modules only when cloud mode is selected. This prevents a missing cloud SDK from breaking the local vision path. These changes do not bypass Wayland's input/capture permissions: if diagnostics show that the desktop capture backend crashes or input cannot connect to the active session, that specific OS/session issue still needs to be repaired and retested on the user's logged-in Ubuntu desktop.
+
 ## Honest limitations
 
 This is an offline inference option, not a claim that every Mark 56 feature is offline. The existing main Gemini Live conversation and any plugins that explicitly call web search or cloud APIs still need their configured services. Local voice transcription and speech synthesis must also be separately integrated before the entire microphone conversation works offline. Online research is unavailable without a network. Some desktop actions may be limited by Linux Wayland permissions or the active desktop session.
