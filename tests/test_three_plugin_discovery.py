@@ -78,7 +78,7 @@ class ThreePluginDiscoveryTests(unittest.TestCase):
         with patch.object(module, "capture_monitor_frame", return_value=None), \
              patch.object(module, "start_monitoring") as start:
             result = module.run({"action": "capture"})
-        self.assertIn("not active", result.lower())
+        self.assertIn("no screencast stream is active", result.lower())
         start.assert_not_called()
 
     def test_website_studio_status_never_returns_a_secret(self):
