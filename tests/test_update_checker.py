@@ -83,5 +83,77 @@ class UpdateCheckerTests(unittest.TestCase):
         self.assertIn("offline", result["message"])
 
 
+    def test_download_requires_published_sha256_and_never_overwrites(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(RuntimeError, "SHA-256"):
+                updater.download_release_asset(
+                    "https://github.com/example/release/download/file.exe",
+                    "file.exe", "", download_dir=tmp,
+                )
+            existing = Path(tmp) / "file.exe"
+            existing.write_bytes(b"keep")
+            with self.assertRaisesRegex(RuntimeError, "already exists"):
+                updater.download_release_asset(
+                    "https://github.com/example/release/download/file.exe",
+                    "file.exe", "sha256:" + ("0" * 64), download_dir=tmp,
+                )
+
+    def test_download_rejects_untrusted_hosts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(RuntimeError, "untrusted host"):
+                updater.download_release_asset(
+                    "https://example.test/file.exe", "file.exe",
+                    "sha256:" + ("0" * 64), download_dir=tmp,
+                )
+
+    def test_download_verifies_digest_and_saves_atomically(self):
+        import hashlib
+        import io
+
+        payload = b"verified installer bytes"
+
+        class FakeResponse(io.BytesIO):
+            def geturl(self):
+                return "https://objects.githubusercontent.com/release-assets/file"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.close()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            digest = "sha256:" + hashlib.sha256(payload).hexdigest()
+            with patch.object(updater.urllib.request, "urlopen", return_value=FakeResponse(payload)):
+                result = updater.download_release_asset(
+                    "https://github.com/example/release/download/file.exe",
+                    "file.exe", digest, download_dir=tmp,
+                )
+            self.assertEqual(result.read_bytes(), payload)
+            self.assertEqual(result.name, "file.exe")
+
+    def test_download_discards_bad_digest(self):
+        import io
+
+        class FakeResponse(io.BytesIO):
+            def geturl(self):
+                return "https://objects.githubusercontent.com/release-assets/file"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.close()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(updater.urllib.request, "urlopen", return_value=FakeResponse(b"tampered")):
+                with self.assertRaisesRegex(RuntimeError, "failed SHA-256"):
+                    updater.download_release_asset(
+                        "https://github.com/example/release/download/file.exe",
+                        "file.exe", "sha256:" + ("0" * 64), download_dir=tmp,
+                    )
+            self.assertFalse((Path(tmp) / "file.exe").exists())
+            self.assertEqual(list(Path(tmp).glob(".jarvis-update-*.part")), [])
+
 if __name__ == "__main__":
     unittest.main()

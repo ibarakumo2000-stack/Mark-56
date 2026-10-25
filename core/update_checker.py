@@ -6,10 +6,14 @@ the release's platform-specific asset in the system browser.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import platform
 import re
+import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -149,3 +153,85 @@ def check_for_update(
         "sha256": str((asset or {}).get("digest") or ""),
         "notes": notes,
     }
+
+
+
+def download_release_asset(
+    download_url: str,
+    asset_name: str,
+    expected_digest: str,
+    *,
+    download_dir: str | Path | None = None,
+    timeout: float = 20.0,
+    max_bytes: int = 2_000_000_000,
+) -> Path:
+    """Download a GitHub release asset to disk and verify its published SHA-256.
+
+    This function never launches the downloaded file. A digest from GitHub's
+    release asset metadata is mandatory; absent or malformed digests fail closed.
+    """
+    parsed = urllib.parse.urlparse(str(download_url or ""))
+    if parsed.scheme != "https" or parsed.hostname not in {
+        "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com",
+    }:
+        raise RuntimeError("Refusing update download from an untrusted host.")
+
+    filename = Path(str(asset_name or "")).name
+    if not filename or filename in {".", ".."} or filename != str(asset_name):
+        raise RuntimeError("The release asset has an invalid filename.")
+    digest_match = re.fullmatch(r"sha256:([0-9a-fA-F]{64})", str(expected_digest or "").strip())
+    if not digest_match:
+        raise RuntimeError("GitHub did not publish a valid SHA-256 digest for this asset; use the release page instead.")
+    expected = digest_match.group(1).lower()
+
+    destination_dir = Path(download_dir).expanduser() if download_dir else Path.home() / "Downloads"
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination = destination_dir / filename
+    if destination.exists():
+        raise RuntimeError(f"A file named {filename} already exists in {destination_dir}; move or rename it before downloading.")
+
+    request = urllib.request.Request(
+        download_url,
+        headers={"User-Agent": _USER_AGENT, "Accept": "application/octet-stream"},
+        method="GET",
+    )
+    temp_path: Path | None = None
+    try:
+        with urllib.request.urlopen(request, timeout=max(1.0, float(timeout))) as response:
+            final_url = urllib.parse.urlparse(response.geturl())
+            if final_url.scheme != "https" or final_url.hostname not in {
+                "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com",
+            }:
+                raise RuntimeError("The update download redirected to an untrusted host.")
+            with tempfile.NamedTemporaryFile(
+                mode="wb", prefix=".jarvis-update-", suffix=".part",
+                dir=str(destination_dir), delete=False,
+            ) as output:
+                temp_path = Path(output.name)
+                digest = hashlib.sha256()
+                total = 0
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise RuntimeError("The update package exceeded the permitted download size.")
+                    digest.update(chunk)
+                    output.write(chunk)
+        if total == 0:
+            raise RuntimeError("GitHub returned an empty update package.")
+        if digest.hexdigest().lower() != expected:
+            raise RuntimeError("The downloaded update failed SHA-256 verification; the file was discarded.")
+        # The temporary file is in the same directory, so replacement is atomic.
+        os.replace(temp_path, destination)
+        temp_path = None
+        return destination
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"Could not download the update: {exc}") from exc
+    finally:
+        if temp_path is not None:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass

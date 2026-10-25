@@ -3313,6 +3313,7 @@ class MainWindow(QMainWindow):
     _quiz_hide_sig  = pyqtSignal()
     _review_sig     = pyqtSignal(str, str, object, object)  # document review payload
     _update_check_sig = pyqtSignal(object, bool)  # update result, whether user requested it
+    _update_download_sig = pyqtSignal(bool, str)  # verified download result, path or error
 
     def __init__(self, face_path: str):
         super().__init__()
@@ -3600,6 +3601,7 @@ class MainWindow(QMainWindow):
         self._quiz_hide_sig.connect(self._hide_quiz)
         self._review_sig.connect(self._show_review)
         self._update_check_sig.connect(self._show_update_result)
+        self._update_download_sig.connect(self._show_update_download_result)
         QTimer.singleShot(12000, self._start_auto_update_check)
         self._cam_stop = threading.Event()
 
@@ -5963,27 +5965,36 @@ class MainWindow(QMainWindow):
             latest = str(result.get("latest_version") or "unknown")
             notes = str(result.get("notes") or "Open the release page to review the changes.")
             asset = str(result.get("asset_name") or "View downloads for your platform")
+            digest = str(result.get("sha256") or "")
+            can_verify = bool(result.get("asset_name")) and bool(
+                __import__("re").fullmatch(r"sha256:[0-9a-fA-F]{64}", digest)
+            )
+            action_label = "Download and verify" if can_verify else "Open release page"
             message = (
                 f"A newer JARVIS release is available.\n\n"
                 f"Installed version: {current}\n"
                 f"Latest version: {latest}\n"
                 f"Package: {asset}\n\n"
                 f"{notes[:1100]}\n\n"
-                "Download opens your browser. JARVIS will not install it automatically."
+                + ("JARVIS will download the package, verify GitHub's SHA-256 digest, and leave installation to you."
+                   if can_verify else "A verified package digest is unavailable. The release page will open in your browser.")
             )
             box = QMessageBox(self)
             box.setWindowTitle("JARVIS update available")
             box.setIcon(QMessageBox.Icon.Information)
             box.setText(message)
-            download = box.addButton("Download update", QMessageBox.ButtonRole.AcceptRole)
+            download = box.addButton(action_label, QMessageBox.ButtonRole.AcceptRole)
             box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
             box.exec()
             if box.clickedButton() is download:
-                target = str(result.get("download_url") or result.get("release_url") or "")
-                if target:
-                    opened = QDesktopServices.openUrl(QUrl(target))
-                    if not opened:
-                        self._log_sig.emit(f"SYS: Could not open the download link: {target}")
+                if can_verify:
+                    self._start_release_download(result)
+                else:
+                    target = str(result.get("release_url") or "")
+                    if target:
+                        opened = QDesktopServices.openUrl(QUrl(target))
+                        if not opened:
+                            self._log_sig.emit(f"SYS: Could not open the release page: {target}")
             self._log_sig.emit(f"SYS: JARVIS {latest} update is available.")
         elif status == "current":
             if interactive:
@@ -6006,6 +6017,49 @@ class MainWindow(QMainWindow):
             target = str(result.get("release_url") or "")
             if target:
                 QDesktopServices.openUrl(QUrl(target))
+
+    def _start_release_download(self, result: dict):
+        """Download a selected release package in the background; never run it."""
+        if getattr(self, "_update_download_running", False):
+            QMessageBox.information(self, "Update download", "An update download is already running.")
+            return
+        self._update_download_running = True
+        QMessageBox.information(
+            self, "Downloading JARVIS update",
+            "The package will be saved to your Downloads folder and checked against GitHub's published SHA-256 digest. "
+            "JARVIS will not launch the installer automatically."
+        )
+
+        def work():
+            try:
+                from core.update_checker import download_release_asset
+                path = download_release_asset(
+                    str(result.get("download_url") or ""),
+                    str(result.get("asset_name") or ""),
+                    str(result.get("sha256") or ""),
+                )
+                self._update_download_sig.emit(True, str(path))
+            except Exception as exc:
+                self._update_download_sig.emit(False, str(exc))
+
+        threading.Thread(target=work, daemon=True, name="jarvis-update-download").start()
+
+    def _show_update_download_result(self, ok: bool, detail: str):
+        self._update_download_running = False
+        if ok:
+            QMessageBox.information(
+                self, "Update downloaded and verified",
+                f"The package passed SHA-256 verification and was saved here:\n\n{detail}\n\n"
+                "Close JARVIS before running the installer. Review the file location and launch it yourself when ready."
+            )
+            self._log_sig.emit(f"SYS: Update downloaded and verified: {detail}")
+        else:
+            QMessageBox.warning(
+                self, "Update download failed",
+                f"The package was not installed.\n\n{detail}\n\n"
+                "You can open the official GitHub Releases page and download it manually."
+            )
+            self._log_sig.emit(f"SYS: Update download failed: {detail}")
 
     def _open_website_studio(self):
         """Open the safe, local Website Studio preview-and-create workspace."""
