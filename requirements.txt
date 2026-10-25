@@ -15,6 +15,7 @@ sounddevice>=0.4,<1
 numpy>=1.24,<3
 google-genai>=2.8.0,<3
 openai>=1.68,<3
+keyring>=25,<27  # secure OS credential store for Website Studio
 
 # ── Web search & browser control ──────────────────────────────────────────────
 requests>=2.31,<3
