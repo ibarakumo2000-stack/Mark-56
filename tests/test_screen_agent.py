@@ -49,6 +49,25 @@ class ScreenAgentTests(unittest.TestCase):
             self.assertIn("outside the current screen", result)
             pg.click.assert_not_called()
 
+    def test_analyze_uses_local_vision_when_offline_enabled(self):
+        with patch.object(screen_agent, "_capture_png", return_value=(b"png-bytes", 640, 480)), patch(
+            "core.local_model.enabled", return_value=True
+        ), patch("core.local_model.generate", return_value="Local screen description") as generate:
+            result = screen_agent.screen_agent({"mode": "analyze", "prompt": "Describe this screen"})
+        self.assertEqual(result, "Local screen description")
+        generate.assert_called_once()
+        self.assertEqual(generate.call_args.kwargs["images"], [b"png-bytes"])
+
+    def test_diagnose_reports_capture_and_local_model_status(self):
+        with patch.object(screen_agent, "_capture_png", return_value=(b"png", 640, 480)), patch(
+            "core.local_model.status", return_value={"ok": True, "enabled": True, "models": ["vision"]}
+        ):
+            import json
+            result = json.loads(screen_agent.screen_agent({"mode": "diagnose"}))
+        self.assertTrue(result["capture"]["ok"])
+        self.assertEqual(result["capture"]["width"], 640)
+        self.assertTrue(result["local_model"]["ok"])
+
     def test_propose_is_proposal_only(self):
         with patch.object(screen_agent, "_analyze", return_value="suggest click"):
             import json
