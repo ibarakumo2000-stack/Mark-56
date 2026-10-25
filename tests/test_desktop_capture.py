@@ -40,6 +40,20 @@ class DesktopCaptureTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "suspiciously small"):
             desktop_capture._decode_png(png_bytes((20, 30, 40), size=(16, 16), varied=True))
 
+    def test_gnome_wayland_prefers_permission_aware_portal(self):
+        good = (png_bytes((20, 30, 40), varied=True), 320, 200)
+        with patch.dict("os.environ", {
+            "XDG_SESSION_TYPE": "wayland",
+            "WAYLAND_DISPLAY": "wayland-0",
+            "XDG_CURRENT_DESKTOP": "GNOME",
+        }), patch.object(desktop_capture.shutil, "which", return_value="/usr/bin/gnome-screenshot"), patch.object(
+            desktop_capture, "_portal_capture_wayland", return_value=good
+        ) as portal, patch.object(desktop_capture, "_file_capture") as legacy:
+            result = desktop_capture.capture_png()
+        self.assertEqual(result, good)
+        portal.assert_called_once()
+        legacy.assert_not_called()
+
     def test_capture_tries_next_backend_after_blank_native_frame(self):
         good = (png_bytes((20, 30, 40), varied=True), 320, 200)
         with patch.dict("os.environ", {
