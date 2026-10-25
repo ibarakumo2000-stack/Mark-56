@@ -145,6 +145,9 @@ Type: filesandordirs; Name: "{app}\config\__pycache__"
 Type: filesandordirs; Name: "{app}\plugins\__pycache__"
 
 [Code]
+const
+  RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
@@ -165,9 +168,7 @@ begin
   end;
 end;
 
-[Code]
-const
-  RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
