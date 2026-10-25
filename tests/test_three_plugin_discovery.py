@@ -6,6 +6,7 @@ open the screen-sharing portal, simulate game input, or contact OpenAI.
 from __future__ import annotations
 
 import importlib.util
+import importlib
 import shutil
 import sys
 import tempfile
@@ -83,7 +84,8 @@ class ThreePluginDiscoveryTests(unittest.TestCase):
     def test_website_studio_status_never_returns_a_secret(self):
         module = _load_module("website_studio_setup.py", "test_website_studio_setup_repair")
         fake_credentials = type("FakeCredentials", (), {"is_configured": staticmethod(lambda: True)})
-        with patch.dict(sys.modules, {"core.website_studio_credentials": fake_credentials()}):
+        core_package = importlib.import_module("core")
+        with patch.object(core_package, "website_studio_credentials", fake_credentials(), create=True):
             result = module.run({"action": "status"})
         self.assertIn("configured", result.lower())
         self.assertNotIn("sk-", result)
@@ -91,7 +93,8 @@ class ThreePluginDiscoveryTests(unittest.TestCase):
     def test_website_studio_setup_requires_running_qt_app(self):
         module = _load_module("website_studio_setup.py", "test_website_studio_setup_no_qt_app")
         fake_credentials = type("FakeCredentials", (), {"is_configured": staticmethod(lambda: False)})
-        with patch.dict(sys.modules, {"core.website_studio_credentials": fake_credentials()}), \
+        core_package = importlib.import_module("core")
+        with patch.object(core_package, "website_studio_credentials", fake_credentials(), create=True), \
              patch("PyQt6.QtWidgets.QApplication.instance", return_value=None):
             result = module.run({"action": "setup"})
         self.assertIn("running mark 56 desktop application", result.lower())
