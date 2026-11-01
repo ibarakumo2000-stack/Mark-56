@@ -81,7 +81,11 @@ trap rollback_on_error ERR
 mkdir -p "$STAGING" "$BIN_DIR" "$APP_DIR"
 cp -a "$SOURCE_DIR/." "$STAGING/"
 if [ -n "$TX_ID" ]; then
-  for data_dir in config memory cache uploads; do
+  if [ -d "$INSTALL_ROOT/config" ]; then
+    mkdir -p "$STAGING/config"
+    cp -a "$INSTALL_ROOT/config/." "$STAGING/config/"
+  fi
+  for data_dir in memory cache uploads; do
     if [ -e "$INSTALL_ROOT/$data_dir" ]; then
       rm -rf "$STAGING/$data_dir"
       cp -a "$INSTALL_ROOT/$data_dir" "$STAGING/$data_dir"
@@ -223,7 +227,11 @@ ditto "$SOURCE_APP" "$STAGING"
 if [ -n "$TX_ID" ]; then
   OLD_ROOT="$TARGET/Contents/Resources/MARK-LV"
   NEW_ROOT="$STAGING/Contents/Resources/MARK-LV"
-  for data_dir in config memory cache uploads; do
+  if [ -d "$OLD_ROOT/config" ]; then
+    mkdir -p "$NEW_ROOT/config"
+    ditto "$OLD_ROOT/config" "$NEW_ROOT/config"
+  fi
+  for data_dir in memory cache uploads; do
     if [ -e "$OLD_ROOT/$data_dir" ]; then
       rm -rf "$NEW_ROOT/$data_dir"
       ditto "$OLD_ROOT/$data_dir" "$NEW_ROOT/$data_dir"
