@@ -228,7 +228,7 @@ SOURCE_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 SOURCE_APP="$SOURCE_DIR/JARVIS.app"
 APPLICATIONS="$HOME/Applications"
 TARGET="$APPLICATIONS/JARVIS.app"
-STAGING="$APPLICATIONS/.JARVIS.app.new.$"
+STAGING="$APPLICATIONS/.JARVIS.app.new.$$"
 RECOVERY_DIR="$HOME/Library/Application Support/MARK-LV/update-recovery"
 TX_ID=""
 
