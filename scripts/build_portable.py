@@ -49,6 +49,15 @@ RECOVERY_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/mark56/update-recovery"
 
 echo "JARVIS / MARK 56 — Linux installer"
 echo "Install location: $INSTALL_ROOT"
+OLD_PYTHON="$INSTALL_ROOT/runtime/bin/python3.12"
+OLD_CLI="$INSTALL_ROOT/core/update_recovery_cli.py"
+if [ ! -e "$INSTALL_ROOT" ] || [ ! -x "$OLD_PYTHON" ] || [ ! -f "$OLD_CLI" ] || ! "$OLD_PYTHON" --version >/dev/null 2>&1; then
+  RECOVERY_TX_ID="$(cat "$RECOVERY_DIR/latest.txt" 2>/dev/null || true)"
+  RECOVERY_BACKUP="$RECOVERY_DIR/$RECOVERY_TX_ID/backup"
+  if [ -n "$RECOVERY_TX_ID" ] && [ -x "$RECOVERY_BACKUP/runtime/bin/python3.12" ]; then
+    "$RECOVERY_BACKUP/runtime/bin/python3.12" "$RECOVERY_BACKUP/core/update_recovery_cli.py" --rollback-id "$RECOVERY_TX_ID"
+  fi
+fi
 if [ -d "$INSTALL_ROOT" ] && [ -x "$INSTALL_ROOT/runtime/bin/python3.12" ] && [ -f "$INSTALL_ROOT/core/update_recovery_cli.py" ]; then
   PREPARE_JSON="$("$INSTALL_ROOT/runtime/bin/python3.12" "$INSTALL_ROOT/core/update_recovery_cli.py" --prepare "$INSTALL_ROOT")"
   TX_ID="$(printf '%s' "$PREPARE_JSON" | "$INSTALL_ROOT/runtime/bin/python3.12" -c 'import json,sys; print(json.load(sys.stdin)["transaction_id"])')"
