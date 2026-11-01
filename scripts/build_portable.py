@@ -102,7 +102,32 @@ if [ -n "$TX_ID" ]; then
   done
   if [ -d "$INSTALL_ROOT/plugins" ]; then
     mkdir -p "$STAGING/plugins"
-    cp -an "$INSTALL_ROOT/plugins/." "$STAGING/plugins/"
+    BACKUP_ROOT="$RECOVERY_DIR/$TX_ID/backup"
+    "$BACKUP_ROOT/runtime/bin/python3.12" - "$INSTALL_ROOT/plugins" "$STAGING/plugins" <<'PY'
+import os, shutil, sys
+source, destination = sys.argv[1:3]
+for current, directories, files in os.walk(source, followlinks=False):
+    relative = os.path.relpath(current, source)
+    target_dir = destination if relative == "." else os.path.join(destination, relative)
+    os.makedirs(target_dir, exist_ok=True)
+    for name in list(directories):
+        src = os.path.join(current, name)
+        dst = os.path.join(target_dir, name)
+        if os.path.islink(src):
+            directories.remove(name)
+            if not os.path.lexists(dst):
+                os.symlink(os.readlink(src), dst)
+        else:
+            os.makedirs(dst, exist_ok=True)
+    for name in files:
+        src = os.path.join(current, name)
+        dst = os.path.join(target_dir, name)
+        if not os.path.lexists(dst):
+            if os.path.islink(src):
+                os.symlink(os.readlink(src), dst)
+            else:
+                shutil.copy2(src, dst)
+PY
   fi
   FAILED="$(dirname "$INSTALL_ROOT")/.$(basename "$INSTALL_ROOT").failed-$TX_ID"
   mv "$INSTALL_ROOT" "$FAILED"
@@ -289,7 +314,32 @@ if [ -n "$TX_ID" ]; then
   done
   if [ -d "$OLD_ROOT/plugins" ]; then
     mkdir -p "$NEW_ROOT/plugins"
-    cp -Rn "$OLD_ROOT/plugins/." "$NEW_ROOT/plugins/"
+    BACKUP_ROOT="$RECOVERY_DIR/$TX_ID/backup/Contents/Resources/MARK-LV"
+    "$BACKUP_ROOT/runtime/bin/python3.12" - "$OLD_ROOT/plugins" "$NEW_ROOT/plugins" <<'PY'
+import os, shutil, sys
+source, destination = sys.argv[1:3]
+for current, directories, files in os.walk(source, followlinks=False):
+    relative = os.path.relpath(current, source)
+    target_dir = destination if relative == "." else os.path.join(destination, relative)
+    os.makedirs(target_dir, exist_ok=True)
+    for name in list(directories):
+        src = os.path.join(current, name)
+        dst = os.path.join(target_dir, name)
+        if os.path.islink(src):
+            directories.remove(name)
+            if not os.path.lexists(dst):
+                os.symlink(os.readlink(src), dst)
+        else:
+            os.makedirs(dst, exist_ok=True)
+    for name in files:
+        src = os.path.join(current, name)
+        dst = os.path.join(target_dir, name)
+        if not os.path.lexists(dst):
+            if os.path.islink(src):
+                os.symlink(os.readlink(src), dst)
+            else:
+                shutil.copy2(src, dst)
+PY
   fi
   FAILED="$APPLICATIONS/.JARVIS.app.failed-$TX_ID"
   mv "$TARGET" "$FAILED"
