@@ -157,11 +157,13 @@ class MacOSInstallerScriptTests(unittest.TestCase):
             transaction_id = (recovery / "latest.txt").read_text(encoding="ascii").strip()
             backup = recovery / transaction_id / "backup"
             backup_root = backup / "Contents/Resources/MARK-LV"
+            failed = target.parent / f".{target.name}.failed-{transaction_id}"
+            target.rename(failed)
+            recovery_env = env.copy()
+            recovery_env["JARVIS_RECOVERY_ONLY"] = "1"
             rollback = subprocess.run(
-                [str(backup_root / "runtime/bin/python3.12"),
-                 str(backup_root / "core/update_recovery_cli.py"),
-                 "--rollback-id", transaction_id],
-                env=env, capture_output=True, text=True, timeout=90,
+                ["bash", str(dmg2 / "Install.command")],
+                env=recovery_env, capture_output=True, text=True, timeout=90,
             )
             self.assertEqual(rollback.returncode, 0, rollback.stdout + rollback.stderr)
             restored_root = target / "Contents/Resources/MARK-LV"
