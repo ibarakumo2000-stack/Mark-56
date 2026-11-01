@@ -94,6 +94,8 @@ jobs:
           if ($first.ExitCode -ne 0) { throw "Fresh Windows install failed: $($first.ExitCode)" }
           $personal = Join-Path $installDir "config\phase6-user-data.txt"
           Set-Content -Path $personal -Value "preserve-this-user-data" -NoNewline
+          $oldMarker = Join-Path $installDir "main.py"
+          Set-Content -Path $oldMarker -Value "pre-upgrade-installation-marker" -NoNewline
 
           $upgrade = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
           if ($upgrade.ExitCode -ne 0) { throw "Windows upgrade failed: $($upgrade.ExitCode)" }
@@ -103,7 +105,9 @@ jobs:
           $backup = Join-Path $recoveryRoot "$tx\backup"
           $backupPython = Join-Path $backup "runtime\python.exe"
           $backupCli = Join-Path $backup "core\update_recovery_cli.py"
+          if ((Get-Content $oldMarker -Raw) -eq "pre-upgrade-installation-marker") { throw "Windows upgrade did not replace the previous app files." }
           & $backupPython $backupCli --rollback-id $tx
           if ($LASTEXITCODE -ne 0) { throw "Windows recovery rollback failed." }
           if ((Get-Content $personal -Raw) -ne "preserve-this-user-data") { throw "Windows rollback lost user data." }
+          if ((Get-Content $oldMarker -Raw) -ne "pre-upgrade-installation-marker") { throw "Windows rollback did not restore the previous application files." }
           Write-Host "Windows native install, upgrade, user-data preservation and rollback passed."
