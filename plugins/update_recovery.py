@@ -240,7 +240,7 @@ def rollback_update(
     tx_dir, state = _load_state(recovery, transaction_id)
     if state.get("status") == "rolled_back":
         return {"transaction_id": transaction_id, "status": "rolled_back"}
-    if state.get("status") not in _PENDING_STATES:
+    if state.get("status") not in (_PENDING_STATES | {"rollback_started"}):
         raise RuntimeError(f"Cannot roll back an update in state {state.get('status')!r}.")
 
     install_root = Path(state["install_dir"]).expanduser()
@@ -248,38 +248,44 @@ def rollback_update(
         raise RuntimeError("The installation directory is missing or unsafe; rollback stopped.")
     install_root = install_root.resolve()
     backup = Path(state["backup_dir"]).resolve()
-    recovery_root = recovery.resolve()
-    if not _is_within(backup, recovery_root) or not _is_within(recovery_root, recovery_root):
-        raise RuntimeError("The recorded backup path is outside the recovery directory.")
-    _verify_backup(backup, state.get("manifest") or {})
+    if not _is_within(backup, tx_dir.resolve()):
+        raise RuntimeError("The recorded backup path is outside its transaction directory.")
+    manifest = state.get("manifest") or {}
+    _verify_backup(backup, manifest)
 
     parent = install_root.parent
     restore = parent / f".{install_root.name}.restore-{transaction_id}"
     failed = parent / f".{install_root.name}.failed-{transaction_id}"
-    if restore.exists() or failed.exists():
-        raise RuntimeError("A rollback staging path already exists; manual inspection is required.")
 
     state["status"] = "rollback_started"
     _save_state(tx_dir, state)
     try:
-        shutil.copytree(backup, restore, copy_function=shutil.copy2)
-        os.replace(install_root, failed)
-        try:
+        # If a previous rollback completed the swap but crashed before
+        # updating its journal, recognize the restored tree.
+        if install_root.is_dir() and _manifest(install_root) == manifest:
+            shutil.rmtree(failed, ignore_errors=True)
+            shutil.rmtree(restore, ignore_errors=True)
+        else:
+            # A previous attempt may have stopped between either rename.
+            # The verified backup is authoritative; restore from a fresh copy.
+            if restore.exists():
+                shutil.rmtree(restore, ignore_errors=True)
+            shutil.copytree(backup, restore, copy_function=shutil.copy2)
+            if install_root.exists():
+                if failed.exists():
+                    shutil.rmtree(install_root, ignore_errors=True)
+                else:
+                    os.replace(install_root, failed)
             os.replace(restore, install_root)
-        except Exception:
-            os.replace(failed, install_root)
-            raise
-        shutil.rmtree(failed, ignore_errors=True)
+            shutil.rmtree(failed, ignore_errors=True)
+
         state["status"] = "rolled_back"
         state["rolled_back_at"] = _utc_now()
         _save_state(tx_dir, state)
         return {"transaction_id": transaction_id, "status": "rolled_back", "install_dir": str(install_root)}
     except Exception:
+        # Keep rollback_started so a later recovery pass can retry.
         shutil.rmtree(restore, ignore_errors=True)
-        if failed.exists() and not install_root.exists():
-            os.replace(failed, install_root)
-        state["status"] = "rollback_failed"
-        _save_state(tx_dir, state)
         raise
 
 
@@ -301,7 +307,7 @@ def recover_if_interrupted(
             state = json.loads(state_file.read_text(encoding="utf-8"))
             if not isinstance(state, dict) or state.get("schema_version") != _SCHEMA_VERSION:
                 continue
-            if state.get("status") in _PENDING_STATES:
+            if state.get("status") in (_PENDING_STATES | {"rollback_started"}):
                 results.append(rollback_update(
                     str(state.get("transaction_id") or ""),
                     recovery_dir=recovery,
