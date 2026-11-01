@@ -58,6 +58,27 @@ def _make_uploads_dir() -> Path:
 
 UPLOADS_DIR = _make_uploads_dir()
 
+def _make_device_registry():
+    """Open the private per-user SQLite device registry."""
+    from core.device_gateway import DeviceRegistry
+
+    data_dir = Path.home() / ".jarvis"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        import os
+        os.chmod(data_dir, 0o700)
+    except OSError:
+        pass
+    database = data_dir / "devices.sqlite3"
+    registry = DeviceRegistry(database)
+    try:
+        import os
+        if database.exists():
+            os.chmod(database, 0o600)
+    except OSError:
+        pass
+    return registry
+
 def _get_gemini_key() -> str | None:
     try:
         import json as _json
@@ -469,6 +490,7 @@ class DashboardServer:
         self._device_sessions: dict[str, dict] = {}  # device_token → {session_key}
         self._phone_audio_queue: asyncio.Queue    = asyncio.Queue(maxsize=200)
         self._uploads_dir                 = UPLOADS_DIR
+        self._device_registry = _make_device_registry()
         self._login_html                  = _read("login.html")
         self._app_html                    = _read("app.html")
         self.app                          = self._build_app()
@@ -541,6 +563,11 @@ class DashboardServer:
         def _auth(req: Request) -> bool:
             tok = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
             return bool(tok) and tok in self._tokens
+
+        from dashboard.device_api import build_device_router
+        app.include_router(
+            build_device_router(self._device_registry, owner_auth=_auth)
+        )
 
         # serve CryptoJS from local cache, fallback to CDN redirect
         @app.get("/static/crypto.js")
