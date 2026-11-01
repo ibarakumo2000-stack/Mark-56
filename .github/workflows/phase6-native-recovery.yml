@@ -3,8 +3,6 @@ name: Mark 56 Phase 6 — Native recovery verification
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [feature/phase-6-update-recovery]
   workflow_dispatch:
 
 permissions:
