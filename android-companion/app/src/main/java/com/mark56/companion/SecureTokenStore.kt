@@ -27,12 +27,14 @@ class SecureTokenStore(private val prefs: android.content.SharedPreferences) {
         prefs.edit().putString("token", Base64.encodeToString(encrypted, Base64.NO_WRAP))
             .putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP)).apply()
     }
-    fun read(): String? = try {
-        val encoded = prefs.getString("token", null) ?: return null
-        val iv = Base64.decode(prefs.getString("iv", null) ?: return null, Base64.NO_WRAP)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
-        String(cipher.doFinal(Base64.decode(encoded, Base64.NO_WRAP)), Charsets.UTF_8)
-    } catch (_: Exception) { clear(); null }
+    fun read(): String? {
+        return try {
+            val encoded = prefs.getString("token", null) ?: return null
+            val iv = Base64.decode(prefs.getString("iv", null) ?: return null, Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
+            String(cipher.doFinal(Base64.decode(encoded, Base64.NO_WRAP)), Charsets.UTF_8)
+        } catch (_: Exception) { clear(); null }
+    }
     fun clear() { prefs.edit().remove("token").remove("iv").apply() }
 }
