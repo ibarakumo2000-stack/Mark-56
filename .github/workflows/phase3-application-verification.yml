@@ -1,0 +1,102 @@
+name: Mark 56 Phase 3 — Application verification
+
+on:
+  push:
+    branches:
+      - integration/mark56-consolidated-dev
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mark56-phase3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-tests:
+    name: Python tests (3.12 / 3.13)
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install project dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install edge-tts faster-whisper soundfile miniaudio msal
+      - name: Compile application and test sources
+        run: |
+          python -m compileall -q main.py ui.py core actions plugins dashboard memory tests
+      - name: Run complete unittest suite
+        run: |
+          python -m unittest discover -s tests -v
+      - name: Verify critical modules import
+        run: |
+          python - <<'PY'
+          import importlib
+          modules = [
+              "main", "ui", "core.local_model", "plugins.screen_agent",
+              "plugins.desktop_capture", "plugins.desktop_task_agent",
+              "plugins.update_manager", "plugins.update_installer",
+              "plugins.update_install_flow", "plugins.static_site_builder",
+          ]
+          for name in modules:
+              importlib.import_module(name)
+              print("OK", name)
+          PY
+
+  package-preflight:
+    name: Cross-platform package preflight
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Stage package and run static packaging checks
+        run: |
+          python scripts/build.py --stage-only
+          python installer/smoke_test.py build/stage --static
+
+  android-build:
+    name: Android companion debug APK
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+      - name: Install Android SDK platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build companion APK
+        working-directory: android-companion
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Upload Android verification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mark56-android-companion-debug
+          path: android-companion/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
