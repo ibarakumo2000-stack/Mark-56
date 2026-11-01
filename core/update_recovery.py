@@ -60,7 +60,7 @@ def process_is_alive(pid: int) -> bool:
         if not handle:
             return ctypes.get_last_error() == 5  # access denied: conservatively assume alive
         try:
-            return kernel32.WaitForSingleObject(handle, 0) == 0x00000102  # WAIT_TIMEOUT
+            return kernel32.WaitForSingleObject(handle, 0) != 0  # anything except WAIT_OBJECT_0 is conservatively alive
         finally:
             kernel32.CloseHandle(handle)
     try:
