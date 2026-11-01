@@ -342,7 +342,7 @@ class DeviceSimulator:
                 "180D": {"2A37": {"properties": ("read", "notify"), "value": 72,
                                   "read_scope": "health.read"}},
                 "180A": {"2A29": {"properties": ("read",), "value": "Jarvis Simulator"}},
-                "FFF0": {"FFF1": {"properties": ("write",), "value": "",
+                "FFF0": {"FFF1": {"properties": ("read", "write"), "value": "",
                                   "write_scope": "haptics.send"}},
             },
             metadata={"model": "J- Watch Mock", "transport": "simulated_ble"},
