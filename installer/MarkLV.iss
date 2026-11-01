@@ -161,13 +161,35 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  AppDir, OldPython, RecoveryCli: String;
+  AppDir, OldPython, RecoveryCli, BackupDir, BackupPython, BackupCli: String;
   ExitCode: Integer;
 begin
   Result := '';
   AppDir := ExpandConstant('{app}');
   OldPython := AppDir + '\runtime\python.exe';
   RecoveryCli := AppDir + '\core\update_recovery_cli.py';
+
+  { If a prior power loss left the installation incomplete, restore its
+    snapshot before preparing this new upgrade. }
+  if (not FileExists(OldPython)) and FileExists(RecoveryDirectory + '\latest.txt') then
+  begin
+    if LoadStringFromFile(RecoveryDirectory + '\latest.txt', RecoveryTransactionData) then
+    begin
+      RecoveryTransactionId := Trim(String(RecoveryTransactionData));
+      BackupDir := RecoveryDirectory + '\' + RecoveryTransactionId + '\backup';
+      BackupPython := BackupDir + '\runtime\python.exe';
+      BackupCli := BackupDir + '\core\update_recovery_cli.py';
+      if FileExists(BackupPython) and FileExists(BackupCli) then
+      begin
+        if (not Exec(BackupPython, '"' + BackupCli + '" --rollback-id ' + RecoveryTransactionId,
+          BackupDir, SW_HIDE, ewWaitUntilTerminated, ExitCode)) or (ExitCode <> 0) then
+        begin
+          Result := 'A previous interrupted Mark 56 update could not be recovered. Setup was cancelled.';
+          Exit;
+        end;
+      end;
+    end;
+  end;
 
   if FileExists(OldPython) and FileExists(RecoveryCli) then
   begin
