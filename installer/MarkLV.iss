@@ -148,23 +148,85 @@ Type: filesandordirs; Name: "{app}\plugins\__pycache__"
 const
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
 
+var
+  RecoveryTransactionId: String;
+  RecoveryPrepared: Boolean;
+  InstallSucceeded: Boolean;
+
+function RecoveryDirectory: String;
+begin
+  Result := ExpandConstant('{localappdata}\MARK-LV\update-recovery');
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  AppDir, OldPython, RecoveryCli: String;
+  ExitCode: Integer;
 begin
   Result := '';
-  { Inno closes applications automatically where possible. This message is only
-    used if Windows reports that files are still locked. }
+  AppDir := ExpandConstant('{app}');
+  OldPython := AppDir + '\runtime\python.exe';
+  RecoveryCli := AppDir + '\core\update_recovery_cli.py';
+
+  if FileExists(OldPython) and FileExists(RecoveryCli) then
+  begin
+    if not Exec(OldPython, '"' + RecoveryCli + '" --prepare "' + AppDir + '"',
+      AppDir, SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+      Result := 'Could not start the existing Mark 56 recovery engine. The update was cancelled.'
+    else if ExitCode <> 0 then
+      Result := 'Mark 56 could not create and verify a recovery backup. The update was cancelled.'
+    else if not LoadStringFromFile(RecoveryDirectory + '\latest.txt', RecoveryTransactionId) then
+      Result := 'The recovery transaction could not be located. The update was cancelled.'
+    else
+    begin
+      RecoveryTransactionId := Trim(RecoveryTransactionId);
+      RecoveryPrepared := RecoveryTransactionId <> '';
+    end;
+  end
+  else if DirExists(AppDir) then
+    Result := 'An existing Mark 56 installation was found but its recovery runtime is missing. Repair or remove it before upgrading.';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  NewPython, RecoveryCli: String;
+  ExitCode: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
-    { Create writable user-data folders explicitly. }
-    ForceDirectories(ExpandConstant('{app}\\config'));
-    ForceDirectories(ExpandConstant('{app}\\memory'));
-    ForceDirectories(ExpandConstant('{app}\\cache'));
-    ForceDirectories(ExpandConstant('{app}\\uploads'));
-    ForceDirectories(ExpandConstant('{app}\\plugins'));
+    ForceDirectories(ExpandConstant('{app}\config'));
+    ForceDirectories(ExpandConstant('{app}\memory'));
+    ForceDirectories(ExpandConstant('{app}\cache'));
+    ForceDirectories(ExpandConstant('{app}\uploads'));
+    ForceDirectories(ExpandConstant('{app}\plugins'));
+
+    if RecoveryPrepared then
+    begin
+      NewPython := ExpandConstant('{app}\runtime\python.exe');
+      RecoveryCli := ExpandConstant('{app}\core\update_recovery_cli.py');
+      if not Exec(NewPython, '"' + RecoveryCli + '" --mark-awaiting',
+        ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ExitCode) or (ExitCode <> 0) then
+        RaiseException('The new Mark 56 files were installed, but the recovery state could not be advanced. Setup will restore the previous version.');
+    end;
+    InstallSucceeded := True;
+  end;
+end;
+
+procedure DeinitializeSetup;
+var
+  BackupPython, RecoveryCli, BackupDir: String;
+  ExitCode: Integer;
+begin
+  if RecoveryPrepared and not InstallSucceeded then
+  begin
+    BackupDir := RecoveryDirectory + '\' + RecoveryTransactionId + '\backup';
+    BackupPython := BackupDir + '\runtime\python.exe';
+    RecoveryCli := BackupDir + '\core\update_recovery_cli.py';
+    if FileExists(BackupPython) and FileExists(RecoveryCli) then
+    begin
+      Exec(BackupPython, '"' + RecoveryCli + '" --rollback-id ' + RecoveryTransactionId,
+        BackupDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
+    end;
   end;
 end;
 
