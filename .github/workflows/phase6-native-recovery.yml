@@ -1,0 +1,79 @@
+name: Mark 56 Phase 6 — Native recovery verification
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/phase-6-update-recovery]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mark56-phase6-native-${{ github.ref }}-${{ matrix.target }}
+  cancel-in-progress: true
+
+jobs:
+  native-recovery:
+    name: Recovery tests — ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            runner: windows-latest
+          - target: ubuntu-x64
+            runner: ubuntu-24.04
+          - target: macos-arm64
+            runner: macos-15
+          - target: macos-x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run recovery and platform hand-off tests
+        run: |
+          python -m unittest discover -s tests -p "test_update_recovery*.py" -v
+          python -m compileall -q core installer tests
+      - name: Validate Ubuntu installer shell syntax
+        if: matrix.target == 'ubuntu-x64'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          import build_portable
+          Path("/tmp/mark56-linux-install.sh").write_text(build_portable.LINUX_INSTALLER)
+          Path("/tmp/mark56-linux-launch.sh").write_text(build_portable.LINUX_LAUNCHER)
+          PY
+          bash -n /tmp/mark56-linux-install.sh
+          bash -n /tmp/mark56-linux-launch.sh
+      - name: Validate macOS installer shell syntax
+        if: startsWith(matrix.target, 'macos-')
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          import build_portable
+          Path("/tmp/mark56-macos-install.command").write_text(build_portable.MAC_INSTALLER)
+          PY
+          bash -n /tmp/mark56-macos-install.command
+      - name: Compile Windows Inno Setup installer
+        if: matrix.target == 'windows-x64'
+        shell: pwsh
+        run: |
+          python scripts/build.py --stage-only
+          if ($LASTEXITCODE -ne 0) { throw "Windows staging preflight failed." }
+          choco install innosetup --yes --no-progress
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler was not installed." }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & $iscc /DAppVersion=56.0.2 /DAppVersionInfo=56.0.2.0 "/DStageDir=$PWD\build\stage" "/DOutDir=$PWD\dist" installer\MarkLV.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed." }
