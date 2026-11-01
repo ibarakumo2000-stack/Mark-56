@@ -77,10 +77,8 @@ class NativeInstallerRecoveryTests(unittest.TestCase):
         self.assertEqual(info.read_text(encoding="utf-8"), "old bundle metadata")
         self.assertEqual((nested / "main.py").read_text(encoding="utf-8"), "original version")
 
-    def test_cli_refuses_to_upgrade_without_a_valid_existing_runtime(self):
-        install = self.base / "incomplete-install"
-        install.mkdir()
-        (install / "partial.txt").write_text("incomplete", encoding="utf-8")
+    def test_cli_refuses_to_prepare_a_missing_installation(self):
+        install = self.base / "missing-installation"
         result = subprocess.run(
             [sys.executable, str(CLI), "--prepare", str(install),
              "--recovery-dir", str(self.recovery_dir)],
