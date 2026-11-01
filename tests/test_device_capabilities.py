@@ -89,6 +89,17 @@ class CapabilityDetectorTests(unittest.TestCase):
         })
         self.assertEqual(result["detected_capabilities"], ["battery.read"])
 
+    def test_integrates_with_simulated_watch_inspection(self):
+        from core.device_simulator import DeviceSimulator
+
+        simulator = DeviceSimulator.with_demo_devices()
+        result = self.detector.detect(simulator.inspect("demo-watch-001"))
+        self.assertEqual(
+            result["detected_capabilities"],
+            ["battery.read", "device_info.read", "heart_rate.read"],
+        )
+        self.assertIn("haptics.send", result["unverified_capabilities"])
+
     def test_invalid_input_is_rejected(self):
         with self.assertRaises(TypeError):
             self.detector.detect(None)
