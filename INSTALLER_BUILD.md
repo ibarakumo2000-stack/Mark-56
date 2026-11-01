@@ -4,14 +4,14 @@ Produces `dist\MARK-LV-Setup-<version>.exe`: a normal Windows setup wizard that
 installs MARK LV together with its own private Python and every library it
 needs. End users never install Python, run pip or open VS Code.
 
-> **Status — read this first.** The packaging system was written and checked on
-> a Linux machine without Windows, Inno Setup or internet access. What *was*
-> verified: file staging and exclusions, the secret scan (against your real
-> project, positive and negative), the launcher's logging / secret redaction /
-> crash handling, the smoke-test logic, and that all 83 source files compile on
-> Python 3.12. What was **not** possible: building the runtime, compiling the
-> `.exe`, and installing it. **Your first real build will be the first time
-> those steps run** — follow "First build" below and send me any error.
+> **Status — read this first.** The Windows installer is now compiled and
+> exercised in a native Windows GitHub Actions runner. The Phase 6 workflow
+> stages the application, generates the compact installer icon, compiles the
+> Inno Setup script, performs a fresh install, runs an upgrade, and tests
+> rollback while checking that user data survives. A passing CI run is still
+> not a substitute for a final install/update test on a real user's Windows PC.
+> Ubuntu and macOS installer flows have separate native-runner tests; see
+> [Update Recovery](docs/UPDATE_RECOVERY.md).
 
 ## Why a bundled Python runtime and not PyInstaller
 
@@ -33,7 +33,8 @@ shortcuts start `runtime\pythonw.exe launcher.pyw`.
 1. Windows 10/11 x64 with internet access.
 2. Python 3.9+ (only to run the build script).
 3. [Inno Setup 6.3 or newer](https://jrsoftware.org/isdl.php).
-4. Copy these into the project root (next to `main.py`), keeping the names:
+4. Install the host-side icon build dependency: `python -m pip install Pillow`.
+5. Copy these into the project root (next to `main.py`), keeping the names:
    `installer\`, `scripts\`, `INSTALLER_BUILD.md`.
 
 ## Build
@@ -120,7 +121,9 @@ installer task, otherwise on first use).
 * **Branding:** edit the `#define` block at the top of `installer\MarkLV.iss`
   (name, publisher, URL, GUID — never change the GUID between releases or
   upgrades stop replacing the old install); recolour/retitle the wizard art in
-  `installer\assets\make_wizard_images.py` and run it. The icon is `config\jarvis.ico`.
+  `installer\assets\make_wizard_images.py` and run it. The source icon is
+  `config\jarvis.png`; the build creates a compact multi-resolution
+  `config\jarvis.ico` for Inno Setup.
 * **Signing:** unsigned installers trigger Windows SmartScreen. With a
   certificate: `scripts\build_installer.bat --sign-command "signtool sign /f my.pfx /p PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 $f"`.
   Nothing claims to be signed unless this is used.
