@@ -26,7 +26,7 @@ from typing import Any, Iterable, Protocol, runtime_checkable
 
 DEVICE_TYPES = frozenset({"desktop", "android", "watch", "glasses", "other"})
 PERMISSION_SCOPES = frozenset({
-    "command.send", "notification.receive", "voice.capture", "camera.capture",
+    "command.send", "notification.receive", "media.control", "battery.read",\n    "voice.capture", "camera.capture",
     "display.render", "haptics.send", "health.read", "desktop.control",
 })
 _CODE_ALPHABET = "".join(
