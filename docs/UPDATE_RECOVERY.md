@@ -25,6 +25,7 @@ The 90-second stability window is a launch-health heuristic, not a proof that ev
 - The backup is stored under `%LOCALAPPDATA%/MARK-LV/update-recovery`, outside the installation directory.
 - The installer replaces the bundled runtime, then marks the transaction as awaiting startup health.
 - If setup fails before commit, Inno Setup invokes the backup runtime to restore the previous application.
+- If a previous install was interrupted and the new runtime is missing, running the installer again restores the backup before retrying the upgrade.
 - The packaged launcher monitors the first startup and hands rollback to the detached worker if startup fails.
 
 The Windows build pipeline also regenerates a compact multi-resolution ICO from `config/jarvis.png` before Inno Setup compilation. The source ICO is larger than Inno Setup's resource update limit, so the build host requires Pillow.
@@ -34,6 +35,8 @@ The Windows build pipeline also regenerates a compact multi-resolution ICO from 
 - The generated `install.sh` creates a verified snapshot before upgrading.
 - It stages the new package separately, carries forward `config`, `memory`, `cache`, `uploads`, and `plugins`, then swaps the application directory.
 - A shell error trap restores the backup runtime and previous installation.
+- The external `~/.local/bin/mark56` launcher can restore the previous install if an interrupted directory swap leaves the app directory missing or its Python runtime unusable.
+- Re-running `install.sh` also attempts recovery before retrying an upgrade.
 - The new launcher monitors startup and can recover an interrupted first launch.
 
 The Linux package is currently x86_64 only. The installer may optionally install Ubuntu/Debian desktop and audio libraries when the user explicitly enables that option.
@@ -43,6 +46,7 @@ The Linux package is currently x86_64 only. The installer may optionally install
 - Both DMG targets include an `Install.command` installer alongside `JARVIS.app`.
 - The command snapshots the complete existing app bundle, stages the replacement with `ditto`, preserves user data, and swaps the app bundle.
 - If the installation command fails, the backup runtime restores the previous bundle.
+- Re-running `Install.command` restores a missing or unusable app bundle from the last verified backup before retrying.
 - The app's launcher uses the bundle-level transaction path and the matching backup runtime.
 - The command installs into the current user's `~/Applications` directory. Manually dragging the app bundle bypasses the recovery-aware upgrade flow; use `Install.command` for upgrades.
 
