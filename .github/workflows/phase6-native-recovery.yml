@@ -89,8 +89,8 @@ jobs:
 
           $installer = Join-Path $PWD "dist\MARK-LV-Setup-56.0.2.exe"
           $installDir = Join-Path $env:RUNNER_TEMP "Mark56 Recovery Test"
-          $args = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$installDir`""
-          $first = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
+          $setupArgs = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$installDir`""
+          $first = Start-Process -FilePath $installer -ArgumentList $setupArgs -Wait -PassThru
           if ($first.ExitCode -ne 0) { throw "Fresh Windows install failed: $($first.ExitCode)" }
           $personal = Join-Path $installDir "config\phase6-user-data.txt"
           Set-Content -Path $personal -Value "preserve-this-user-data" -NoNewline
