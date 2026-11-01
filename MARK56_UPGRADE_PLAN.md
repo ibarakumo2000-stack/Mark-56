@@ -111,7 +111,7 @@ Implemented in `plugins/screen_agent.py` with a `screen_agent` tool entry point:
 Safety tests are in `tests/test_screen_agent.py`. Local test execution is still required; a GitHub commit is not evidence that desktop capture or plugin auto-discovery works on the target Ubuntu session. The agent is intentionally conservative and is not yet an autonomous multi-step computer-use system.
 
 
-## Phase 6 — Update reliability and recovery (platform integration implemented; native CI verification running)
+## Phase 6 — Update reliability and recovery (platform integration implemented; native CI matrix passed)
 
 ### Implemented
 - `core/update_recovery.py`: local installation snapshots, SHA-256 manifests, atomic transaction journals, safe internal symlink preservation, verified rollback, and retryable interrupted rollback.
@@ -124,11 +124,12 @@ Safety tests are in `tests/test_screen_agent.py`. Local test execution is still 
 - Windows installer build now regenerates a compact multi-resolution ICO from `config/jarvis.png` to avoid Inno Setup's resource-size failure.
 - Tests cover recovery engine behavior, platform CLI hand-offs, installer script upgrade/data-preservation/rollback scenarios, and native OS validation.
 
-### Native verification
+### Native verification — passed
 - Added `.github/workflows/phase6-native-recovery.yml` for Windows x64, Ubuntu x64, macOS Apple Silicon, and macOS Intel.
-- Linux and macOS jobs run their actual generated installer scripts through install → upgrade → preserve user data → rollback scenarios.
-- Windows job compiles the Inno Setup installer and runs an isolated native install/upgrade/rollback test.
-- The workflow also validates shell syntax and compiles application/recovery sources.
+- All four native runner jobs passed in workflow run [41355993704](https://github.com/ibarakumo2000-stack/Mark-56/actions/runs/41355993704).
+- Linux and macOS jobs ran the actual generated installer scripts through install → upgrade → preserve user data/plugins → simulate interrupted replacement → rollback scenarios.
+- Windows compiled the Inno Setup installer and passed fresh install, upgrade, damaged-runtime recovery/retry, user-data preservation, and rollback checks.
+- The workflow also validated shell syntax and compiled application/recovery sources.
 
 ### Remaining acceptance checks
 - Wait for the latest native workflow run to pass on all four runners.
