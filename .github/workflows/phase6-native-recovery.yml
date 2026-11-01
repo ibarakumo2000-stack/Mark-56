@@ -98,9 +98,9 @@ jobs:
           Set-Content -Path $localModel -Value '{"selected_model":"user-choice"}' -NoNewline
           $oldMarker = Join-Path $installDir "main.py"
           Set-Content -Path $oldMarker -Value "pre-upgrade-installation-marker" -NoNewline
-          $builtinPlugin = Join-Path $installDir "plugins\\game_autoplay.py"
+          $builtinPlugin = Join-Path $installDir "plugins\game_autoplay.py"
           Set-Content -Path $builtinPlugin -Value "pre-upgrade-builtin-plugin" -NoNewline
-          $userPlugin = Join-Path $installDir "plugins\\user_custom.py"
+          $userPlugin = Join-Path $installDir "plugins\user_custom.py"
           Set-Content -Path $userPlugin -Value "preserve-custom-plugin" -NoNewline
 
           $upgrade = Start-Process -FilePath $installer -ArgumentList $setupArgs -Wait -PassThru
