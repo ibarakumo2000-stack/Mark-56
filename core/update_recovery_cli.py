@@ -34,6 +34,8 @@ def main() -> int:
     parser.add_argument("--rollback-latest", action="store_true")
     parser.add_argument("--rollback-id")
     parser.add_argument("--begin-startup", metavar="INSTALL_DIR")
+    parser.add_argument("--pid", type=int)
+    parser.add_argument("--confirm-id")
     parser.add_argument("--recovery-dir")
     args = parser.parse_args()
     root = Path(args.recovery_dir).expanduser() if args.recovery_dir else recovery.default_recovery_dir()
@@ -50,6 +52,8 @@ def main() -> int:
         root, txid, state = _latest(root)
         recovery.mark_awaiting_health_check(txid, recovery_dir=root)
         result = {"transaction_id": txid, "status": "awaiting_health_check"}
+    elif args.confirm_id:
+        result = recovery.confirm_update(args.confirm_id, recovery_dir=root)
     elif args.confirm:
         root, txid, state = _latest(root)
         result = recovery.confirm_update(txid, recovery_dir=root)
@@ -80,7 +84,7 @@ def main() -> int:
             else:
                 tx_dir, latest = recovery._load_state(root, txid)
                 latest["startup_attempts"] = attempts + 1
-                latest["startup_pid"] = os.getpid()
+                latest["startup_pid"] = args.pid or os.getpid()
                 latest["startup_started_at"] = recovery._utc_now()
                 recovery._save_state(tx_dir, latest)
                 result = {"status": "health_check_started", "transaction_id": txid,
