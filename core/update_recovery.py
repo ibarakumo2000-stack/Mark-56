@@ -163,6 +163,7 @@ def prepare_update(
         shutil.rmtree(tx_dir, ignore_errors=True)
         raise
 
+    _write_json_atomic(recovery / "latest.json", {"transaction_id": transaction_id, "install_dir": str(root), "updated_at": _utc_now()})
     return {
         "transaction_id": transaction_id,
         "status": "prepared",
