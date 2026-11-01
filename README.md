@@ -54,6 +54,10 @@ Local OCR is optional and requires the Tesseract system package plus Python pack
 
 Open **Controls → Plugins** to enable/disable discovered plugins. You can also add a local `.py` plugin file or remove an existing plugin. The manager validates the plugin contract without executing its code during installation, backs up removed files under `.plugin-backups/`, and records removals in your local settings so an app update does not silently re-enable a removed built-in plugin. **Only install Python plugins from sources you trust:** once loaded, a plugin runs with the same file and network permissions as JARVIS. Restart JARVIS after adding or removing a plugin so its tool list is refreshed.
 
+### Update recovery foundation
+
+Mark 56 now includes a local recovery engine in `core/update_recovery.py`. It can snapshot an installation, verify the backup with SHA-256, track update transaction states, and restore the previous installation after a failed or interrupted update. The recovery engine is not yet wired into the Windows, Linux, or macOS installers; automatic rollback must not be considered available until those platform adapters and native recovery tests are completed. See [Update Recovery](docs/UPDATE_RECOVERY.md) for the integration contract.
+
 ### Desktop update notifications
 
 Packaged builds check GitHub Releases in the background and show a download prompt when a newer stable version is published. **Controls → Check for updates** also lets you check manually. Choosing Download opens the release asset in your browser; the app does not automatically install or execute an installer. The first update that adds this feature must be installed manually once by users on older builds, then future releases can notify them inside the app. See [INSTALLER_BUILD.md](INSTALLER_BUILD.md) for the release-publishing checklist.
