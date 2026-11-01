@@ -109,7 +109,7 @@ chmod +x "$INSTALL_ROOT/launch.sh"
 cat > "$BIN_DIR/mark56" <<LAUNCHER
 #!/usr/bin/env bash
 RECOVERY_DIR="$RECOVERY_DIR"
-if [ ! -x "$INSTALL_ROOT/launch.sh" ] || [ ! -x "$INSTALL_ROOT/runtime/bin/python3.12" ]; then
+if [ ! -x "$INSTALL_ROOT/launch.sh" ] || [ ! -x "$INSTALL_ROOT/runtime/bin/python3.12" ] || ! "$INSTALL_ROOT/runtime/bin/python3.12" --version >/dev/null 2>&1; then
   TX_ID="\$(cat "\$RECOVERY_DIR/latest.txt" 2>/dev/null || true)"
   BACKUP="\$RECOVERY_DIR/\$TX_ID/backup"
   if [ -n "\$TX_ID" ] && [ -x "\$BACKUP/runtime/bin/python3.12" ]; then
@@ -230,6 +230,23 @@ if [ ! -d "$TARGET" ]; then
   fi
   if [ "${JARVIS_RECOVERY_ONLY:-0}" = "1" ]; then
     exit 0
+  fi
+fi
+
+if [ -d "$TARGET" ]; then
+  CURRENT_ROOT="$TARGET/Contents/Resources/MARK-LV"
+  CURRENT_PYTHON="$CURRENT_ROOT/runtime/bin/python3.12"
+  CURRENT_CLI="$CURRENT_ROOT/core/update_recovery_cli.py"
+  if [ ! -x "$CURRENT_PYTHON" ] || [ ! -f "$CURRENT_CLI" ] || ! "$CURRENT_PYTHON" --version >/dev/null 2>&1; then
+    RECOVERY_TX_ID="$(cat "$RECOVERY_DIR/latest.txt" 2>/dev/null || true)"
+    RECOVERY_BACKUP="$RECOVERY_DIR/$RECOVERY_TX_ID/backup"
+    RECOVERY_ROOT="$RECOVERY_BACKUP/Contents/Resources/MARK-LV"
+    if [ -n "$RECOVERY_TX_ID" ] && [ -x "$RECOVERY_ROOT/runtime/bin/python3.12" ]; then
+      "$RECOVERY_ROOT/runtime/bin/python3.12" "$RECOVERY_ROOT/core/update_recovery_cli.py" --rollback-id "$RECOVERY_TX_ID"
+    else
+      echo "The installed JARVIS runtime is damaged and no usable recovery backup was found." >&2
+      exit 1
+    fi
   fi
 fi
 
