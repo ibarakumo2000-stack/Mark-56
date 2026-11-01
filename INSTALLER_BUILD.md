@@ -129,7 +129,7 @@ installer task, otherwise on first use).
   Nothing claims to be signed unless this is used.
 * **Update notifications:** the app checks the latest stable GitHub Release in the background and offers a platform-specific download link. It does not silently install the file. The first release containing this checker must be installed manually by users on older builds; later releases can be announced from inside the app.
 * **Release publishing:** the Windows release workflow creates a **draft**. Attach the Linux and macOS packages built for the same tag before publishing the draft as the latest stable release; otherwise those users will not have a matching package to download. The checker uses the `VERSION` file stamped into the installed build and the public `releases/latest` API.
-* **Full self-update:** downloading and validating packages inside the application, verifying SHA-256 before installation, backup/rollback, and automatically launching the installer remain unimplemented. Continue to keep installation explicit until those checks are built and tested.
+* **Update and recovery:** the app stages official release assets and verifies SHA-256 before showing the explicit install hand-off. Windows Inno Setup, the Ubuntu installer, and the macOS `Install.command` now create local backups and support rollback after installer or startup failures. The packaged launcher uses a 90-second stability window as a health heuristic. It is not a full feature test, and the updater still requires the user to confirm installation.
 
 ## Test it
 
@@ -148,6 +148,12 @@ Manual clean-machine checklist (no Python, no VS Code, no pip, none of the libra
 - [ ] Log exists at `%LOCALAPPDATA%\MARK-LV\logs\` and contains no key
 - [ ] Settings → Apps lists MARK LV; Uninstall asks about personal data; shortcuts and folder removed
 - [ ] Reinstall after "keep data" → previous API key and memory are still there
+- [ ] Upgrade an existing installation → user settings, memory, and plugins remain intact
+- [ ] Simulate an interrupted or failed upgrade → the previous application is restored
+
+## Native recovery verification
+
+The Phase 6 workflow (`.github/workflows/phase6-native-recovery.yml`) runs native Windows x64, Ubuntu x64, macOS Apple Silicon, and macOS Intel jobs. It compiles Inno Setup, validates Linux/macOS installer shell syntax, and exercises installer upgrade, user-data preservation, and rollback scenarios. This CI coverage should pass before publishing a release. It does not replace manual acceptance on real end-user devices.
 
 ## Known limitations
 
@@ -156,7 +162,10 @@ Manual clean-machine checklist (no Python, no VS Code, no pip, none of the libra
   dialog). The app's own *restart*, *auto-start with Windows* and self-made
   desktop shortcut start `main.py` directly — they work, but without the log file.
 * Installer size is large (expect several hundred MB; OpenCV, Qt, ONNX, ctranslate2).
-* Windows 10/11 x64 only. macOS/Linux were out of scope.
+* Windows installer supports x64. Linux release package supports x86_64. macOS has separate Apple Silicon and Intel DMGs. The recovery-aware macOS installer targets `~/Applications/JARVIS.app`; manually dragging the bundle bypasses recovery.
+* The launcher can roll back after it starts executing. If the new Python runtime cannot start at all, manual recovery may be required.
+* The 90-second startup stability window is a heuristic; it does not prove every app feature is healthy.
+* Packages are not code-signed/notarized by default.
 * CC BY-NC 4.0 (see `LICENSE`, shown in the wizard): redistribution must be non-commercial and credit the author.
 
 ## Troubleshooting
