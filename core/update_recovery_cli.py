@@ -69,14 +69,10 @@ def main() -> int:
         else:
             txid, state = pending
             pid = int(state.get("startup_pid") or 0)
-            if pid:
-                try:
-                    os.kill(pid, 0)
-                    result = {"status": "already_running", "transaction_id": txid}
-                    print(json.dumps(result))
-                    return 0
-                except OSError:
-                    pass
+            if pid and recovery.process_is_alive(pid):
+                result = {"status": "already_running", "transaction_id": txid}
+                print(json.dumps(result))
+                return 0
             attempts = int(state.get("startup_attempts") or 0)
             if attempts >= 1:
                 result = {"status": "needs_rollback", "transaction_id": txid,
