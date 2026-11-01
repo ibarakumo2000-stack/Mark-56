@@ -106,6 +106,12 @@ jobs:
           $recoveryRoot = Join-Path $env:LOCALAPPDATA "MARK-LV\update-recovery"
           $tx = (Get-Content (Join-Path $recoveryRoot "latest.txt") -Raw).Trim()
           if (-not $tx) { throw "Windows installer did not create a recovery transaction." }
+          # Simulate an interrupted update that left the new runtime unusable.
+          Remove-Item (Join-Path $installDir "runtime") -Recurse -Force
+          $retry = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
+          if ($retry.ExitCode -ne 0) { throw "Windows installer could not recover and retry an interrupted update." }
+          $tx = (Get-Content (Join-Path $recoveryRoot "latest.txt") -Raw).Trim()
+          if (-not $tx) { throw "Windows recovery retry did not create a new transaction." }
           $backup = Join-Path $recoveryRoot "$tx\backup"
           $backupPython = Join-Path $backup "runtime\python.exe"
           $backupCli = Join-Path $backup "core\update_recovery_cli.py"
