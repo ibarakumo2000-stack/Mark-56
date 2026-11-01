@@ -94,6 +94,8 @@ jobs:
           if ($first.ExitCode -ne 0) { throw "Fresh Windows install failed: $($first.ExitCode)" }
           $personal = Join-Path $installDir "config\phase6-user-data.txt"
           Set-Content -Path $personal -Value "preserve-this-user-data" -NoNewline
+          $localModel = Join-Path $installDir "config\local_model.json"
+          Set-Content -Path $localModel -Value '{"selected_model":"user-choice"}' -NoNewline
           $oldMarker = Join-Path $installDir "main.py"
           Set-Content -Path $oldMarker -Value "pre-upgrade-installation-marker" -NoNewline
           $builtinPlugin = Join-Path $installDir "plugins\\game_autoplay.py"
@@ -121,6 +123,7 @@ jobs:
           & $backupPython $backupCli --rollback-id $tx
           if ($LASTEXITCODE -ne 0) { throw "Windows recovery rollback failed." }
           if ((Get-Content $personal -Raw) -ne "preserve-this-user-data") { throw "Windows rollback lost user data." }
+          if ((Get-Content $localModel -Raw) -ne '{"selected_model":"user-choice"}') { throw "Windows upgrade/rollback lost local model preferences." }
           if ((Get-Content $oldMarker -Raw) -ne "pre-upgrade-installation-marker") { throw "Windows rollback did not restore the previous application files." }
           if ((Get-Content $builtinPlugin -Raw) -ne "pre-upgrade-builtin-plugin") { throw "Windows rollback did not restore the previous built-in plugin." }
           if ((Get-Content $userPlugin -Raw) -ne "preserve-custom-plugin") { throw "Windows rollback lost a user-installed plugin." }
