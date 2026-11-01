@@ -168,6 +168,7 @@ def create_companion_app(registry: DeviceRegistry):
     app.state.device_verifier = verifier
     app.state.device_features = features
     app.state.media_commands = commands
+    app.state.queue_media_command = queue_media_command
     return app
 
 
