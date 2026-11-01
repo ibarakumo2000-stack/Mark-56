@@ -183,7 +183,7 @@ begin
       RecoveryPrepared := RecoveryTransactionId <> '';
     end;
   end
-  else if DirExists(AppDir) then
+  else if DirExists(AppDir) and (FileExists(AppDir + '\\main.py') or DirExists(AppDir + '\\runtime')) then
     Result := 'An existing Mark 56 installation was found but its recovery runtime is missing. Repair or remove it before upgrading.';
 end;
 
