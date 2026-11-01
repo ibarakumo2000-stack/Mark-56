@@ -72,7 +72,8 @@ class ThreePluginDiscoveryTests(unittest.TestCase):
         module = _load_module("game_autoplay.py", "test_game_autoplay_no_display")
 
         with (
-            patch.object(module, "_PYAUTOGUI", False),
+            patch.object(module, "_ensure_pyautogui", return_value=False),
+            patch.object(module, "_PYAUTOGUI_ERROR", "ModuleNotFoundError: No module named 'pyautogui'"),
             patch.object(module, "_focus_window") as focus,
         ):
             result = module.run({
