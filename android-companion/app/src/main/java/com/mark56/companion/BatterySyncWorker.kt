@@ -27,8 +27,12 @@ class BatterySyncWorker(context: Context, params: WorkerParameters) : Worker(con
         val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
             status == BatteryManager.BATTERY_STATUS_FULL
         return try {
-            val sent = CompanionEventClient(endpoint, pin, token, deviceId).postBattery(percent, charging)
-            if (sent) Result.success() else Result.retry()
+            val status = CompanionEventClient(endpoint, pin, token, deviceId).postBattery(percent, charging)
+            when {
+                status in 200..299 -> Result.success()
+                status in 400..499 -> Result.failure()
+                else -> Result.retry()
+            }
         } catch (_: javax.net.ssl.SSLException) {
             // A pin or TLS validation error must not be bypassed by a fallback transport.
             Result.failure()
