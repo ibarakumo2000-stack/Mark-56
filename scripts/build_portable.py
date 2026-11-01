@@ -38,28 +38,65 @@ RUNTIMES = {
 }
 
 LINUX_INSTALLER = r'''#!/usr/bin/env bash
-set -eo pipefail
+set -Eeuo pipefail
 SOURCE_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 INSTALL_ROOT="$HOME/.local/share/Programs/MARK-LV"
 BIN_DIR="$HOME/.local/bin"
 APP_DIR="$HOME/.local/share/applications"
+STAGING="${INSTALL_ROOT}.new.$$"
+TX_ID=""
+RECOVERY_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/mark56/update-recovery"
+
 echo "JARVIS / MARK 56 — Linux installer"
 echo "Install location: $INSTALL_ROOT"
-if command -v apt-get >/dev/null 2>&1 && [ "${JARVIS_INSTALL_SYSTEM_LIBS:-0}" = "1" ]; then
-  packages="libasound2 libpulse0 libegl1 libgl1 libportaudio2 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0"
-  if [ "$(id -u)" -eq 0 ]; then
-    apt-get update && apt-get install -y $packages
-  elif command -v sudo >/dev/null 2>&1; then
-    sudo apt-get update && sudo apt-get install -y $packages
-  else
-    echo "sudo is unavailable; install required Qt/audio libraries using your package manager." >&2
-  fi
-elif command -v apt-get >/dev/null 2>&1; then
-  echo "Optional Ubuntu/Debian desktop/audio libraries:"
-  echo "  JARVIS_INSTALL_SYSTEM_LIBS=1 bash install.sh"
+if [ -d "$INSTALL_ROOT" ] && [ -x "$INSTALL_ROOT/runtime/bin/python3.12" ] && [ -f "$INSTALL_ROOT/core/update_recovery_cli.py" ]; then
+  PREPARE_JSON="$("$INSTALL_ROOT/runtime/bin/python3.12" "$INSTALL_ROOT/core/update_recovery_cli.py" --prepare "$INSTALL_ROOT")"
+  TX_ID="$(printf '%s' "$PREPARE_JSON" | "$INSTALL_ROOT/runtime/bin/python3.12" -c 'import json,sys; print(json.load(sys.stdin)["transaction_id"])')"
+  echo "Created and verified local recovery snapshot: $TX_ID"
+elif [ -e "$INSTALL_ROOT" ]; then
+  echo "Existing installation has no usable recovery runtime; refusing an unsafe in-place upgrade." >&2
+  exit 1
 fi
-mkdir -p "$INSTALL_ROOT" "$BIN_DIR" "$APP_DIR"
-cp -a "$SOURCE_DIR/." "$INSTALL_ROOT/"
+
+rollback_on_error() {
+  status=$?
+  trap - ERR
+  if [ -n "$TX_ID" ]; then
+    BACKUP="$RECOVERY_DIR/$TX_ID/backup"
+    BACKUP_PYTHON="$BACKUP/runtime/bin/python3.12"
+    if [ -x "$BACKUP_PYTHON" ]; then
+      echo "Installation failed; restoring the previous Mark 56 version..."
+      "$BACKUP_PYTHON" "$BACKUP/core/update_recovery_cli.py" --rollback-id "$TX_ID" || {
+        echo "Automatic rollback could not finish. Recovery data remains at: $RECOVERY_DIR/$TX_ID" >&2
+      }
+    else
+      echo "Recovery runtime missing. Backup retained at: $BACKUP" >&2
+    fi
+  fi
+  rm -rf "$STAGING"
+  exit "$status"
+}
+trap rollback_on_error ERR
+
+mkdir -p "$STAGING" "$BIN_DIR" "$APP_DIR"
+cp -a "$SOURCE_DIR/." "$STAGING/"
+if [ -n "$TX_ID" ]; then
+  for data_dir in config memory cache uploads plugins; do
+    if [ -e "$INSTALL_ROOT/$data_dir" ]; then
+      rm -rf "$STAGING/$data_dir"
+      cp -a "$INSTALL_ROOT/$data_dir" "$STAGING/$data_dir"
+    fi
+  done
+  FAILED="$(dirname "$INSTALL_ROOT")/.$(basename "$INSTALL_ROOT").failed-$TX_ID"
+  mv "$INSTALL_ROOT" "$FAILED"
+  mv "$STAGING" "$INSTALL_ROOT"
+  NEW_PYTHON="$INSTALL_ROOT/runtime/bin/python3.12"
+  "$NEW_PYTHON" "$INSTALL_ROOT/core/update_recovery_cli.py" --mark-awaiting
+  rm -rf "$FAILED"
+else
+  mv "$STAGING" "$INSTALL_ROOT"
+fi
+
 chmod +x "$INSTALL_ROOT/launch.sh"
 cat > "$BIN_DIR/mark56" <<LAUNCHER
 #!/usr/bin/env bash
@@ -79,6 +116,16 @@ Icon=$ICON_PATH
 Terminal=false
 Categories=Utility;Development;
 DESKTOP
+
+if [ "${JARVIS_INSTALL_SYSTEM_LIBS:-0}" = "1" ] && command -v apt-get >/dev/null 2>&1; then
+  packages="libasound2 libpulse0 libegl1 libgl1 libportaudio2 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0"
+  if [ "$(id -u)" -eq 0 ]; then apt-get update && apt-get install -y $packages
+  elif command -v sudo >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y $packages
+  else echo "sudo unavailable; install desktop/audio libraries with your package manager." >&2
+  fi
+fi
+
+trap - ERR
 echo "Installation complete. Launch from the applications menu or run: $BIN_DIR/mark56"
 '''
 LINUX_LAUNCHER = r'''#!/usr/bin/env bash
