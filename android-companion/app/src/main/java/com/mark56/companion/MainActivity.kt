@@ -114,7 +114,7 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val response = PinnedCompanionClient(endpoint, fingerprint).pair(
                         code, android.os.Build.MODEL ?: "Android device",
-                        listOf("notification.receive", "battery.read", "media.control")
+                        listOf("battery.read")
                     )
                     val token = response.getString("token")
                     val deviceId = response.getString("device_id")
