@@ -115,6 +115,9 @@ jobs:
           $tx = (Get-Content (Join-Path $recoveryRoot "latest.txt") -Raw).Trim()
           if (-not $tx) { throw "Windows recovery retry did not create a new transaction." }
           $backup = Join-Path $recoveryRoot "$tx\backup"
+          if ((Get-Content $personal -Raw) -ne "preserve-this-user-data") { throw "Windows upgrade lost user data." }
+          if ((Get-Content $localModel -Raw) -ne '{"selected_model":"user-choice"}') { throw "Windows upgrade lost local model preferences." }
+          if ((Get-Content $userPlugin -Raw) -ne "preserve-custom-plugin") { throw "Windows upgrade lost a user-installed plugin." }
           $backupPython = Join-Path $backup "runtime\python.exe"
           $backupCli = Join-Path $backup "core\update_recovery_cli.py"
           if ((Get-Content $oldMarker -Raw) -eq "pre-upgrade-installation-marker") { throw "Windows upgrade did not replace the previous app files." }
