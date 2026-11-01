@@ -279,7 +279,7 @@ if [ -n "$TX_ID" ]; then
   NEW_ROOT="$STAGING/Contents/Resources/MARK-LV"
   if [ -d "$OLD_ROOT/config" ]; then
     mkdir -p "$NEW_ROOT/config"
-    ditto "$OLD_ROOT/config" "$NEW_ROOT/config"
+    cp -R "$OLD_ROOT/config/." "$NEW_ROOT/config/"
   fi
   for data_dir in memory cache uploads; do
     if [ -e "$OLD_ROOT/$data_dir" ]; then
