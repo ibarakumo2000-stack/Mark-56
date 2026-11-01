@@ -38,6 +38,8 @@ def make_mark56_tree(root: Path, version: str) -> Path:
     make_runtime_shim(root / "runtime")
     (root / "config").mkdir()
     (root / "config" / "defaults.json").write_text('{"fresh": true}', encoding="utf-8")
+    if version == "56.0.2":
+        (root / "config" / "new-default.json").write_text('{"added": true}', encoding="utf-8")
     (root / "plugins").mkdir()
     (root / "plugins" / "builtin.py").write_text("builtin-" + version, encoding="utf-8")
     (root / "VERSION").write_text(version + "\n", encoding="utf-8")
@@ -79,6 +81,7 @@ class LinuxInstallerScriptTests(unittest.TestCase):
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
             self.assertEqual((install_root / "VERSION").read_text().strip(), "56.0.2")
             self.assertEqual(personal.read_text(encoding="utf-8"), '{"user_data":"keep"}')
+            self.assertTrue((install_root / "config/new-default.json").is_file())
             self.assertEqual((install_root / "plugins/builtin.py").read_text(encoding="utf-8"), "builtin-56.0.2")
             self.assertEqual(user_plugin.read_text(encoding="utf-8"), "custom-plugin")
 
@@ -94,6 +97,7 @@ class LinuxInstallerScriptTests(unittest.TestCase):
             self.assertEqual(rollback.returncode, 0, rollback.stdout + rollback.stderr)
             self.assertEqual((install_root / "VERSION").read_text().strip(), "56.0.1")
             self.assertEqual(personal.read_text(encoding="utf-8"), '{"user_data":"keep"}')
+            self.assertFalse((install_root / "config/new-default.json").exists())
             self.assertEqual((install_root / "plugins/builtin.py").read_text(encoding="utf-8"), "builtin-56.0.1")
             self.assertEqual(user_plugin.read_text(encoding="utf-8"), "custom-plugin")
 
@@ -145,6 +149,7 @@ class MacOSInstallerScriptTests(unittest.TestCase):
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
             self.assertEqual((app_root / "VERSION").read_text().strip(), "56.0.2")
             self.assertEqual(personal.read_text(encoding="utf-8"), '{"user_data":"keep"}')
+            self.assertTrue((app_root / "config/new-default.json").is_file())
             self.assertEqual((app_root / "plugins/builtin.py").read_text(encoding="utf-8"), "builtin-56.0.2")
             self.assertEqual(user_plugin.read_text(encoding="utf-8"), "custom-plugin")
 
@@ -163,6 +168,7 @@ class MacOSInstallerScriptTests(unittest.TestCase):
             self.assertEqual((restored_root / "VERSION").read_text().strip(), "56.0.1")
             self.assertEqual((restored_root / "config/personal-settings.json").read_text(encoding="utf-8"),
                              '{"user_data":"keep"}')
+            self.assertFalse((restored_root / "config/new-default.json").exists())
             self.assertEqual((restored_root / "plugins/builtin.py").read_text(encoding="utf-8"), "builtin-56.0.1")
             self.assertEqual((restored_root / "plugins/user_plugin.py").read_text(encoding="utf-8"), "custom-plugin")
 
