@@ -60,6 +60,12 @@ jobs:
           }
           $iscc >> $env:GITHUB_PATH
 
+      - name: Install Windows installer build tools
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade Pillow
+          if ($LASTEXITCODE -ne 0) { throw "Could not install Pillow for compact ICO generation." }
+
       - name: Build, scan, and smoke-test packaged runtime
         shell: pwsh
         run: |
