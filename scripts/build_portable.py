@@ -237,7 +237,9 @@ fi
 
 trap - ERR
 echo "JARVIS installed at: $TARGET"
-open -a "$TARGET"
+if [ "${JARVIS_INSTALLER_NO_LAUNCH:-0}" != "1" ]; then
+  open -a "$TARGET"
+fi
 '''
 
 
