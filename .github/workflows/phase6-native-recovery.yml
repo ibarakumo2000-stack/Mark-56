@@ -96,6 +96,10 @@ jobs:
           Set-Content -Path $personal -Value "preserve-this-user-data" -NoNewline
           $oldMarker = Join-Path $installDir "main.py"
           Set-Content -Path $oldMarker -Value "pre-upgrade-installation-marker" -NoNewline
+          $builtinPlugin = Join-Path $installDir "plugins\\game_autoplay.py"
+          Set-Content -Path $builtinPlugin -Value "pre-upgrade-builtin-plugin" -NoNewline
+          $userPlugin = Join-Path $installDir "plugins\\user_custom.py"
+          Set-Content -Path $userPlugin -Value "preserve-custom-plugin" -NoNewline
 
           $upgrade = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
           if ($upgrade.ExitCode -ne 0) { throw "Windows upgrade failed: $($upgrade.ExitCode)" }
@@ -106,8 +110,12 @@ jobs:
           $backupPython = Join-Path $backup "runtime\python.exe"
           $backupCli = Join-Path $backup "core\update_recovery_cli.py"
           if ((Get-Content $oldMarker -Raw) -eq "pre-upgrade-installation-marker") { throw "Windows upgrade did not replace the previous app files." }
+          if ((Get-Content $builtinPlugin -Raw) -eq "pre-upgrade-builtin-plugin") { throw "Windows upgrade did not replace the built-in plugin." }
+          if ((Get-Content $userPlugin -Raw) -ne "preserve-custom-plugin") { throw "Windows upgrade lost a user-installed plugin." }
           & $backupPython $backupCli --rollback-id $tx
           if ($LASTEXITCODE -ne 0) { throw "Windows recovery rollback failed." }
           if ((Get-Content $personal -Raw) -ne "preserve-this-user-data") { throw "Windows rollback lost user data." }
           if ((Get-Content $oldMarker -Raw) -ne "pre-upgrade-installation-marker") { throw "Windows rollback did not restore the previous application files." }
+          if ((Get-Content $builtinPlugin -Raw) -ne "pre-upgrade-builtin-plugin") { throw "Windows rollback did not restore the previous built-in plugin." }
+          if ((Get-Content $userPlugin -Raw) -ne "preserve-custom-plugin") { throw "Windows rollback lost a user-installed plugin." }
           Write-Host "Windows native install, upgrade, user-data preservation and rollback passed."
