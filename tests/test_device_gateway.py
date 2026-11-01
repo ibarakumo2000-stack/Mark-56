@@ -107,6 +107,10 @@ class DeviceRegistryTests(unittest.TestCase):
             self.registry.authenticate(device.token)
         self.assertFalse(self.registry.revoke_device(device.device_id))
 
+    def test_unknown_permission_scope_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.registry.create_pairing_offer(("admin",))
+
     def test_pairing_expiry_is_bounded(self):
         with self.assertRaises(ValueError):
             self.registry.create_pairing_offer(("command.send",), expires_in=5)
