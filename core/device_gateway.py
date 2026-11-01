@@ -25,6 +25,10 @@ from typing import Any, Iterable, Protocol, runtime_checkable
 
 
 DEVICE_TYPES = frozenset({"desktop", "android", "watch", "glasses", "other"})
+PERMISSION_SCOPES = frozenset({
+    "command.send", "notification.receive", "voice.capture", "camera.capture",
+    "display.render", "haptics.send", "health.read", "desktop.control",
+})
 _CODE_ALPHABET = "".join(
     char for char in (string.ascii_uppercase + string.digits)
     if char not in "O0I1L"
@@ -147,6 +151,8 @@ class DeviceRegistry:
         if not isinstance(expires_in, int) or not 30 <= expires_in <= 900:
             raise ValueError("Pairing expiry must be between 30 and 900 seconds")
         scopes = _clean_items(approved_scopes, field="approved scopes")
+        if not set(scopes).issubset(PERMISSION_SCOPES):
+            raise ValueError("Unknown permission scope")
         now = time.time()
         with self._lock:
             self._pairing_offers = {
@@ -192,6 +198,8 @@ class DeviceRegistry:
                 capabilities, field="capabilities"
             )
             requested = _clean_items(requested_scopes, field="requested scopes")
+            if not set(requested).issubset(PERMISSION_SCOPES):
+                raise ValueError("Unknown permission scope")
         except (TypeError, ValueError) as exc:
             raise PairingError(str(exc)) from exc
 
