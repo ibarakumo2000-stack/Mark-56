@@ -116,7 +116,8 @@ Name: "{app}\plugins"
 
 [Files]
 ; The staged tree already excludes secrets, personal data and dev files (see build.py).
-Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#StageDir}\config\local_model.json"; DestDir: "{app}\config"; Flags: onlyifdoesntexist
+Source: "{#StageDir}\*"; DestDir: "{app}"; Excludes: "config\local_model.json"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{#PyExe}"; Parameters: """{#LauncherArg}"""; WorkingDir: "{app}"; IconFilename: "{app}\config\jarvis.ico"; AppUserModelID: "MarkLV.Jarvis"; Tasks: startmenuicon
