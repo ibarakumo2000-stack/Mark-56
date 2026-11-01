@@ -26,7 +26,7 @@ class CompanionEventClient(
         require(token.length >= 32 && deviceId.isNotBlank())
     }
 
-    fun postBattery(level: Int, charging: Boolean): Boolean {
+    fun postBattery(level: Int, charging: Boolean): Int {
         require(level in 0..100)
         val body = JSONObject().put("level", level).put("charging", charging)
         val timestamp = System.currentTimeMillis() / 1000L
@@ -50,7 +50,7 @@ class CompanionEventClient(
             connection.setRequestProperty("Authorization", "Bearer $token")
             connection.outputStream.use { it.write(envelope.toString().toByteArray(Charsets.UTF_8)) }
             val status = connection.responseCode
-            if (status in 200..299) true else false
+            status
         } finally {
             connection.disconnect()
         }
