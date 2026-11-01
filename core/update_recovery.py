@@ -244,18 +244,21 @@ def rollback_update(
         raise RuntimeError(f"Cannot roll back an update in state {state.get('status')!r}.")
 
     install_root = Path(state["install_dir"]).expanduser()
-    if install_root.is_symlink() or not install_root.is_dir():
-        raise RuntimeError("The installation directory is missing or unsafe; rollback stopped.")
+    if install_root.is_symlink():
+        raise RuntimeError("The installation directory is unsafe; rollback stopped.")
     install_root = install_root.resolve()
+    parent = install_root.parent
+    restore = parent / f".{install_root.name}.restore-{transaction_id}"
+    failed = parent / f".{install_root.name}.failed-{transaction_id}"
+    if not install_root.is_dir() and not (
+        state.get("status") == "rollback_started" and failed.is_dir()
+    ):
+        raise RuntimeError("The installation directory is missing and no interrupted rollback backup was found.")
     backup = Path(state["backup_dir"]).resolve()
     if not _is_within(backup, tx_dir.resolve()):
         raise RuntimeError("The recorded backup path is outside its transaction directory.")
     manifest = state.get("manifest") or {}
     _verify_backup(backup, manifest)
-
-    parent = install_root.parent
-    restore = parent / f".{install_root.name}.restore-{transaction_id}"
-    failed = parent / f".{install_root.name}.failed-{transaction_id}"
 
     state["status"] = "rollback_started"
     _save_state(tx_dir, state)
@@ -307,7 +310,13 @@ def recover_if_interrupted(
             state = json.loads(state_file.read_text(encoding="utf-8"))
             if not isinstance(state, dict) or state.get("schema_version") != _SCHEMA_VERSION:
                 continue
-            if state.get("status") in (_PENDING_STATES | {"rollback_started"}):
+            if state.get("status") == "preparing":
+                shutil.rmtree(state_file.parent, ignore_errors=True)
+                results.append({
+                    "transaction_id": state_file.parent.name,
+                    "status": "discarded_incomplete_backup",
+                })
+            elif state.get("status") in (_PENDING_STATES | {"rollback_started"}):
                 results.append(rollback_update(
                     str(state.get("transaction_id") or ""),
                     recovery_dir=recovery,
