@@ -37,6 +37,7 @@ jobs:
       - name: Run recovery and platform hand-off tests
         run: |
           python -m unittest discover -s tests -p "test_update_recovery*.py" -v
+          python -m unittest discover -s tests -p "test_platform_installer_scripts.py" -v
           python -m compileall -q core installer tests
       - name: Validate Ubuntu installer shell syntax
         if: matrix.target == 'ubuntu-x64'
