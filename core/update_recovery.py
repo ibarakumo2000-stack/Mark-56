@@ -251,9 +251,7 @@ def rollback_update(
     parent = install_root.parent
     restore = parent / f".{install_root.name}.restore-{transaction_id}"
     failed = parent / f".{install_root.name}.failed-{transaction_id}"
-    if not install_root.is_dir() and not (
-        state.get("status") == "rollback_started" and failed.is_dir()
-    ):
+    if not install_root.is_dir() and not failed.is_dir():
         raise RuntimeError("The installation directory is missing and no interrupted rollback backup was found.")
     backup = Path(state["backup_dir"]).resolve()
     if not _is_within(backup, tx_dir.resolve()):
