@@ -30,7 +30,8 @@ def _short_uuid(value: Any) -> str | None:
     normalized = _normalize_uuid(value)
     if not normalized or not normalized.endswith(_BASE):
         return None
-    short = normalized[:8]\n    return short[4:] if short.startswith("0000") else short
+    short = normalized[:8]
+    return short[4:] if short.startswith("0000") else short
 
 
 CAPABILITY_SCOPES = {
