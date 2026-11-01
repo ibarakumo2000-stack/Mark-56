@@ -191,15 +191,30 @@ def _recovery_cli() -> Path:
     return APP_DIR / "core" / "update_recovery_cli.py"
 
 
+def _recovery_install_root() -> Path:
+    if sys.platform == "darwin":
+        for parent in APP_DIR.parents:
+            if parent.suffix == ".app":
+                return parent
+    return APP_DIR
+
+
 def _start_rollback_worker(transaction_id: str, backup_dir: str) -> bool:
     backup = Path(backup_dir).resolve()
-    worker = backup / "core" / "update_recovery_worker.py"
+    if sys.platform == "darwin":
+        bundled_root = backup / "Contents" / "Resources" / "MARK-LV"
+        worker = bundled_root / "core" / "update_recovery_worker.py"
+        python = bundled_root / "runtime" / "bin" / "python3.12"
+    else:
+        worker = backup / "core" / "update_recovery_worker.py"
+        if os.name == "nt":
+            python = backup / "runtime" / "python.exe"
+        else:
+            python = backup / "runtime" / "bin" / "python3.12"
     if os.name == "nt":
-        python = backup / "runtime" / "python.exe"
         flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         kwargs = {"creationflags": flags, "close_fds": True}
     else:
-        python = backup / "runtime" / "bin" / "python3.12"
         kwargs = {"start_new_session": True, "close_fds": True}
     if not python.is_file() or not worker.is_file():
         print("Update recovery helper is missing; manual recovery is required.", file=sys.stderr)
