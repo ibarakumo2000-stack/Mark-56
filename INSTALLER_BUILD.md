@@ -4,14 +4,14 @@ Produces `dist\MARK-LV-Setup-<version>.exe`: a normal Windows setup wizard that
 installs MARK LV together with its own private Python and every library it
 needs. End users never install Python, run pip or open VS Code.
 
-> **Status — read this first.** The packaging system was written and checked on
-> a Linux machine without Windows, Inno Setup or internet access. What *was*
-> verified: file staging and exclusions, the secret scan (against your real
-> project, positive and negative), the launcher's logging / secret redaction /
-> crash handling, the smoke-test logic, and that all 83 source files compile on
-> Python 3.12. What was **not** possible: building the runtime, compiling the
-> `.exe`, and installing it. **Your first real build will be the first time
-> those steps run** — follow "First build" below and send me any error.
+> **Status — read this first.** The Phase 6 native verification matrix passed on
+> Windows x64, Ubuntu x64, macOS Apple Silicon, and macOS Intel. The Windows
+> runner compiled Inno Setup and exercised fresh installation, upgrade,
+> interrupted-update recovery, user-data preservation, and rollback. The Linux
+> and macOS runners exercised their recovery-aware installer scripts. This CI
+> result is not a substitute for final acceptance on real end-user hardware.
+> Ubuntu and macOS installer flows have separate native-runner tests; see
+> [Update Recovery](docs/UPDATE_RECOVERY.md).
 
 ## Why a bundled Python runtime and not PyInstaller
 
@@ -33,7 +33,8 @@ shortcuts start `runtime\pythonw.exe launcher.pyw`.
 1. Windows 10/11 x64 with internet access.
 2. Python 3.9+ (only to run the build script).
 3. [Inno Setup 6.3 or newer](https://jrsoftware.org/isdl.php).
-4. Copy these into the project root (next to `main.py`), keeping the names:
+4. Install the host-side icon build dependency: `python -m pip install Pillow`.
+5. Copy these into the project root (next to `main.py`), keeping the names:
    `installer\`, `scripts\`, `INSTALLER_BUILD.md`.
 
 ## Build
@@ -120,13 +121,15 @@ installer task, otherwise on first use).
 * **Branding:** edit the `#define` block at the top of `installer\MarkLV.iss`
   (name, publisher, URL, GUID — never change the GUID between releases or
   upgrades stop replacing the old install); recolour/retitle the wizard art in
-  `installer\assets\make_wizard_images.py` and run it. The icon is `config\jarvis.ico`.
+  `installer\assets\make_wizard_images.py` and run it. The source icon is
+  `config\jarvis.png`; the build creates a compact multi-resolution
+  `config\jarvis.ico` for Inno Setup.
 * **Signing:** unsigned installers trigger Windows SmartScreen. With a
   certificate: `scripts\build_installer.bat --sign-command "signtool sign /f my.pfx /p PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 $f"`.
   Nothing claims to be signed unless this is used.
 * **Update notifications:** the app checks the latest stable GitHub Release in the background and offers a platform-specific download link. It does not silently install the file. The first release containing this checker must be installed manually by users on older builds; later releases can be announced from inside the app.
 * **Release publishing:** the Windows release workflow creates a **draft**. Attach the Linux and macOS packages built for the same tag before publishing the draft as the latest stable release; otherwise those users will not have a matching package to download. The checker uses the `VERSION` file stamped into the installed build and the public `releases/latest` API.
-* **Full self-update:** downloading and validating packages inside the application, verifying SHA-256 before installation, backup/rollback, and automatically launching the installer remain unimplemented. Continue to keep installation explicit until those checks are built and tested.
+* **Update and recovery:** the app stages official release assets and verifies SHA-256 before showing the explicit install hand-off. Windows Inno Setup, the Ubuntu installer, and the macOS `Install.command` now create local backups and support rollback after installer or startup failures. The packaged launcher uses a 90-second stability window as a health heuristic. It is not a full feature test, and the updater still requires the user to confirm installation.
 
 ## Test it
 
@@ -145,6 +148,12 @@ Manual clean-machine checklist (no Python, no VS Code, no pip, none of the libra
 - [ ] Log exists at `%LOCALAPPDATA%\MARK-LV\logs\` and contains no key
 - [ ] Settings → Apps lists MARK LV; Uninstall asks about personal data; shortcuts and folder removed
 - [ ] Reinstall after "keep data" → previous API key and memory are still there
+- [ ] Upgrade an existing installation → user settings, memory, and plugins remain intact
+- [ ] Simulate an interrupted or failed upgrade → the previous application is restored
+
+## Native recovery verification
+
+The Phase 6 workflow (`.github/workflows/phase6-native-recovery.yml`) runs native Windows x64, Ubuntu x64, macOS Apple Silicon, and macOS Intel jobs. It compiles Inno Setup, validates Linux/macOS installer shell syntax, and exercises installer upgrade, user-data preservation, and rollback scenarios. This CI coverage should pass before publishing a release. It does not replace manual acceptance on real end-user devices.
 
 ## Known limitations
 
@@ -153,7 +162,10 @@ Manual clean-machine checklist (no Python, no VS Code, no pip, none of the libra
   dialog). The app's own *restart*, *auto-start with Windows* and self-made
   desktop shortcut start `main.py` directly — they work, but without the log file.
 * Installer size is large (expect several hundred MB; OpenCV, Qt, ONNX, ctranslate2).
-* Windows 10/11 x64 only. macOS/Linux were out of scope.
+* Windows installer supports x64. Linux release package supports x86_64. macOS has separate Apple Silicon and Intel DMGs. The recovery-aware macOS installer targets `~/Applications/JARVIS.app`; manually dragging the bundle bypasses recovery.
+* The launcher can roll back after it starts executing. If the new Python runtime cannot start at all, manual recovery may be required.
+* The 90-second startup stability window is a heuristic; it does not prove every app feature is healthy.
+* Packages are not code-signed/notarized by default.
 * CC BY-NC 4.0 (see `LICENSE`, shown in the wizard): redistribution must be non-commercial and credit the author.
 
 ## Troubleshooting

@@ -111,17 +111,31 @@ Implemented in `plugins/screen_agent.py` with a `screen_agent` tool entry point:
 Safety tests are in `tests/test_screen_agent.py`. Local test execution is still required; a GitHub commit is not evidence that desktop capture or plugin auto-discovery works on the target Ubuntu session. The agent is intentionally conservative and is not yet an autonomous multi-step computer-use system.
 
 
-## Phase 6 — Update reliability and recovery (implementation in progress)
+## Phase 6 — Update reliability and recovery (platform integration implemented; native CI matrix passed)
 
-### Implemented in the Phase 6 branch
-- Added `core/update_recovery.py` with per-user local snapshots, SHA-256 manifests, atomic transaction journals, explicit install/health-check/confirmation states, verified rollback, and retryable recovery after an interrupted rollback swap.
-- Added `tests/test_update_recovery.py` covering backup creation, symlink/path rejection, failed update rollback, interrupted install recovery, health-check rollback, confirmed update cleanup, backup tampering, and rollback retry.
-- Added `docs/UPDATE_RECOVERY.md` describing the adapter lifecycle and platform integration requirements.
+### Implemented
+- `core/update_recovery.py`: local installation snapshots, SHA-256 manifests, atomic transaction journals, safe internal symlink preservation, verified rollback, and retryable interrupted rollback.
+- `core/update_recovery_cli.py`: command adapter used by native installers and launchers.
+- `core/update_recovery_worker.py`: detached recovery process that waits for the failed launcher to exit before replacing the application directory.
+- Windows Inno Setup: pre-upgrade backup, failed-setup rollback, and post-install health-check state.
+- Ubuntu installer: staged package replacement, preservation of user-data directories, and shell error-trap rollback.
+- macOS DMG: recovery-aware `Install.command`, full app-bundle backup, user-data preservation, and separate Apple Silicon / Intel builds.
+- Packaged launcher: 90-second startup stability check, confirmation cleanup, and rollback hand-off after an exception or a detected interrupted startup.
+- Windows installer build now regenerates a compact multi-resolution ICO from `config/jarvis.png` to avoid Inno Setup's resource-size failure.
+- Tests cover recovery engine behavior, platform CLI hand-offs, installer script upgrade/data-preservation/rollback scenarios, and native OS validation.
 
-### Not yet complete
-- The existing Windows Inno Setup installer does not yet invoke the recovery engine before replacing application files.
-- The Linux install script still copies over the installation directory and does not yet use a staged directory swap plus recovery launcher.
-- The macOS DMG remains a drag-and-drop application bundle; it has no recovery-aware installer/launcher.
-- Native Windows, Ubuntu, Apple Silicon, and Intel recovery tests have not been run.
+### Native verification — passed
+- Added `.github/workflows/phase6-native-recovery.yml` for Windows x64, Ubuntu x64, macOS Apple Silicon, and macOS Intel.
+- All four native runner jobs passed in workflow run [41355993704](https://github.com/ibarakumo2000-stack/Mark-56/actions/runs/41355993704).
+- Linux and macOS jobs ran the actual generated installer scripts through install → upgrade → preserve user data/plugins → simulate interrupted replacement → rollback scenarios.
+- Windows compiled the Inno Setup installer and passed fresh install, upgrade, damaged-runtime recovery/retry, user-data preservation, and rollback checks.
+- The workflow also validated shell syntax and compiled application/recovery sources.
 
-**Status:** recovery engine implemented; end-to-end automatic rollback is not yet production-ready. Do not describe Phase 6 as fully complete until the platform adapters and native tests above are finished.
+### Remaining acceptance checks
+- Wait for the latest native workflow run to pass on all four runners.
+- Review the Inno Setup compile and real Windows install/upgrade/rollback results.
+- Run a final manual acceptance test on a real Windows PC, Ubuntu desktop, Apple Silicon Mac, and Intel Mac where available.
+- Confirm the app starts normally after a successful upgrade and that the backup is removed only after the health check.
+- Confirm recovery behavior when the app is forcibly terminated during the first launch.
+
+**Status:** platform integration is implemented. Phase 6 is not yet declared fully complete until the latest four-platform CI run passes and the remaining real-device acceptance checks are recorded. The 90-second startup window is a heuristic and does not guarantee every application feature is healthy.

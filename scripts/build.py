@@ -103,6 +103,30 @@ def skipped(rel: str, is_dir: bool) -> bool:
             or any(fnmatch.fnmatch(rel, g) for g in SKIP_REL_GLOBS))
 
 
+def optimize_installer_icon() -> None:
+    """Generate a compact multi-resolution ICO for Inno Setup resource embedding."""
+    source = STAGE / "config" / "jarvis.png"
+    destination = STAGE / "config" / "jarvis.ico"
+    if not source.is_file():
+        die("config/jarvis.png is required to generate the Windows installer icon")
+    try:
+        from PIL import Image
+    except ImportError:
+        die("Pillow is required by the Windows installer build host. Run: python -m pip install Pillow")
+    try:
+        with Image.open(source) as original:
+            icon = original.convert("RGBA")
+            icon.save(
+                destination,
+                format="ICO",
+                sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+            )
+    except Exception as exc:
+        die(f"could not generate compact Windows installer icon: {type(exc).__name__}: {exc}")
+    if destination.stat().st_size > 512_000:
+        die(f"generated Windows installer icon is unexpectedly large: {destination.stat().st_size:,} bytes")
+
+
 def stage_source() -> list[str]:
     left_out: list[str] = []
 
@@ -343,6 +367,7 @@ def main() -> None:
 
     step(2, "stage application files")
     left_out = stage_source()
+    optimize_installer_icon()
     (STAGE / "VERSION").write_text(version + "\n", encoding="utf-8")
     n = sum(1 for p in STAGE.rglob("*") if p.is_file())
     print(f"  staged {n} files; left out {len(left_out)} entries:")

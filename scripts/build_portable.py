@@ -38,31 +38,121 @@ RUNTIMES = {
 }
 
 LINUX_INSTALLER = r'''#!/usr/bin/env bash
-set -eo pipefail
+set -Eeuo pipefail
 SOURCE_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 INSTALL_ROOT="$HOME/.local/share/Programs/MARK-LV"
 BIN_DIR="$HOME/.local/bin"
 APP_DIR="$HOME/.local/share/applications"
+STAGING="${INSTALL_ROOT}.new.$$"
+TX_ID=""
+RECOVERY_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/mark56/update-recovery"
+
 echo "JARVIS / MARK 56 — Linux installer"
 echo "Install location: $INSTALL_ROOT"
-if command -v apt-get >/dev/null 2>&1 && [ "${JARVIS_INSTALL_SYSTEM_LIBS:-0}" = "1" ]; then
-  packages="libasound2 libpulse0 libegl1 libgl1 libportaudio2 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0"
-  if [ "$(id -u)" -eq 0 ]; then
-    apt-get update && apt-get install -y $packages
-  elif command -v sudo >/dev/null 2>&1; then
-    sudo apt-get update && sudo apt-get install -y $packages
-  else
-    echo "sudo is unavailable; install required Qt/audio libraries using your package manager." >&2
+OLD_PYTHON="$INSTALL_ROOT/runtime/bin/python3.12"
+OLD_CLI="$INSTALL_ROOT/core/update_recovery_cli.py"
+if [ ! -e "$INSTALL_ROOT" ] || [ ! -x "$OLD_PYTHON" ] || [ ! -f "$OLD_CLI" ] || ! "$OLD_PYTHON" --version >/dev/null 2>&1; then
+  RECOVERY_TX_ID="$(cat "$RECOVERY_DIR/latest.txt" 2>/dev/null || true)"
+  RECOVERY_BACKUP="$RECOVERY_DIR/$RECOVERY_TX_ID/backup"
+  if [ -n "$RECOVERY_TX_ID" ] && [ -x "$RECOVERY_BACKUP/runtime/bin/python3.12" ]; then
+    "$RECOVERY_BACKUP/runtime/bin/python3.12" "$RECOVERY_BACKUP/core/update_recovery_cli.py" --rollback-id "$RECOVERY_TX_ID"
   fi
-elif command -v apt-get >/dev/null 2>&1; then
-  echo "Optional Ubuntu/Debian desktop/audio libraries:"
-  echo "  JARVIS_INSTALL_SYSTEM_LIBS=1 bash install.sh"
 fi
-mkdir -p "$INSTALL_ROOT" "$BIN_DIR" "$APP_DIR"
-cp -a "$SOURCE_DIR/." "$INSTALL_ROOT/"
+if [ -d "$INSTALL_ROOT" ] && [ -x "$INSTALL_ROOT/runtime/bin/python3.12" ] && [ -f "$INSTALL_ROOT/core/update_recovery_cli.py" ]; then
+  PREPARE_JSON="$("$INSTALL_ROOT/runtime/bin/python3.12" "$INSTALL_ROOT/core/update_recovery_cli.py" --prepare "$INSTALL_ROOT")"
+  TX_ID="$(printf '%s' "$PREPARE_JSON" | "$INSTALL_ROOT/runtime/bin/python3.12" -c 'import json,sys; print(json.load(sys.stdin)["transaction_id"])')"
+  echo "Created and verified local recovery snapshot: $TX_ID"
+elif [ -e "$INSTALL_ROOT" ]; then
+  echo "Existing installation has no usable recovery runtime; refusing an unsafe in-place upgrade." >&2
+  exit 1
+fi
+
+rollback_on_error() {
+  status=$?
+  trap - ERR
+  if [ -n "$TX_ID" ]; then
+    BACKUP="$RECOVERY_DIR/$TX_ID/backup"
+    BACKUP_PYTHON="$BACKUP/runtime/bin/python3.12"
+    if [ -x "$BACKUP_PYTHON" ]; then
+      echo "Installation failed; restoring the previous Mark 56 version..."
+      "$BACKUP_PYTHON" "$BACKUP/core/update_recovery_cli.py" --rollback-id "$TX_ID" || {
+        echo "Automatic rollback could not finish. Recovery data remains at: $RECOVERY_DIR/$TX_ID" >&2
+      }
+    else
+      echo "Recovery runtime missing. Backup retained at: $BACKUP" >&2
+    fi
+  fi
+  rm -rf "$STAGING"
+  exit "$status"
+}
+trap rollback_on_error ERR
+
+mkdir -p "$STAGING" "$BIN_DIR" "$APP_DIR"
+cp -a "$SOURCE_DIR/." "$STAGING/"
+if [ -n "$TX_ID" ]; then
+  if [ -d "$INSTALL_ROOT/config" ]; then
+    mkdir -p "$STAGING/config"
+    cp -a "$INSTALL_ROOT/config/." "$STAGING/config/"
+  fi
+  for data_dir in memory cache uploads; do
+    if [ -e "$INSTALL_ROOT/$data_dir" ]; then
+      rm -rf "$STAGING/$data_dir"
+      cp -a "$INSTALL_ROOT/$data_dir" "$STAGING/$data_dir"
+    fi
+  done
+  if [ -d "$INSTALL_ROOT/plugins" ]; then
+    mkdir -p "$STAGING/plugins"
+    BACKUP_ROOT="$RECOVERY_DIR/$TX_ID/backup"
+    "$BACKUP_ROOT/runtime/bin/python3.12" - "$INSTALL_ROOT/plugins" "$STAGING/plugins" <<'PY'
+import os, shutil, sys
+source, destination = sys.argv[1:3]
+for current, directories, files in os.walk(source, followlinks=False):
+    relative = os.path.relpath(current, source)
+    target_dir = destination if relative == "." else os.path.join(destination, relative)
+    os.makedirs(target_dir, exist_ok=True)
+    for name in list(directories):
+        src = os.path.join(current, name)
+        dst = os.path.join(target_dir, name)
+        if os.path.islink(src):
+            directories.remove(name)
+            if not os.path.lexists(dst):
+                os.symlink(os.readlink(src), dst)
+        else:
+            os.makedirs(dst, exist_ok=True)
+    for name in files:
+        src = os.path.join(current, name)
+        dst = os.path.join(target_dir, name)
+        if not os.path.lexists(dst):
+            if os.path.islink(src):
+                os.symlink(os.readlink(src), dst)
+            else:
+                shutil.copy2(src, dst)
+PY
+  fi
+  FAILED="$(dirname "$INSTALL_ROOT")/.$(basename "$INSTALL_ROOT").failed-$TX_ID"
+  mv "$INSTALL_ROOT" "$FAILED"
+  mv "$STAGING" "$INSTALL_ROOT"
+  NEW_PYTHON="$INSTALL_ROOT/runtime/bin/python3.12"
+  "$NEW_PYTHON" "$INSTALL_ROOT/core/update_recovery_cli.py" --mark-awaiting
+  rm -rf "$FAILED"
+else
+  mv "$STAGING" "$INSTALL_ROOT"
+fi
+
 chmod +x "$INSTALL_ROOT/launch.sh"
 cat > "$BIN_DIR/mark56" <<LAUNCHER
 #!/usr/bin/env bash
+RECOVERY_DIR="$RECOVERY_DIR"
+if [ ! -x "$INSTALL_ROOT/launch.sh" ] || [ ! -x "$INSTALL_ROOT/runtime/bin/python3.12" ] || ! "$INSTALL_ROOT/runtime/bin/python3.12" --version >/dev/null 2>&1; then
+  TX_ID="\$(cat "\$RECOVERY_DIR/latest.txt" 2>/dev/null || true)"
+  BACKUP="\$RECOVERY_DIR/\$TX_ID/backup"
+  if [ -n "\$TX_ID" ] && [ -x "\$BACKUP/runtime/bin/python3.12" ]; then
+    "\$BACKUP/runtime/bin/python3.12" "\$BACKUP/core/update_recovery_cli.py" --rollback-id "\$TX_ID" || exit 1
+  else
+    echo "Mark 56 cannot start and no usable recovery backup was found." >&2
+    exit 1
+  fi
+fi
 exec "$INSTALL_ROOT/launch.sh" "\$@"
 LAUNCHER
 chmod +x "$BIN_DIR/mark56"
@@ -79,6 +169,16 @@ Icon=$ICON_PATH
 Terminal=false
 Categories=Utility;Development;
 DESKTOP
+
+if [ "${JARVIS_INSTALL_SYSTEM_LIBS:-0}" = "1" ] && command -v apt-get >/dev/null 2>&1; then
+  packages="libasound2 libpulse0 libegl1 libgl1 libportaudio2 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0"
+  if [ "$(id -u)" -eq 0 ]; then apt-get update && apt-get install -y $packages
+  elif command -v sudo >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y $packages
+  else echo "sudo unavailable; install desktop/audio libraries with your package manager." >&2
+  fi
+fi
+
+trap - ERR
 echo "Installation complete. Launch from the applications menu or run: $BIN_DIR/mark56"
 '''
 LINUX_LAUNCHER = r'''#!/usr/bin/env bash
@@ -106,15 +206,157 @@ Only install software downloaded from the official Mark-56 GitHub Release.
 MAC_README = """JARVIS / MARK 56 — macOS installer
 
 1. Open this disk image.
-2. Drag JARVIS.app into Applications.
-3. Open JARVIS from Applications and grant privacy permissions only for features
-   you intend to use.
+2. Control-click Install.command and choose Open if Gatekeeper asks.
+3. The installer places JARVIS.app in ~/Applications. On upgrades it creates
+   and verifies a local backup, preserves user data, and swaps the app bundle.
+4. Launch JARVIS from Applications and grant privacy permissions only for
+   features you intend to use.
 
-This macOS package is not signed or notarized with an Apple Developer ID. macOS
-may show a security warning. Verify the DMG came from the official Mark-56
-GitHub Releases page before opening it. Apple silicon and Intel have separate
-downloads. Online AI features need internet access and your own provider key.
+Use Install.command for upgrades; manually dragging the app bypasses the
+automatic backup and rollback workflow.
+
+This package is not signed or notarized with an Apple Developer ID. macOS may
+show a security warning. Verify the DMG came from the official Mark-56 GitHub
+Releases page before opening it. Apple silicon and Intel have separate builds.
+Online AI features need internet access and your own provider key.
 """
+
+MAC_INSTALLER = r'''#!/bin/bash
+set -Eeuo pipefail
+if [ "${JARVIS_INSTALLER_DEBUG:-0}" = "1" ]; then set -x; fi
+SOURCE_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+SOURCE_APP="$SOURCE_DIR/JARVIS.app"
+APPLICATIONS="$HOME/Applications"
+TARGET="$APPLICATIONS/JARVIS.app"
+STAGING="$APPLICATIONS/.JARVIS.app.new.$$"
+RECOVERY_DIR="$HOME/Library/Application Support/MARK-LV/update-recovery"
+TX_ID=""
+
+echo "JARVIS / MARK 56 — macOS installer"
+mkdir -p "$APPLICATIONS"
+
+rollback_on_error() {
+  status=$?
+  trap - ERR
+  if [ -n "$TX_ID" ]; then
+    BACKUP="$RECOVERY_DIR/$TX_ID/backup"
+    BACKUP_ROOT="$BACKUP/Contents/Resources/MARK-LV"
+    BACKUP_PYTHON="$BACKUP_ROOT/runtime/bin/python3.12"
+    if [ -x "$BACKUP_PYTHON" ]; then
+      echo "Installation failed; restoring the previous JARVIS application..."
+      "$BACKUP_PYTHON" "$BACKUP_ROOT/core/update_recovery_cli.py" --rollback-id "$TX_ID" || {
+        echo "Automatic rollback failed. Recovery backup retained at: $BACKUP" >&2
+      }
+    else
+      echo "Recovery runtime missing. Backup retained at: $BACKUP" >&2
+    fi
+  fi
+  rm -rf "$STAGING"
+  exit "$status"
+}
+trap rollback_on_error ERR
+
+if [ ! -d "$TARGET" ]; then
+  RECOVERY_TX_ID="$(cat "$RECOVERY_DIR/latest.txt" 2>/dev/null || true)"
+  RECOVERY_BACKUP="$RECOVERY_DIR/$RECOVERY_TX_ID/backup"
+  RECOVERY_ROOT="$RECOVERY_BACKUP/Contents/Resources/MARK-LV"
+  if [ -n "$RECOVERY_TX_ID" ] && [ -x "$RECOVERY_ROOT/runtime/bin/python3.12" ]; then
+    "$RECOVERY_ROOT/runtime/bin/python3.12" "$RECOVERY_ROOT/core/update_recovery_cli.py" --rollback-id "$RECOVERY_TX_ID"
+  fi
+  if [ "${JARVIS_RECOVERY_ONLY:-0}" = "1" ]; then
+    exit 0
+  fi
+fi
+
+if [ -d "$TARGET" ]; then
+  CURRENT_ROOT="$TARGET/Contents/Resources/MARK-LV"
+  CURRENT_PYTHON="$CURRENT_ROOT/runtime/bin/python3.12"
+  CURRENT_CLI="$CURRENT_ROOT/core/update_recovery_cli.py"
+  if [ ! -x "$CURRENT_PYTHON" ] || [ ! -f "$CURRENT_CLI" ] || ! "$CURRENT_PYTHON" --version >/dev/null 2>&1; then
+    RECOVERY_TX_ID="$(cat "$RECOVERY_DIR/latest.txt" 2>/dev/null || true)"
+    RECOVERY_BACKUP="$RECOVERY_DIR/$RECOVERY_TX_ID/backup"
+    RECOVERY_ROOT="$RECOVERY_BACKUP/Contents/Resources/MARK-LV"
+    if [ -n "$RECOVERY_TX_ID" ] && [ -x "$RECOVERY_ROOT/runtime/bin/python3.12" ]; then
+      "$RECOVERY_ROOT/runtime/bin/python3.12" "$RECOVERY_ROOT/core/update_recovery_cli.py" --rollback-id "$RECOVERY_TX_ID"
+    else
+      echo "The installed JARVIS runtime is damaged and no usable recovery backup was found." >&2
+      exit 1
+    fi
+  fi
+fi
+
+if [ -d "$TARGET" ]; then
+  OLD_ROOT="$TARGET/Contents/Resources/MARK-LV"
+  OLD_PYTHON="$OLD_ROOT/runtime/bin/python3.12"
+  OLD_CLI="$OLD_ROOT/core/update_recovery_cli.py"
+  if [ ! -x "$OLD_PYTHON" ] || [ ! -f "$OLD_CLI" ]; then
+    echo "Existing JARVIS installation has no usable recovery runtime. Refusing an unsafe upgrade." >&2
+    exit 1
+  fi
+  PREPARE_JSON="$("$OLD_PYTHON" "$OLD_CLI" --prepare "$TARGET")"
+  TX_ID="$(printf '%s' "$PREPARE_JSON" | "$OLD_PYTHON" -c 'import json,sys; print(json.load(sys.stdin)["transaction_id"])')"
+  echo "Created and verified local recovery snapshot: $TX_ID"
+fi
+
+ditto "$SOURCE_APP" "$STAGING"
+if [ -n "$TX_ID" ]; then
+  OLD_ROOT="$TARGET/Contents/Resources/MARK-LV"
+  NEW_ROOT="$STAGING/Contents/Resources/MARK-LV"
+  if [ -d "$OLD_ROOT/config" ]; then
+    mkdir -p "$NEW_ROOT/config"
+    cp -R "$OLD_ROOT/config/." "$NEW_ROOT/config/"
+  fi
+  for data_dir in memory cache uploads; do
+    if [ -e "$OLD_ROOT/$data_dir" ]; then
+      rm -rf "$NEW_ROOT/$data_dir"
+      ditto "$OLD_ROOT/$data_dir" "$NEW_ROOT/$data_dir"
+    fi
+  done
+  if [ -d "$OLD_ROOT/plugins" ]; then
+    mkdir -p "$NEW_ROOT/plugins"
+    BACKUP_ROOT="$RECOVERY_DIR/$TX_ID/backup/Contents/Resources/MARK-LV"
+    "$BACKUP_ROOT/runtime/bin/python3.12" - "$OLD_ROOT/plugins" "$NEW_ROOT/plugins" <<'PY'
+import os, shutil, sys
+source, destination = sys.argv[1:3]
+for current, directories, files in os.walk(source, followlinks=False):
+    relative = os.path.relpath(current, source)
+    target_dir = destination if relative == "." else os.path.join(destination, relative)
+    os.makedirs(target_dir, exist_ok=True)
+    for name in list(directories):
+        src = os.path.join(current, name)
+        dst = os.path.join(target_dir, name)
+        if os.path.islink(src):
+            directories.remove(name)
+            if not os.path.lexists(dst):
+                os.symlink(os.readlink(src), dst)
+        else:
+            os.makedirs(dst, exist_ok=True)
+    for name in files:
+        src = os.path.join(current, name)
+        dst = os.path.join(target_dir, name)
+        if not os.path.lexists(dst):
+            if os.path.islink(src):
+                os.symlink(os.readlink(src), dst)
+            else:
+                shutil.copy2(src, dst)
+PY
+  fi
+  FAILED="$APPLICATIONS/.JARVIS.app.failed-$TX_ID"
+  mv "$TARGET" "$FAILED"
+  mv "$STAGING" "$TARGET"
+  NEW_ROOT="$TARGET/Contents/Resources/MARK-LV"
+  "$NEW_ROOT/runtime/bin/python3.12" "$NEW_ROOT/core/update_recovery_cli.py" --mark-awaiting
+  rm -rf "$FAILED"
+else
+  mv "$STAGING" "$TARGET"
+fi
+
+trap - ERR
+echo "JARVIS installed at: $TARGET"
+if [ "${JARVIS_INSTALLER_NO_LAUNCH:-0}" != "1" ]; then
+  open -a "$TARGET"
+fi
+'''
 
 
 def sha256(path: Path) -> str:
@@ -237,6 +479,9 @@ with Image.open(src) as original:
     with (contents / "Info.plist").open("wb") as stream:
         plistlib.dump(info, stream)
     (dmg_root / "READ-ME-FIRST.txt").write_text(MAC_README, encoding="utf-8")
+    installer_script = dmg_root / "Install.command"
+    installer_script.write_text(MAC_INSTALLER, encoding="utf-8")
+    installer_script.chmod(0o755)
     (dmg_root / "Applications").symlink_to("/Applications", target_is_directory=True)
     return dmg_root
 

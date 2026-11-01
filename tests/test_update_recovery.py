@@ -1,6 +1,7 @@
 """Unit tests for local update backup, confirmation and rollback behaviour."""
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -148,6 +149,29 @@ class UpdateRecoveryTests(unittest.TestCase):
         self.assertEqual(results[0]["status"], "rolled_back")
         self.assertEqual((self.install / "main.py").read_text(encoding="utf-8"), "old version")
         self.assertFalse(failed.exists())
+
+
+    def test_internal_runtime_symlink_is_preserved_in_snapshot_and_rollback(self):
+        link = self.install / "runtime" / "python-link"
+        try:
+            link.symlink_to("python.bin")
+        except (OSError, NotImplementedError):
+            self.skipTest("Symlinks are unavailable in this environment")
+        transaction_id = self._prepare_and_start()
+        link.unlink()
+        link.symlink_to("missing-target")
+        result = update_recovery.rollback_update(
+            transaction_id, recovery_dir=self.recovery
+        )
+        self.assertEqual(result["status"], "rolled_back")
+        restored = self.install / "runtime" / "python-link"
+        self.assertTrue(restored.is_symlink())
+        self.assertEqual(restored.readlink().as_posix(), "python.bin")
+
+
+    def test_process_liveness_check_does_not_signal_current_process(self):
+        self.assertTrue(update_recovery.process_is_alive(os.getpid()))
+        self.assertFalse(update_recovery.process_is_alive(2**31 - 1))
 
 
 if __name__ == "__main__":

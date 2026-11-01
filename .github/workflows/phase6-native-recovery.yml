@@ -1,0 +1,134 @@
+name: Mark 56 Phase 6 — Native recovery verification
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-recovery:
+    concurrency:
+      group: mark56-phase6-native-${{ github.ref }}-${{ matrix.target }}
+      cancel-in-progress: true
+    name: Recovery tests — ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            runner: windows-latest
+          - target: ubuntu-x64
+            runner: ubuntu-24.04
+          - target: macos-arm64
+            runner: macos-26
+          - target: macos-x64
+            runner: macos-26-intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run recovery and platform hand-off tests
+        run: |
+          python -m unittest discover -s tests -p "test_update_recovery*.py" -v
+          python -m unittest discover -s tests -p "test_platform_installer_scripts.py" -v
+          python -m compileall -q core installer tests
+      - name: Validate Ubuntu installer shell syntax
+        if: matrix.target == 'ubuntu-x64'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          import build_portable
+          Path("/tmp/mark56-linux-install.sh").write_text(build_portable.LINUX_INSTALLER)
+          Path("/tmp/mark56-linux-launch.sh").write_text(build_portable.LINUX_LAUNCHER)
+          PY
+          bash -n /tmp/mark56-linux-install.sh
+          bash -n /tmp/mark56-linux-launch.sh
+      - name: Validate macOS installer shell syntax
+        if: startsWith(matrix.target, 'macos-')
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          import build_portable
+          Path("/tmp/mark56-macos-install.command").write_text(build_portable.MAC_INSTALLER)
+          PY
+          bash -n /tmp/mark56-macos-install.command
+      - name: Compile Windows Inno Setup installer
+        if: matrix.target == 'windows-x64'
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade Pillow
+          if ($LASTEXITCODE -ne 0) { throw "Could not install the Windows icon build dependency." }
+          python scripts/build.py --stage-only
+          if ($LASTEXITCODE -ne 0) { throw "Windows staging preflight failed." }
+          choco install innosetup --yes --no-progress
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler was not installed." }
+          $stage = Join-Path $PWD "build\stage"
+          $runtime = Join-Path $stage "runtime"
+          New-Item -ItemType Directory -Force $runtime | Out-Null
+          $embedZip = Join-Path $env:RUNNER_TEMP "python-3.12.10-embed-amd64.zip"
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip" -OutFile $embedZip
+          Expand-Archive -Path $embedZip -DestinationPath $runtime -Force
+          @("python312.zip", ".", "..", "import site") | Set-Content -Path (Join-Path $runtime "python312._pth") -Encoding Ascii
+          if (-not (Test-Path (Join-Path $runtime "python.exe"))) { throw "Bundled test Python runtime is incomplete." }
+          & (Join-Path $runtime "python.exe") -c "import pathlib, shutil, hashlib, ctypes; print('Embedded recovery runtime OK')"
+          if ($LASTEXITCODE -ne 0) { throw "Embedded test Python runtime cannot import recovery dependencies." }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & $iscc /DAppVersion=56.0.2 /DAppVersionInfo=56.0.2.0 "/DStageDir=$stage" "/DOutDir=$PWD\dist" installer\MarkLV.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed." }
+
+          $installer = Join-Path $PWD "dist\MARK-LV-Setup-56.0.2.exe"
+          $installDir = Join-Path $env:RUNNER_TEMP "Mark56 Recovery Test"
+          $setupArgs = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$installDir`""
+          $first = Start-Process -FilePath $installer -ArgumentList $setupArgs -Wait -PassThru
+          if ($first.ExitCode -ne 0) { throw "Fresh Windows install failed: $($first.ExitCode)" }
+          $personal = Join-Path $installDir "config\phase6-user-data.txt"
+          Set-Content -Path $personal -Value "preserve-this-user-data" -NoNewline
+          $localModel = Join-Path $installDir "config\local_model.json"
+          Set-Content -Path $localModel -Value '{"selected_model":"user-choice"}' -NoNewline
+          $oldMarker = Join-Path $installDir "main.py"
+          Set-Content -Path $oldMarker -Value "pre-upgrade-installation-marker" -NoNewline
+          $builtinPlugin = Join-Path $installDir "plugins\game_autoplay.py"
+          Set-Content -Path $builtinPlugin -Value "pre-upgrade-builtin-plugin" -NoNewline
+          $userPlugin = Join-Path $installDir "plugins\user_custom.py"
+          Set-Content -Path $userPlugin -Value "preserve-custom-plugin" -NoNewline
+
+          $upgrade = Start-Process -FilePath $installer -ArgumentList $setupArgs -Wait -PassThru
+          if ($upgrade.ExitCode -ne 0) { throw "Windows upgrade failed: $($upgrade.ExitCode)" }
+          $recoveryRoot = Join-Path $env:LOCALAPPDATA "MARK-LV\update-recovery"
+          $tx = (Get-Content (Join-Path $recoveryRoot "latest.txt") -Raw).Trim()
+          if (-not $tx) { throw "Windows installer did not create a recovery transaction." }
+          # Simulate an interrupted update that left the new runtime unusable.
+          Remove-Item (Join-Path $installDir "runtime") -Recurse -Force
+          $retry = Start-Process -FilePath $installer -ArgumentList $setupArgs -Wait -PassThru
+          if ($retry.ExitCode -ne 0) { throw "Windows installer could not recover and retry an interrupted update." }
+          $tx = (Get-Content (Join-Path $recoveryRoot "latest.txt") -Raw).Trim()
+          if (-not $tx) { throw "Windows recovery retry did not create a new transaction." }
+          $backup = Join-Path $recoveryRoot "$tx\backup"
+          if ((Get-Content $personal -Raw) -ne "preserve-this-user-data") { throw "Windows upgrade lost user data." }
+          if ((Get-Content $localModel -Raw) -ne '{"selected_model":"user-choice"}') { throw "Windows upgrade lost local model preferences." }
+          if ((Get-Content $userPlugin -Raw) -ne "preserve-custom-plugin") { throw "Windows upgrade lost a user-installed plugin." }
+          $backupPython = Join-Path $backup "runtime\python.exe"
+          $backupCli = Join-Path $backup "core\update_recovery_cli.py"
+          if ((Get-Content $oldMarker -Raw) -eq "pre-upgrade-installation-marker") { throw "Windows upgrade did not replace the previous app files." }
+          if ((Get-Content $builtinPlugin -Raw) -eq "pre-upgrade-builtin-plugin") { throw "Windows upgrade did not replace the built-in plugin." }
+          if ((Get-Content $userPlugin -Raw) -ne "preserve-custom-plugin") { throw "Windows upgrade lost a user-installed plugin." }
+          & $backupPython $backupCli --rollback-id $tx
+          if ($LASTEXITCODE -ne 0) { throw "Windows recovery rollback failed." }
+          if ((Get-Content $personal -Raw) -ne "preserve-this-user-data") { throw "Windows rollback lost user data." }
+          if ((Get-Content $localModel -Raw) -ne '{"selected_model":"user-choice"}') { throw "Windows upgrade/rollback lost local model preferences." }
+          if ((Get-Content $oldMarker -Raw) -ne "pre-upgrade-installation-marker") { throw "Windows rollback did not restore the previous application files." }
+          if ((Get-Content $builtinPlugin -Raw) -ne "pre-upgrade-builtin-plugin") { throw "Windows rollback did not restore the previous built-in plugin." }
+          if ((Get-Content $userPlugin -Raw) -ne "preserve-custom-plugin") { throw "Windows rollback lost a user-installed plugin." }
+          Write-Host "Windows native install, upgrade, user-data preservation and rollback passed."

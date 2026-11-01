@@ -44,6 +44,34 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def process_is_alive(pid: int) -> bool:
+    """Check a process without sending a signal (Windows os.kill(pid, 0) is unsafe)."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel32.WaitForSingleObject.restype = ctypes.c_uint32
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            return ctypes.get_last_error() == 5  # access denied: conservatively assume alive
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) != 0  # anything except WAIT_OBJECT_0 is conservatively alive
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -106,16 +134,27 @@ def _assert_safe_install_root(install_dir: str | Path, recovery_dir: Path) -> Pa
 
 
 def _reject_symlinks(root: Path) -> None:
+    """Allow links only when their resolved target remains inside the app tree."""
+    resolved_root = root.resolve()
     for path in root.rglob("*"):
         if path.is_symlink():
-            raise ValueError(f"Refusing to back up a symbolic link: {path.relative_to(root)}")
+            try:
+                target = path.resolve(strict=True)
+            except OSError as exc:
+                raise ValueError(f"Refusing a broken symbolic link: {path.relative_to(root)}") from exc
+            if not _is_within(target, resolved_root):
+                raise ValueError(f"Refusing a symbolic link that escapes the installation: {path.relative_to(root)}")
 
 
 def _manifest(root: Path) -> dict[str, str]:
     entries: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
-        if path.is_file():
-            entries[path.relative_to(root).as_posix()] = _sha256(path)
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            target = os.readlink(path)
+            entries[relative] = hashlib.sha256(("symlink:" + target).encode("utf-8")).hexdigest()
+        elif path.is_file():
+            entries[relative] = _sha256(path)
     return entries
 
 
@@ -150,7 +189,7 @@ def prepare_update(
     }
     _save_state(tx_dir, state)
     try:
-        shutil.copytree(root, partial, copy_function=shutil.copy2)
+        shutil.copytree(root, partial, copy_function=shutil.copy2, symlinks=True)
         manifest = _manifest(partial)
         if not manifest:
             raise RuntimeError("The installation snapshot is empty; refusing to continue.")
@@ -163,6 +202,10 @@ def prepare_update(
         shutil.rmtree(tx_dir, ignore_errors=True)
         raise
 
+    _write_json_atomic(recovery / "latest.json", {"transaction_id": transaction_id, "install_dir": str(root), "updated_at": _utc_now()})
+    latest_temp = recovery / "latest.txt.tmp"
+    latest_temp.write_text(transaction_id + "\n", encoding="ascii")
+    os.replace(latest_temp, recovery / "latest.txt")
     return {
         "transaction_id": transaction_id,
         "status": "prepared",
@@ -209,6 +252,8 @@ def confirm_update(transaction_id: str, *, recovery_dir: str | Path | None = Non
     """Commit a transaction after the new application passes its startup health check."""
     recovery = Path(recovery_dir).expanduser() if recovery_dir else default_recovery_dir()
     tx_dir, state = _load_state(recovery, transaction_id)
+    if state.get("status") == "confirmed":
+        return {"transaction_id": transaction_id, "status": "confirmed"}
     if state.get("status") not in {"installing", "awaiting_health_check"}:
         raise RuntimeError(f"Cannot confirm an update in state {state.get('status')!r}.")
     state["status"] = "confirmed"
@@ -221,6 +266,10 @@ def confirm_update(transaction_id: str, *, recovery_dir: str | Path | None = Non
 def _verify_backup(backup: Path, manifest: dict[str, str]) -> None:
     if not backup.is_dir() or backup.is_symlink():
         raise RuntimeError("The update backup is missing or unsafe; automatic rollback was not attempted.")
+    try:
+        _reject_symlinks(backup)
+    except ValueError as exc:
+        raise RuntimeError("The update backup contains an unsafe symbolic link.") from exc
     actual = _manifest(backup)
     if actual != manifest:
         raise RuntimeError("The update backup failed its integrity check; original files were left untouched.")
@@ -250,9 +299,7 @@ def rollback_update(
     parent = install_root.parent
     restore = parent / f".{install_root.name}.restore-{transaction_id}"
     failed = parent / f".{install_root.name}.failed-{transaction_id}"
-    if not install_root.is_dir() and not (
-        state.get("status") == "rollback_started" and failed.is_dir()
-    ):
+    if not install_root.is_dir() and not failed.is_dir():
         raise RuntimeError("The installation directory is missing and no interrupted rollback backup was found.")
     backup = Path(state["backup_dir"]).resolve()
     if not _is_within(backup, tx_dir.resolve()):
@@ -273,7 +320,7 @@ def rollback_update(
             # The verified backup is authoritative; restore from a fresh copy.
             if restore.exists():
                 shutil.rmtree(restore, ignore_errors=True)
-            shutil.copytree(backup, restore, copy_function=shutil.copy2)
+            shutil.copytree(backup, restore, copy_function=shutil.copy2, symlinks=True)
             if install_root.exists():
                 if failed.exists():
                     shutil.rmtree(install_root, ignore_errors=True)
