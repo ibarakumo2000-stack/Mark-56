@@ -121,10 +121,11 @@ being simulated.
 - [x] Add tests for one-time pairing, permission scopes, token hashing,
       authentication, revocation, and adapter resolution.
 - [ ] Run tests in the user's local Mark 56 development environment.
-- [ ] Integrate the registry into the existing dashboard/API without breaking
-      current desktop remote-control behavior.
-- [ ] Add authenticated enrollment, device listing, permission editing, and
-      revocation endpoints.
+- [x] Mount the registry in the existing dashboard using a private per-user
+      SQLite database, without replacing legacy remote-control routes.
+- [x] Add TLS-gated pairing offers, one-time enrollment, authenticated device
+      listing, per-device revocation, and device identity endpoints.
+- [ ] Add permission editing and end-to-end companion-device authentication.
 - [ ] Add a desktop Devices settings panel with QR and manual pairing code.
 - [ ] Build the Android companion app and its secure local/remote transports.
 - [ ] Add Wear OS and supported vendor-glasses adapters.
