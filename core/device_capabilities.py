@@ -110,7 +110,12 @@ class CapabilityDetector:
             }
 
         declared = self._declared_capabilities(device)
-        unverified = sorted(declared - set(detected))
+        verified_scopes = {
+            scope
+            for details in detected.values()
+            for scope in details["required_scopes"]
+        }
+        unverified = sorted(declared - set(detected) - verified_scopes)
         return {
             "device_id": device.get("device_id"),
             "device_name": device.get("name") or device.get("device_name"),
