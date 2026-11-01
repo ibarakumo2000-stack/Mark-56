@@ -164,6 +164,9 @@ def prepare_update(
         raise
 
     _write_json_atomic(recovery / "latest.json", {"transaction_id": transaction_id, "install_dir": str(root), "updated_at": _utc_now()})
+    latest_temp = recovery / "latest.txt.tmp"
+    latest_temp.write_text(transaction_id + "\\n", encoding="ascii")
+    os.replace(latest_temp, recovery / "latest.txt")
     return {
         "transaction_id": transaction_id,
         "status": "prepared",
