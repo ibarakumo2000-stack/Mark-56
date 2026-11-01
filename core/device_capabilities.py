@@ -30,7 +30,7 @@ def _short_uuid(value: Any) -> str | None:
     normalized = _normalize_uuid(value)
     if not normalized or not normalized.endswith(_BASE):
         return None
-    return normalized[:8]
+    short = normalized[:8]\n    return short[4:] if short.startswith("0000") else short
 
 
 CAPABILITY_SCOPES = {
@@ -46,27 +46,27 @@ CAPABILITY_SCOPES = {
 # is insufficient where a usable characteristic is required.
 _PROFILE_RULES = (
     {
-        "service": "180F", "characteristic": "2A19", "operation": "read",
+        "service": "180f", "characteristic": "2a19", "operation": "read",
         "capability": "battery.read",
         "description": "Battery level characteristic supports reading",
     },
     {
-        "service": "180D", "characteristic": "2A37", "operation": "read",
+        "service": "180d", "characteristic": "2a37", "operation": "read",
         "capability": "heart_rate.read",
         "description": "Heart Rate Measurement characteristic supports reading",
     },
     {
-        "service": "180A", "characteristic": "2A29", "operation": "read",
+        "service": "180a", "characteristic": "2a29", "operation": "read",
         "capability": "device_info.read",
         "description": "Manufacturer Name String characteristic supports reading",
     },
     {
-        "service": "1812", "characteristic": "2A4D", "operation": "read",
+        "service": "1812", "characteristic": "2a4d", "operation": "read",
         "capability": "hid.input",
         "description": "HID Report characteristic supports reading",
     },
     {
-        "service": "1802", "characteristic": "2A06", "operation": "write",
+        "service": "1802", "characteristic": "2a06", "operation": "write",
         "capability": "alert.send",
         "description": "Immediate Alert Level characteristic supports writing",
     },
