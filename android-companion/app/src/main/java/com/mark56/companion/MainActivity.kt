@@ -85,7 +85,7 @@ class MainActivity : AppCompatActivity() {
         else "Enable battery sync (15-minute updates)"
         batterySyncButton.isEnabled = tokenStore.read() != null &&
             settings.deviceId() != null && settings.endpoint() != null &&
-            settings.fingerprint() != null
+            settings.fingerprint() != null && settings.hasBatteryScope()
     }
 
     private fun toggleBatterySync() {
@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
                     } ?: false
                     runOnUiThread {
                         tokenStore.save(token)
-                        settings.saveConnection(endpoint, fingerprint, deviceId)
+                        settings.saveConnection(endpoint, fingerprint, deviceId, hasBatteryScope)
                         BatterySync.disable(this)
                         refreshBatteryButton()
                         status.text = "Paired with " + response.optString("device_name", "Mark 56") +
