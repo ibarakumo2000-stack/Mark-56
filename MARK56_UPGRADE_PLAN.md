@@ -109,3 +109,19 @@ Implemented in `plugins/screen_agent.py` with a `screen_agent` tool entry point:
 - `execute`: requires `confirmed=true` and allows only click, bounded text typing, or a small navigation-key allowlist. Coordinates are checked against screen bounds; no shell, hotkey, deletion, submit, purchase, or credential-entry action is allowed.
 
 Safety tests are in `tests/test_screen_agent.py`. Local test execution is still required; a GitHub commit is not evidence that desktop capture or plugin auto-discovery works on the target Ubuntu session. The agent is intentionally conservative and is not yet an autonomous multi-step computer-use system.
+
+
+## Phase 6 — Update reliability and recovery (implementation in progress)
+
+### Implemented in the Phase 6 branch
+- Added `core/update_recovery.py` with per-user local snapshots, SHA-256 manifests, atomic transaction journals, explicit install/health-check/confirmation states, verified rollback, and retryable recovery after an interrupted rollback swap.
+- Added `tests/test_update_recovery.py` covering backup creation, symlink/path rejection, failed update rollback, interrupted install recovery, health-check rollback, confirmed update cleanup, backup tampering, and rollback retry.
+- Added `docs/UPDATE_RECOVERY.md` describing the adapter lifecycle and platform integration requirements.
+
+### Not yet complete
+- The existing Windows Inno Setup installer does not yet invoke the recovery engine before replacing application files.
+- The Linux install script still copies over the installation directory and does not yet use a staged directory swap plus recovery launcher.
+- The macOS DMG remains a drag-and-drop application bundle; it has no recovery-aware installer/launcher.
+- Native Windows, Ubuntu, Apple Silicon, and Intel recovery tests have not been run.
+
+**Status:** recovery engine implemented; end-to-end automatic rollback is not yet production-ready. Do not describe Phase 6 as fully complete until the platform adapters and native tests above are finished.
