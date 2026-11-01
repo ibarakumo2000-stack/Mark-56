@@ -2,7 +2,7 @@
 
 ## Purpose
 
-plugins/update_recovery.py provides local, crash-aware backup and rollback primitives for platform installers. It does not download, launch, or install an update. That separation is intentional: only a trusted platform installer should mutate the installed application.
+core/update_recovery.py provides local, crash-aware backup and rollback primitives for platform installers. It does not download, launch, or install an update. That separation is intentional: only a trusted platform installer should mutate the installed application.
 
 Backups stay on the user's device. They are not uploaded, attached to release requests, or transmitted to GitHub.
 
@@ -19,7 +19,7 @@ The state journal is written atomically. Rollback verifies the complete backup m
 ## Example installer integration
 
 \`\`\`python
-from plugins import update_recovery
+from core import update_recovery
 
 transaction = update_recovery.prepare_update(APP_DIR)
 transaction_id = transaction["transaction_id"]
