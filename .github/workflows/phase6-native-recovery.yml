@@ -79,10 +79,13 @@ jobs:
           $stage = Join-Path $PWD "build\stage"
           $runtime = Join-Path $stage "runtime"
           New-Item -ItemType Directory -Force $runtime | Out-Null
-          $pythonExe = (Get-Command python).Source
-          $pythonRoot = Split-Path $pythonExe -Parent
-          Copy-Item (Join-Path $pythonRoot "*") $runtime -Recurse -Force
+          $embedZip = Join-Path $env:RUNNER_TEMP "python-3.12.10-embed-amd64.zip"
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip" -OutFile $embedZip
+          Expand-Archive -Path $embedZip -DestinationPath $runtime -Force
+          @("python312.zip", ".", "..", "import site") | Set-Content -Path (Join-Path $runtime "python312._pth") -Encoding Ascii
           if (-not (Test-Path (Join-Path $runtime "python.exe"))) { throw "Bundled test Python runtime is incomplete." }
+          & (Join-Path $runtime "python.exe") -c "import pathlib, shutil, hashlib, ctypes; print('Embedded recovery runtime OK')"
+          if ($LASTEXITCODE -ne 0) { throw "Embedded test Python runtime cannot import recovery dependencies." }
           New-Item -ItemType Directory -Force dist | Out-Null
           & $iscc /DAppVersion=56.0.2 /DAppVersionInfo=56.0.2.0 "/DStageDir=$stage" "/DOutDir=$PWD\dist" installer\MarkLV.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed." }
