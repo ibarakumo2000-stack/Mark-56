@@ -88,11 +88,11 @@ class LinuxInstallerScriptTests(unittest.TestCase):
             recovery = home / ".local/state/mark56/update-recovery"
             transaction_id = (recovery / "latest.txt").read_text(encoding="ascii").strip()
             backup = recovery / transaction_id / "backup"
+            failed = install_root.parent / f".{install_root.name}.failed-{transaction_id}"
+            install_root.rename(failed)
+            launcher = home / ".local/bin/mark56"
             rollback = subprocess.run(
-                [str(backup / "runtime/bin/python3.12"),
-                 str(backup / "core/update_recovery_cli.py"),
-                 "--rollback-id", transaction_id],
-                env=env, capture_output=True, text=True, timeout=90,
+                [str(launcher)], env=env, capture_output=True, text=True, timeout=90,
             )
             self.assertEqual(rollback.returncode, 0, rollback.stdout + rollback.stderr)
             self.assertEqual((install_root / "VERSION").read_text().strip(), "56.0.1")
