@@ -73,6 +73,34 @@ jobs:
           choco install innosetup --yes --no-progress
           $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "Inno Setup compiler was not installed." }
+          $stage = Join-Path $PWD "build\stage"
+          $runtime = Join-Path $stage "runtime"
+          New-Item -ItemType Directory -Force $runtime | Out-Null
+          $pythonExe = (Get-Command python).Source
+          $pythonRoot = Split-Path $pythonExe -Parent
+          Copy-Item (Join-Path $pythonRoot "*") $runtime -Recurse -Force
+          if (-not (Test-Path (Join-Path $runtime "python.exe"))) { throw "Bundled test Python runtime is incomplete." }
           New-Item -ItemType Directory -Force dist | Out-Null
-          & $iscc /DAppVersion=56.0.2 /DAppVersionInfo=56.0.2.0 "/DStageDir=$PWD\build\stage" "/DOutDir=$PWD\dist" installer\MarkLV.iss
+          & $iscc /DAppVersion=56.0.2 /DAppVersionInfo=56.0.2.0 "/DStageDir=$stage" "/DOutDir=$PWD\dist" installer\MarkLV.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed." }
+
+          $installer = Join-Path $PWD "dist\MARK-LV-Setup-56.0.2.exe"
+          $installDir = Join-Path $env:RUNNER_TEMP "Mark56 Recovery Test"
+          $args = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$installDir`""
+          $first = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
+          if ($first.ExitCode -ne 0) { throw "Fresh Windows install failed: $($first.ExitCode)" }
+          $personal = Join-Path $installDir "config\phase6-user-data.txt"
+          Set-Content -Path $personal -Value "preserve-this-user-data" -NoNewline
+
+          $upgrade = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
+          if ($upgrade.ExitCode -ne 0) { throw "Windows upgrade failed: $($upgrade.ExitCode)" }
+          $recoveryRoot = Join-Path $env:LOCALAPPDATA "MARK-LV\update-recovery"
+          $tx = (Get-Content (Join-Path $recoveryRoot "latest.txt") -Raw).Trim()
+          if (-not $tx) { throw "Windows installer did not create a recovery transaction." }
+          $backup = Join-Path $recoveryRoot "$tx\backup"
+          $backupPython = Join-Path $backup "runtime\python.exe"
+          $backupCli = Join-Path $backup "core\update_recovery_cli.py"
+          & $backupPython $backupCli --rollback-id $tx
+          if ($LASTEXITCODE -ne 0) { throw "Windows recovery rollback failed." }
+          if ((Get-Content $personal -Raw) -ne "preserve-this-user-data") { throw "Windows rollback lost user data." }
+          Write-Host "Windows native install, upgrade, user-data preservation and rollback passed."
