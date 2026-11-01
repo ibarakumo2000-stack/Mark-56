@@ -149,7 +149,8 @@ const
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
 
 var
-  RecoveryTransactionId: AnsiString;
+  RecoveryTransactionId: String;
+  RecoveryTransactionData: AnsiString;
   RecoveryPrepared: Boolean;
   InstallSucceeded: Boolean;
 
@@ -179,7 +180,7 @@ begin
       Result := 'The recovery transaction could not be located. The update was cancelled.'
     else
     begin
-      RecoveryTransactionId := Trim(RecoveryTransactionId);
+      RecoveryTransactionId := Trim(String(RecoveryTransactionData));
       RecoveryPrepared := RecoveryTransactionId <> '';
     end;
   end
