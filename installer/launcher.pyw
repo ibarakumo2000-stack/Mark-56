@@ -222,8 +222,8 @@ def _begin_update_health_check():
         return None, None
     try:
         result = subprocess.run(
-            [sys.executable, str(cli), "--begin-startup", str(APP_DIR)],
-            cwd=str(APP_DIR), capture_output=True, text=True, timeout=15,
+            [sys.executable, str(cli), "--begin-startup", str(APP_DIR), "--pid", str(os.getpid())],
+            cwd=str(APP_DIR), capture_output=True, text=True,
         )
         if result.returncode != 0:
             print("Update recovery check could not run: " + result.stderr.strip(), file=sys.stderr)
@@ -232,13 +232,14 @@ def _begin_update_health_check():
         payload = json.loads(result.stdout.strip().splitlines()[-1])
         status = payload.get("status")
         if status == "already_running":
-            return "already_running", None
+            return "already_running", None, None
         if status == "needs_rollback":
             _start_rollback_worker(str(payload["transaction_id"]), str(payload["backup_dir"]))
-            return "rollback_scheduled", None
+            return "rollback_scheduled", None, None
         if status != "health_check_started":
-            return None, None
+            return None, None, None
         transaction_id = str(payload["transaction_id"])
+        backup_dir = str(payload["backup_dir"])
 
         def confirm():
             try:
@@ -253,13 +254,13 @@ def _begin_update_health_check():
         timer = threading.Timer(90.0, confirm)
         timer.daemon = True
         timer.start()
-        return transaction_id, timer
+        return transaction_id, timer, backup_dir
     except Exception:
         traceback.print_exc()
-        return None, None
+        return None, None, None
 
 
-def _finish_update_health_check(transaction_id, timer, *, healthy: bool):
+def _finish_update_health_check(transaction_id, timer, backup_dir, *, healthy: bool):
     if timer:
         timer.cancel()
     if not transaction_id:
@@ -275,18 +276,8 @@ def _finish_update_health_check(transaction_id, timer, *, healthy: bool):
         except Exception as exc:
             print(f"Update confirmation failed: {exc}", file=sys.stderr)
     else:
-        try:
-            import json
-            status = subprocess.run(
-                [sys.executable, str(cli), "--begin-startup", str(APP_DIR)],
-                cwd=str(APP_DIR), capture_output=True, text=True, timeout=15,
-            )
-            payload = json.loads(status.stdout.strip().splitlines()[-1]) if status.returncode == 0 else {}
-            backup_dir = payload.get("backup_dir")
-            if backup_dir:
-                _start_rollback_worker(transaction_id, str(backup_dir))
-        except Exception:
-            traceback.print_exc()
+        if backup_dir:
+            _start_rollback_worker(transaction_id, str(backup_dir))
 
 
 def main() -> int:
@@ -306,7 +297,7 @@ def main() -> int:
         sys.path.insert(0, str(APP_DIR))
     sys.argv = [str(APP_DIR / "main.py")]
 
-    transaction_id, health_timer = _begin_update_health_check()
+    transaction_id, health_timer, backup_dir = _begin_update_health_check()
     if transaction_id == "already_running":
         return 0
     if transaction_id == "rollback_scheduled":
@@ -314,14 +305,14 @@ def main() -> int:
 
     try:
         runpy.run_path(str(APP_DIR / "main.py"), run_name="__main__")
-        _finish_update_health_check(transaction_id, health_timer, healthy=True)
+        _finish_update_health_check(transaction_id, health_timer, backup_dir, healthy=True)
         return 0
     except SystemExit as e:
         code = e.code if isinstance(e.code, int) else 0
-        _finish_update_health_check(transaction_id, health_timer, healthy=(code == 0))
+        _finish_update_health_check(transaction_id, health_timer, backup_dir, healthy=(code == 0))
         return code
     except BaseException:
-        _finish_update_health_check(transaction_id, health_timer, healthy=False)
+        _finish_update_health_check(transaction_id, health_timer, backup_dir, healthy=False)
         traceback.print_exc()
         choice = crash_dialog(logfile)
         if choice == "restart":
