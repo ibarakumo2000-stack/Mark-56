@@ -1,0 +1,53 @@
+name: Publish Android Companion APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android-companion/**"
+      - ".github/workflows/publish-android-companion.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-companion-preview-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+      - name: Install Android SDK platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build companion debug APK
+        working-directory: android-companion
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Publish rolling Android preview release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-companion-preview
+          name: JARVIS Android Companion — Testing Preview
+          body: |
+            Rolling testing build of the JARVIS Android Companion.
+
+            This is a debug APK intended for testing QR pairing and battery synchronisation. It is not a production-signed public release.
+
+            The APK is rebuilt and replaces the previous APK whenever Android companion code is updated on main.
+          prerelease: true
+          make_latest: false
+          files: android-companion/app/build/outputs/apk/debug/app-debug.apk
+          fail_on_unmatched_files: true
+          overwrite_files: true
