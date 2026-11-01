@@ -221,6 +221,18 @@ rollback_on_error() {
 }
 trap rollback_on_error ERR
 
+if [ ! -d "$TARGET" ]; then
+  RECOVERY_TX_ID="$(cat "$RECOVERY_DIR/latest.txt" 2>/dev/null || true)"
+  RECOVERY_BACKUP="$RECOVERY_DIR/$RECOVERY_TX_ID/backup"
+  RECOVERY_ROOT="$RECOVERY_BACKUP/Contents/Resources/MARK-LV"
+  if [ -n "$RECOVERY_TX_ID" ] && [ -x "$RECOVERY_ROOT/runtime/bin/python3.12" ]; then
+    "$RECOVERY_ROOT/runtime/bin/python3.12" "$RECOVERY_ROOT/core/update_recovery_cli.py" --rollback-id "$RECOVERY_TX_ID"
+  fi
+  if [ "${JARVIS_RECOVERY_ONLY:-0}" = "1" ]; then
+    exit 0
+  fi
+fi
+
 if [ -d "$TARGET" ]; then
   OLD_ROOT="$TARGET/Contents/Resources/MARK-LV"
   OLD_PYTHON="$OLD_ROOT/runtime/bin/python3.12"
