@@ -38,6 +38,8 @@ def make_mark56_tree(root: Path, version: str) -> Path:
     make_runtime_shim(root / "runtime")
     (root / "config").mkdir()
     (root / "config" / "defaults.json").write_text('{"fresh": true}', encoding="utf-8")
+    (root / "plugins").mkdir()
+    (root / "plugins" / "builtin.py").write_text("builtin-" + version, encoding="utf-8")
     (root / "VERSION").write_text(version + "\n", encoding="utf-8")
     (root / "launch.sh").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     (root / "launch.sh").chmod(0o755)
@@ -70,11 +72,15 @@ class LinuxInstallerScriptTests(unittest.TestCase):
             self.assertEqual((install_root / "VERSION").read_text().strip(), "56.0.1")
             personal = install_root / "config" / "personal-settings.json"
             personal.write_text('{"user_data":"keep"}', encoding="utf-8")
+            user_plugin = install_root / "plugins" / "user_plugin.py"
+            user_plugin.write_text("custom-plugin", encoding="utf-8")
 
             second = install(source_v2)
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
             self.assertEqual((install_root / "VERSION").read_text().strip(), "56.0.2")
             self.assertEqual(personal.read_text(encoding="utf-8"), '{"user_data":"keep"}')
+            self.assertEqual((install_root / "plugins/builtin.py").read_text(encoding="utf-8"), "builtin-56.0.2")
+            self.assertEqual(user_plugin.read_text(encoding="utf-8"), "custom-plugin")
 
             recovery = home / ".local/state/mark56/update-recovery"
             transaction_id = (recovery / "latest.txt").read_text(encoding="ascii").strip()
@@ -88,6 +94,8 @@ class LinuxInstallerScriptTests(unittest.TestCase):
             self.assertEqual(rollback.returncode, 0, rollback.stdout + rollback.stderr)
             self.assertEqual((install_root / "VERSION").read_text().strip(), "56.0.1")
             self.assertEqual(personal.read_text(encoding="utf-8"), '{"user_data":"keep"}')
+            self.assertEqual((install_root / "plugins/builtin.py").read_text(encoding="utf-8"), "builtin-56.0.1")
+            self.assertEqual(user_plugin.read_text(encoding="utf-8"), "custom-plugin")
 
 
 @unittest.skipUnless(sys.platform == "darwin", "macOS installer script runs on macOS")
@@ -130,11 +138,15 @@ class MacOSInstallerScriptTests(unittest.TestCase):
             self.assertEqual((app_root / "VERSION").read_text().strip(), "56.0.1")
             personal = app_root / "config" / "personal-settings.json"
             personal.write_text('{"user_data":"keep"}', encoding="utf-8")
+            user_plugin = app_root / "plugins" / "user_plugin.py"
+            user_plugin.write_text("custom-plugin", encoding="utf-8")
 
             second = install(dmg2)
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
             self.assertEqual((app_root / "VERSION").read_text().strip(), "56.0.2")
             self.assertEqual(personal.read_text(encoding="utf-8"), '{"user_data":"keep"}')
+            self.assertEqual((app_root / "plugins/builtin.py").read_text(encoding="utf-8"), "builtin-56.0.2")
+            self.assertEqual(user_plugin.read_text(encoding="utf-8"), "custom-plugin")
 
             recovery = home / "Library/Application Support/MARK-LV/update-recovery"
             transaction_id = (recovery / "latest.txt").read_text(encoding="ascii").strip()
@@ -151,6 +163,8 @@ class MacOSInstallerScriptTests(unittest.TestCase):
             self.assertEqual((restored_root / "VERSION").read_text().strip(), "56.0.1")
             self.assertEqual((restored_root / "config/personal-settings.json").read_text(encoding="utf-8"),
                              '{"user_data":"keep"}')
+            self.assertEqual((restored_root / "plugins/builtin.py").read_text(encoding="utf-8"), "builtin-56.0.1")
+            self.assertEqual((restored_root / "plugins/user_plugin.py").read_text(encoding="utf-8"), "custom-plugin")
 
 
 if __name__ == "__main__":
