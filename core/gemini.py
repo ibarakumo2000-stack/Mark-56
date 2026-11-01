@@ -474,6 +474,24 @@ def call(contents, tier: str = FAST, config=None,
     a silent None during a session nobody can debug is how the original problem
     stayed hidden.
     """
+    # An explicitly enabled local model is authoritative: route to Ollama
+    # before reading cloud-provider settings or requiring any API key. If the
+    # local request fails, do not silently fall back to a cloud provider.
+    try:
+        from core import local_model
+        if local_model.enabled():
+            try:
+                prompt = contents if isinstance(contents, str) else str(contents)
+                return _Reply(local_model.generate(
+                    prompt, images=None, timeout_ms=timeout_ms
+                ))
+            except Exception as e:
+                print(f"[Local model] one-shot request failed ({type(e).__name__}).")
+                return None
+    except Exception as e:
+        print(f"[Local model] routing unavailable ({type(e).__name__}).")
+        return None
+
     # Mark 56: allow one-shot side tasks to use OpenAI without changing the
     # Gemini Live voice conversation. Gemini remains the default unless the
     # user explicitly selects "text_provider": "openai" in local config.
