@@ -132,5 +132,23 @@ class UpdateRecoveryTests(unittest.TestCase):
             )
 
 
+    def test_interrupted_rollback_can_resume_after_directory_swap_started(self):
+        transaction_id = self._prepare_and_start()
+        (self.install / "main.py").write_text("partial new version", encoding="utf-8")
+        tx_state = self.recovery / transaction_id / "state.json"
+        import json
+        state = json.loads(tx_state.read_text(encoding="utf-8"))
+        state["status"] = "rollback_started"
+        tx_state.write_text(json.dumps(state), encoding="utf-8")
+        failed = self.install.parent / f".{self.install.name}.failed-{transaction_id}"
+        self.install.rename(failed)
+
+        results = update_recovery.recover_if_interrupted(recovery_dir=self.recovery)
+
+        self.assertEqual(results[0]["status"], "rolled_back")
+        self.assertEqual((self.install / "main.py").read_text(encoding="utf-8"), "old version")
+        self.assertFalse(failed.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
