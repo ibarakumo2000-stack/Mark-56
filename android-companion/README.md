@@ -10,3 +10,12 @@ Buildable Android pairing client (Phase 7B). Open this directory in Android Stud
 
 ## Current limits
 This milestone provides QR pairing and secure credential storage. Background notification forwarding, battery polling, authenticated HMAC event generation, media polling/execution, reconnect lifecycle and desktop UI integration remain subsequent work. Disconnect clears the local token; revoke the device in Jarvis to invalidate its server-side token. Do not expose the listener publicly.
+
+
+## Phase 7C — opt-in battery reporting
+
+After pairing, the app stores the desktop endpoint, certificate fingerprint and device ID alongside the encrypted bearer token. Battery reporting is **off by default**. The owner must tap **Enable battery sync** in the phone app; the app then schedules a WorkManager update no more frequently than every 15 minutes while network connectivity is available.
+
+Each battery report contains only the integer battery percentage and a charging boolean. Requests are signed with the enrolled device token using the desktop HMAC-SHA256 canonical JSON contract, and sent over the same certificate-pinned HTTPS connection. No location, contacts, SMS, microphone, camera, notification text or health data is collected by this feature. Disconnect cancels the scheduled work and clears the local credential and connection metadata; revoke the device in Mark 56 to invalidate its server-side token.
+
+Battery sync requires that the desktop pairing offer approved `battery.read`. If that scope was not approved, the control remains unavailable. WorkManager's 15-minute interval is a minimum scheduling interval, not an exact delivery guarantee; Android may defer updates for battery optimization or connectivity.
