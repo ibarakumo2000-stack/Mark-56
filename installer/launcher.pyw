@@ -17,6 +17,7 @@ import datetime
 import os
 import re
 import runpy
+import subprocess
 import sys
 import threading
 import traceback
@@ -186,6 +187,108 @@ def crash_dialog(logfile: Path) -> str:
     return {6: "restart", 7: "logs"}.get(r, "close")
 
 
+def _recovery_cli() -> Path:
+    return APP_DIR / "core" / "update_recovery_cli.py"
+
+
+def _start_rollback_worker(transaction_id: str, backup_dir: str) -> bool:
+    backup = Path(backup_dir).resolve()
+    worker = backup / "core" / "update_recovery_worker.py"
+    if os.name == "nt":
+        python = backup / "runtime" / "python.exe"
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        kwargs = {"creationflags": flags, "close_fds": True}
+    else:
+        python = backup / "runtime" / "bin" / "python3.12"
+        kwargs = {"start_new_session": True, "close_fds": True}
+    if not python.is_file() or not worker.is_file():
+        print("Update recovery helper is missing; manual recovery is required.", file=sys.stderr)
+        return False
+    try:
+        subprocess.Popen(
+            [str(python), str(worker), transaction_id, str(os.getpid())],
+            cwd=str(backup), stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs,
+        )
+        return True
+    except Exception:
+        traceback.print_exc()
+        return False
+
+
+def _begin_update_health_check():
+    cli = _recovery_cli()
+    if not cli.is_file():
+        return None, None
+    try:
+        result = subprocess.run(
+            [sys.executable, str(cli), "--begin-startup", str(APP_DIR)],
+            cwd=str(APP_DIR), capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode != 0:
+            print("Update recovery check could not run: " + result.stderr.strip(), file=sys.stderr)
+            return None, None
+        import json
+        payload = json.loads(result.stdout.strip().splitlines()[-1])
+        status = payload.get("status")
+        if status == "already_running":
+            return "already_running", None
+        if status == "needs_rollback":
+            _start_rollback_worker(str(payload["transaction_id"]), str(payload["backup_dir"]))
+            return "rollback_scheduled", None
+        if status != "health_check_started":
+            return None, None
+        transaction_id = str(payload["transaction_id"])
+
+        def confirm():
+            try:
+                subprocess.run(
+                    [sys.executable, str(cli), "--confirm-id", transaction_id],
+                    cwd=str(APP_DIR), capture_output=True, text=True, timeout=30, check=True,
+                )
+                print("Update startup health window passed; recovery backup committed.")
+            except Exception as exc:
+                print(f"Could not confirm update recovery transaction: {exc}", file=sys.stderr)
+
+        timer = threading.Timer(90.0, confirm)
+        timer.daemon = True
+        timer.start()
+        return transaction_id, timer
+    except Exception:
+        traceback.print_exc()
+        return None, None
+
+
+def _finish_update_health_check(transaction_id, timer, *, healthy: bool):
+    if timer:
+        timer.cancel()
+    if not transaction_id:
+        return
+    cli = _recovery_cli()
+    if healthy:
+        try:
+            subprocess.run(
+                [sys.executable, str(cli), "--confirm-id", transaction_id],
+                cwd=str(APP_DIR), capture_output=True, text=True, timeout=30, check=True,
+            )
+            print("Update completed its startup health check.")
+        except Exception as exc:
+            print(f"Update confirmation failed: {exc}", file=sys.stderr)
+    else:
+        try:
+            import json
+            status = subprocess.run(
+                [sys.executable, str(cli), "--begin-startup", str(APP_DIR)],
+                cwd=str(APP_DIR), capture_output=True, text=True, timeout=15,
+            )
+            payload = json.loads(status.stdout.strip().splitlines()[-1]) if status.returncode == 0 else {}
+            backup_dir = payload.get("backup_dir")
+            if backup_dir:
+                _start_rollback_worker(transaction_id, str(backup_dir))
+        except Exception:
+            traceback.print_exc()
+
+
 def main() -> int:
     logfile = open_log()
     sys.excepthook = _hook
@@ -203,12 +306,22 @@ def main() -> int:
         sys.path.insert(0, str(APP_DIR))
     sys.argv = [str(APP_DIR / "main.py")]
 
+    transaction_id, health_timer = _begin_update_health_check()
+    if transaction_id == "already_running":
+        return 0
+    if transaction_id == "rollback_scheduled":
+        return 1
+
     try:
         runpy.run_path(str(APP_DIR / "main.py"), run_name="__main__")
+        _finish_update_health_check(transaction_id, health_timer, healthy=True)
         return 0
     except SystemExit as e:
-        return e.code if isinstance(e.code, int) else 0
+        code = e.code if isinstance(e.code, int) else 0
+        _finish_update_health_check(transaction_id, health_timer, healthy=(code == 0))
+        return code
     except BaseException:
+        _finish_update_health_check(transaction_id, health_timer, healthy=False)
         traceback.print_exc()
         choice = crash_dialog(logfile)
         if choice == "restart":
