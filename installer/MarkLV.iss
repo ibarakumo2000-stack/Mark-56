@@ -149,7 +149,7 @@ const
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
 
 var
-  RecoveryTransactionId: String;
+  RecoveryTransactionId: AnsiString;
   RecoveryPrepared: Boolean;
   InstallSucceeded: Boolean;
 
