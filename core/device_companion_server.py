@@ -151,28 +151,18 @@ def create_companion_app(registry: DeviceRegistry):
         except (InvalidCompanionMessage, ValueError, TypeError):
             return JSONResponse({"detail": "Invalid or unauthenticated companion message"}, status_code=400)
 
-    @app.post("/v1/devices/{device_id}/media")
-    async def queue_media(device_id: str, request: Request):
-        # This route is intended for the local desktop UI, not the phone.
-        # A caller must already have authenticated the device token.
-        body = await json_body(request)
-        if not isinstance(body, dict) or set(body) != {"token", "action"}:
-            return JSONResponse({"detail": "Invalid media command"}, status_code=400)
-        try:
-            identity = registry.authenticate(body["token"], required_scope="media.control")
-            if identity["device_id"] != device_id:
-                raise AuthorizationError("Device mismatch")
-            command = features.create_media_command(body["token"], body["action"])
-            with command_lock:
-                queue = commands[device_id]
-                if len(queue) >= _MAX_QUEUE:
-                    return JSONResponse({"detail": "Device command queue is full"}, status_code=429)
-                queue.append(command)
-            return {"queued": True, "action": command["action"]}
-        except AuthorizationError:
-            return JSONResponse({"detail": "Device is not authorized"}, status_code=403)
-        except DeviceFeatureError:
-            return JSONResponse({"detail": "Unsupported media action"}, status_code=400)
+    def queue_media_command(device_id: str, token: str, action: str) -> dict[str, Any]:
+        """Queue a desktop-originated media command after local UI authorization."""
+        identity = registry.authenticate(token, required_scope="media.control")
+        if identity["device_id"] != device_id:
+            raise AuthorizationError("Device mismatch")
+        command = features.create_media_command(token, action)
+        with command_lock:
+            queue = commands[device_id]
+            if len(queue) >= _MAX_QUEUE:
+                raise RuntimeError("Device command queue is full")
+            queue.append(command)
+        return {"queued": True, "action": command["action"]}
 
     app.state.device_registry = registry
     app.state.device_verifier = verifier
