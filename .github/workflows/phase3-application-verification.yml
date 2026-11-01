@@ -37,7 +37,7 @@ jobs:
       - name: Install native runtime libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libportaudio2
+          sudo apt-get install -y libportaudio2 libegl1 libgl1 libxcb-cursor0 libxcb-xinerama0
 
       - name: Install project dependencies
         run: |
