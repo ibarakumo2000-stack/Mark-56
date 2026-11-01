@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from plugins import update_recovery
+from core import update_recovery
 
 
 class UpdateRecoveryTests(unittest.TestCase):
