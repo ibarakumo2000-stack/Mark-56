@@ -176,7 +176,7 @@ begin
       Result := 'Could not start the existing Mark 56 recovery engine. The update was cancelled.'
     else if ExitCode <> 0 then
       Result := 'Mark 56 could not create and verify a recovery backup. The update was cancelled.'
-    else if not LoadStringFromFile(RecoveryDirectory + '\latest.txt', RecoveryTransactionId) then
+    else if not LoadStringFromFile(RecoveryDirectory + '\latest.txt', RecoveryTransactionData) then
       Result := 'The recovery transaction could not be located. The update was cancelled.'
     else
     begin
