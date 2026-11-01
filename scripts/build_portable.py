@@ -198,6 +198,7 @@ Online AI features need internet access and your own provider key.
 
 MAC_INSTALLER = r'''#!/bin/bash
 set -Eeuo pipefail
+if [ "${JARVIS_INSTALLER_DEBUG:-0}" = "1" ]; then set -x; fi
 SOURCE_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 SOURCE_APP="$SOURCE_DIR/JARVIS.app"
 APPLICATIONS="$HOME/Applications"
