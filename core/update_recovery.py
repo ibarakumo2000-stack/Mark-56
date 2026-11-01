@@ -210,6 +210,8 @@ def confirm_update(transaction_id: str, *, recovery_dir: str | Path | None = Non
     """Commit a transaction after the new application passes its startup health check."""
     recovery = Path(recovery_dir).expanduser() if recovery_dir else default_recovery_dir()
     tx_dir, state = _load_state(recovery, transaction_id)
+    if state.get("status") == "confirmed":
+        return {"transaction_id": transaction_id, "status": "confirmed"}
     if state.get("status") not in {"installing", "awaiting_health_check"}:
         raise RuntimeError(f"Cannot confirm an update in state {state.get('status')!r}.")
     state["status"] = "confirmed"
