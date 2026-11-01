@@ -108,6 +108,17 @@ fi
 chmod +x "$INSTALL_ROOT/launch.sh"
 cat > "$BIN_DIR/mark56" <<LAUNCHER
 #!/usr/bin/env bash
+RECOVERY_DIR="$RECOVERY_DIR"
+if [ ! -x "$INSTALL_ROOT/launch.sh" ] || [ ! -x "$INSTALL_ROOT/runtime/bin/python3.12" ]; then
+  TX_ID="\$(cat "\$RECOVERY_DIR/latest.txt" 2>/dev/null || true)"
+  BACKUP="\$RECOVERY_DIR/\$TX_ID/backup"
+  if [ -n "\$TX_ID" ] && [ -x "\$BACKUP/runtime/bin/python3.12" ]; then
+    "\$BACKUP/runtime/bin/python3.12" "\$BACKUP/core/update_recovery_cli.py" --rollback-id "\$TX_ID" || exit 1
+  else
+    echo "Mark 56 cannot start and no usable recovery backup was found." >&2
+    exit 1
+  fi
+fi
 exec "$INSTALL_ROOT/launch.sh" "\$@"
 LAUNCHER
 chmod +x "$BIN_DIR/mark56"
