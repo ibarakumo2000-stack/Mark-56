@@ -219,7 +219,7 @@ def _start_rollback_worker(transaction_id: str, backup_dir: str) -> bool:
 def _begin_update_health_check():
     cli = _recovery_cli()
     if not cli.is_file():
-        return None, None
+        return None, None, None
     try:
         result = subprocess.run(
             [sys.executable, str(cli), "--begin-startup", str(APP_DIR), "--pid", str(os.getpid())],
@@ -227,7 +227,7 @@ def _begin_update_health_check():
         )
         if result.returncode != 0:
             print("Update recovery check could not run: " + result.stderr.strip(), file=sys.stderr)
-            return None, None
+            return None, None, None
         import json
         payload = json.loads(result.stdout.strip().splitlines()[-1])
         status = payload.get("status")
