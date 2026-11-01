@@ -10,12 +10,11 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: mark56-phase6-native-${{ github.ref }}-${{ matrix.target }}
-  cancel-in-progress: true
-
 jobs:
   native-recovery:
+    concurrency:
+      group: mark56-phase6-native-${{ github.ref }}-${{ matrix.target }}
+      cancel-in-progress: true
     name: Recovery tests — ${{ matrix.target }}
     strategy:
       fail-fast: false
