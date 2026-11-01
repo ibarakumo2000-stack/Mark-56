@@ -153,15 +153,92 @@ Only install software downloaded from the official Mark-56 GitHub Release.
 MAC_README = """JARVIS / MARK 56 — macOS installer
 
 1. Open this disk image.
-2. Drag JARVIS.app into Applications.
-3. Open JARVIS from Applications and grant privacy permissions only for features
-   you intend to use.
+2. Control-click Install.command and choose Open if Gatekeeper asks.
+3. The installer places JARVIS.app in ~/Applications. On upgrades it creates
+   and verifies a local backup, preserves user data, and swaps the app bundle.
+4. Launch JARVIS from Applications and grant privacy permissions only for
+   features you intend to use.
 
-This macOS package is not signed or notarized with an Apple Developer ID. macOS
-may show a security warning. Verify the DMG came from the official Mark-56
-GitHub Releases page before opening it. Apple silicon and Intel have separate
-downloads. Online AI features need internet access and your own provider key.
+Use Install.command for upgrades; manually dragging the app bypasses the
+automatic backup and rollback workflow.
+
+This package is not signed or notarized with an Apple Developer ID. macOS may
+show a security warning. Verify the DMG came from the official Mark-56 GitHub
+Releases page before opening it. Apple silicon and Intel have separate builds.
+Online AI features need internet access and your own provider key.
 """
+
+MAC_INSTALLER = r'''#!/bin/bash
+set -Eeuo pipefail
+SOURCE_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+SOURCE_APP="$SOURCE_DIR/JARVIS.app"
+APPLICATIONS="$HOME/Applications"
+TARGET="$APPLICATIONS/JARVIS.app"
+STAGING="$APPLICATIONS/.JARVIS.app.new.$"
+RECOVERY_DIR="$HOME/Library/Application Support/MARK-LV/update-recovery"
+TX_ID=""
+
+echo "JARVIS / MARK 56 — macOS installer"
+mkdir -p "$APPLICATIONS"
+
+rollback_on_error() {
+  status=$?
+  trap - ERR
+  if [ -n "$TX_ID" ]; then
+    BACKUP="$RECOVERY_DIR/$TX_ID/backup"
+    BACKUP_ROOT="$BACKUP/Contents/Resources/MARK-LV"
+    BACKUP_PYTHON="$BACKUP_ROOT/runtime/bin/python3.12"
+    if [ -x "$BACKUP_PYTHON" ]; then
+      echo "Installation failed; restoring the previous JARVIS application..."
+      "$BACKUP_PYTHON" "$BACKUP_ROOT/core/update_recovery_cli.py" --rollback-id "$TX_ID" || {
+        echo "Automatic rollback failed. Recovery backup retained at: $BACKUP" >&2
+      }
+    else
+      echo "Recovery runtime missing. Backup retained at: $BACKUP" >&2
+    fi
+  fi
+  rm -rf "$STAGING"
+  exit "$status"
+}
+trap rollback_on_error ERR
+
+if [ -d "$TARGET" ]; then
+  OLD_ROOT="$TARGET/Contents/Resources/MARK-LV"
+  OLD_PYTHON="$OLD_ROOT/runtime/bin/python3.12"
+  OLD_CLI="$OLD_ROOT/core/update_recovery_cli.py"
+  if [ ! -x "$OLD_PYTHON" ] || [ ! -f "$OLD_CLI" ]; then
+    echo "Existing JARVIS installation has no usable recovery runtime. Refusing an unsafe upgrade." >&2
+    exit 1
+  fi
+  PREPARE_JSON="$("$OLD_PYTHON" "$OLD_CLI" --prepare "$TARGET")"
+  TX_ID="$(printf '%s' "$PREPARE_JSON" | "$OLD_PYTHON" -c 'import json,sys; print(json.load(sys.stdin)["transaction_id"])')"
+  echo "Created and verified local recovery snapshot: $TX_ID"
+fi
+
+ditto "$SOURCE_APP" "$STAGING"
+if [ -n "$TX_ID" ]; then
+  OLD_ROOT="$TARGET/Contents/Resources/MARK-LV"
+  NEW_ROOT="$STAGING/Contents/Resources/MARK-LV"
+  for data_dir in config memory cache uploads plugins; do
+    if [ -e "$OLD_ROOT/$data_dir" ]; then
+      rm -rf "$NEW_ROOT/$data_dir"
+      ditto "$OLD_ROOT/$data_dir" "$NEW_ROOT/$data_dir"
+    fi
+  done
+  FAILED="$APPLICATIONS/.JARVIS.app.failed-$TX_ID"
+  mv "$TARGET" "$FAILED"
+  mv "$STAGING" "$TARGET"
+  NEW_ROOT="$TARGET/Contents/Resources/MARK-LV"
+  "$NEW_ROOT/runtime/bin/python3.12" "$NEW_ROOT/core/update_recovery_cli.py" --mark-awaiting
+  rm -rf "$FAILED"
+else
+  mv "$STAGING" "$TARGET"
+fi
+
+trap - ERR
+echo "JARVIS installed at: $TARGET"
+open -a "$TARGET"
+'''
 
 
 def sha256(path: Path) -> str:
@@ -284,6 +361,9 @@ with Image.open(src) as original:
     with (contents / "Info.plist").open("wb") as stream:
         plistlib.dump(info, stream)
     (dmg_root / "READ-ME-FIRST.txt").write_text(MAC_README, encoding="utf-8")
+    installer_script = dmg_root / "Install.command"
+    installer_script.write_text(MAC_INSTALLER, encoding="utf-8")
+    installer_script.chmod(0o755)
     (dmg_root / "Applications").symlink_to("/Applications", target_is_directory=True)
     return dmg_root
 
