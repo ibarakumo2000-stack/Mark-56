@@ -4,12 +4,12 @@ Produces `dist\MARK-LV-Setup-<version>.exe`: a normal Windows setup wizard that
 installs MARK LV together with its own private Python and every library it
 needs. End users never install Python, run pip or open VS Code.
 
-> **Status — read this first.** The Windows installer is now compiled and
-> exercised in a native Windows GitHub Actions runner. The Phase 6 workflow
-> stages the application, generates the compact installer icon, compiles the
-> Inno Setup script, performs a fresh install, runs an upgrade, and tests
-> rollback while checking that user data survives. A passing CI run is still
-> not a substitute for a final install/update test on a real user's Windows PC.
+> **Status — read this first.** The Phase 6 native Windows workflow is configured
+> to stage the application, generate the compact installer icon, compile the
+> Inno Setup script, perform a fresh install, run an upgrade, and test rollback
+> while checking that user data survives. The current native matrix must pass
+> before this workflow is considered verified. A passing CI run is still not a
+> substitute for a final install/update test on a real user's Windows PC.
 > Ubuntu and macOS installer flows have separate native-runner tests; see
 > [Update Recovery](docs/UPDATE_RECOVERY.md).
 
