@@ -103,14 +103,14 @@ jobs:
           $userPlugin = Join-Path $installDir "plugins\\user_custom.py"
           Set-Content -Path $userPlugin -Value "preserve-custom-plugin" -NoNewline
 
-          $upgrade = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
+          $upgrade = Start-Process -FilePath $installer -ArgumentList $setupArgs -Wait -PassThru
           if ($upgrade.ExitCode -ne 0) { throw "Windows upgrade failed: $($upgrade.ExitCode)" }
           $recoveryRoot = Join-Path $env:LOCALAPPDATA "MARK-LV\update-recovery"
           $tx = (Get-Content (Join-Path $recoveryRoot "latest.txt") -Raw).Trim()
           if (-not $tx) { throw "Windows installer did not create a recovery transaction." }
           # Simulate an interrupted update that left the new runtime unusable.
           Remove-Item (Join-Path $installDir "runtime") -Recurse -Force
-          $retry = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru
+          $retry = Start-Process -FilePath $installer -ArgumentList $setupArgs -Wait -PassThru
           if ($retry.ExitCode -ne 0) { throw "Windows installer could not recover and retry an interrupted update." }
           $tx = (Get-Content (Join-Path $recoveryRoot "latest.txt") -Raw).Trim()
           if (-not $tx) { throw "Windows recovery retry did not create a new transaction." }
