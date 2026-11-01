@@ -128,6 +128,7 @@ class MacOSInstallerScriptTests(unittest.TestCase):
             env = os.environ.copy()
             env["HOME"] = str(home)
             env["JARVIS_INSTALLER_NO_LAUNCH"] = "1"
+            env["JARVIS_INSTALLER_DEBUG"] = "1"
 
             def install(dmg: Path):
                 return subprocess.run(
