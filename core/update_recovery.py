@@ -106,16 +106,27 @@ def _assert_safe_install_root(install_dir: str | Path, recovery_dir: Path) -> Pa
 
 
 def _reject_symlinks(root: Path) -> None:
+    """Allow links only when their resolved target remains inside the app tree."""
+    resolved_root = root.resolve()
     for path in root.rglob("*"):
         if path.is_symlink():
-            raise ValueError(f"Refusing to back up a symbolic link: {path.relative_to(root)}")
+            try:
+                target = path.resolve(strict=True)
+            except OSError as exc:
+                raise ValueError(f"Refusing a broken symbolic link: {path.relative_to(root)}") from exc
+            if not _is_within(target, resolved_root):
+                raise ValueError(f"Refusing a symbolic link that escapes the installation: {path.relative_to(root)}")
 
 
 def _manifest(root: Path) -> dict[str, str]:
     entries: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
-        if path.is_file():
-            entries[path.relative_to(root).as_posix()] = _sha256(path)
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            target = os.readlink(path)
+            entries[relative] = hashlib.sha256(("symlink:" + target).encode("utf-8")).hexdigest()
+        elif path.is_file():
+            entries[relative] = _sha256(path)
     return entries
 
 
@@ -150,7 +161,7 @@ def prepare_update(
     }
     _save_state(tx_dir, state)
     try:
-        shutil.copytree(root, partial, copy_function=shutil.copy2)
+        shutil.copytree(root, partial, copy_function=shutil.copy2, symlinks=True)
         manifest = _manifest(partial)
         if not manifest:
             raise RuntimeError("The installation snapshot is empty; refusing to continue.")
@@ -227,6 +238,10 @@ def confirm_update(transaction_id: str, *, recovery_dir: str | Path | None = Non
 def _verify_backup(backup: Path, manifest: dict[str, str]) -> None:
     if not backup.is_dir() or backup.is_symlink():
         raise RuntimeError("The update backup is missing or unsafe; automatic rollback was not attempted.")
+    try:
+        _reject_symlinks(backup)
+    except ValueError as exc:
+        raise RuntimeError("The update backup contains an unsafe symbolic link.") from exc
     actual = _manifest(backup)
     if actual != manifest:
         raise RuntimeError("The update backup failed its integrity check; original files were left untouched.")
@@ -277,7 +292,7 @@ def rollback_update(
             # The verified backup is authoritative; restore from a fresh copy.
             if restore.exists():
                 shutil.rmtree(restore, ignore_errors=True)
-            shutil.copytree(backup, restore, copy_function=shutil.copy2)
+            shutil.copytree(backup, restore, copy_function=shutil.copy2, symlinks=True)
             if install_root.exists():
                 if failed.exists():
                     shutil.rmtree(install_root, ignore_errors=True)
