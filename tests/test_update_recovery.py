@@ -150,5 +150,23 @@ class UpdateRecoveryTests(unittest.TestCase):
         self.assertFalse(failed.exists())
 
 
+    def test_internal_runtime_symlink_is_preserved_in_snapshot_and_rollback(self):
+        link = self.install / "runtime" / "python-link"
+        try:
+            link.symlink_to("python.bin")
+        except (OSError, NotImplementedError):
+            self.skipTest("Symlinks are unavailable in this environment")
+        transaction_id = self._prepare_and_start()
+        link.unlink()
+        link.symlink_to("missing-target")
+        result = update_recovery.rollback_update(
+            transaction_id, recovery_dir=self.recovery
+        )
+        self.assertEqual(result["status"], "rolled_back")
+        restored = self.install / "runtime" / "python-link"
+        self.assertTrue(restored.is_symlink())
+        self.assertEqual(restored.readlink().as_posix(), "python.bin")
+
+
 if __name__ == "__main__":
     unittest.main()
