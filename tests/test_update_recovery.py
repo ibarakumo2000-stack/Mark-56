@@ -1,6 +1,7 @@
 """Unit tests for local update backup, confirmation and rollback behaviour."""
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -166,6 +167,11 @@ class UpdateRecoveryTests(unittest.TestCase):
         restored = self.install / "runtime" / "python-link"
         self.assertTrue(restored.is_symlink())
         self.assertEqual(restored.readlink().as_posix(), "python.bin")
+
+
+    def test_process_liveness_check_does_not_signal_current_process(self):
+        self.assertTrue(update_recovery.process_is_alive(os.getpid()))
+        self.assertFalse(update_recovery.process_is_alive(2**31 - 1))
 
 
 if __name__ == "__main__":
