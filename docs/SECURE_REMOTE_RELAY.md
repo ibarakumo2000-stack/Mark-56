@@ -2,14 +2,15 @@
 
 ## Architecture
 
-The relay is an optional, stateless message broker in `relay/`. Both desktop
-and mobile clients make outbound WebSocket connections over TLS. The desktop
-does not open a public inbound control port. Deploy the service behind Caddy
-(or another correctly configured TLS reverse proxy).
+The optional stateless broker lives in `relay/`. Desktop and mobile clients
+open outbound WebSocket connections over TLS. The desktop does not expose a
+public inbound control port. Deploy behind Caddy or another correctly
+configured TLS reverse proxy.
 
-The relay forwards validated, bounded JSON envelopes only between a desktop
-principal and device principals that share a channel. It does not interpret
-commands, persist messages, store raw credentials, or log message bodies.
+The relay forwards bounded JSON envelopes only between desktop and device
+principals in the same channel. Sender and recipient must both hold the
+required scope for the message type. The broker does not interpret commands,
+persist message bodies, store raw credentials, or log message content.
 
 ## Deploy
 
@@ -21,13 +22,14 @@ export JARVIS_RELAY_DOMAIN=relay.example.com
 docker compose -f relay/compose.yml up -d --build
 ```
 
-Check `https://relay.example.com/health` before provisioning.
+Check `https://relay.example.com/health` before provisioning. The relay
+container port is exposed only on the Compose network; Caddy owns public TLS.
 
 ## Provision one channel
 
 Run the provisioning CLI in the relay container. The channel ID is a UUID
-shared by the desktop and its enrolled devices. Store each token securely;
-the CLI prints it only once.
+shared by the desktop and its enrolled devices. Store each token securely; the
+CLI prints it only once.
 
 ```bash
 CHANNEL="$(python -c 'import uuid; print(uuid.uuid4())')"
@@ -41,25 +43,32 @@ docker compose -f relay/compose.yml exec relay \
 
 Use the returned channel ID, principal ID and token in the Android app's
 **Secure Remote Relay** configuration. Configure the desktop with its own
-principal ID and token and instantiate `relay.desktop_bridge.DesktopRelayBridge`
-with an application-owned callback. The desktop connector reconnects with
-bounded exponential backoff and sends only to a target device in its channel.
+principal ID and token and instantiate
+`relay.desktop_bridge.DesktopRelayBridge` with an application-owned callback.
+The desktop connector reconnects with bounded exponential backoff and can be
+stopped explicitly.
 
 ## Security operations
 
 - Use `https://` / `wss://` only; the Compose deployment does not publish the
   relay's internal port.
+- The broker checks the sender scope and the receiving principal's scope for
+  every forwarded message.
+- Message envelopes are limited to 32 KB; the broker applies a per-principal
+  rate limit and reauthenticates credentials during the connection.
 - Keep the relay database volume private and back it up with host-level access
   controls.
-- Provision separate, least-privilege credentials for every device.
-- Revoke lost credentials with the trusted CLI: `docker compose -f relay/compose.yml exec relay python -m relay.revoke --channel "$CHANNEL" --principal-id "$PRINCIPAL_ID"`.
+- Provision separate least-privilege credentials for every device.
+- Revoke lost credentials with the trusted CLI:
+  `docker compose -f relay/compose.yml exec relay python -m relay.revoke --channel "$CHANNEL" --principal-id "$PRINCIPAL_ID"`.
 - Never place relay tokens in QR codes, URLs, app logs or source control.
 - Messages are ephemeral; disconnected peers receive no stored backlog.
-- Add monitoring, firewall restrictions, backups and an operator-controlled
-  credential revocation process before production use.
 
-This stage supplies the relay server, credential registry, provisioning CLI,
-Docker/Caddy deployment, desktop connector and Android WebSocket client. It
-still requires deployment to a host controlled by the project owner and
-end-to-end testing across separate networks before it should be considered
-production-ready.
+## Completion boundary
+
+The relay service, credential registry, provisioning CLI, Docker/Caddy
+deployment, desktop connector, and Android WebSocket client are implemented.
+Deployment to an owner-controlled host, desktop application callback wiring,
+and cross-network end-to-end testing still require operator configuration and
+acceptance testing. Do not call the relay production-live until those steps
+have been completed.
