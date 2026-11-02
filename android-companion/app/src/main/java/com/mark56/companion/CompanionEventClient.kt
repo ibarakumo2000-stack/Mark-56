@@ -42,7 +42,30 @@ class CompanionEventClient(
         return postEvent("/v1/notifications", body)
     }
 
+    /** Fetches at most one desktop-authorized media action; no arbitrary command data is accepted. */
+    fun pollMediaCommand(): String? {
+        val connection = signedConnection("/v1/media/next", JSONObject())
+        return try {
+            val status = connection.responseCode
+            if (status !in 200..299) return null
+            val response = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val command = JSONObject(response).optJSONObject("command") ?: return null
+            command.optString("action").takeIf { it in setOf("play", "pause", "play_pause", "next", "previous", "stop") }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun postEvent(path: String, body: JSONObject): Int {
+        val connection = signedConnection(path, body)
+        return try {
+            connection.responseCode
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun signedConnection(path: String, body: JSONObject): HttpsURLConnection {
         val timestamp = System.currentTimeMillis() / 1000L
         val random = ByteArray(24).also { SecureRandom().nextBytes(it) }
         val nonce = android.util.Base64.encodeToString(
@@ -59,13 +82,9 @@ class CompanionEventClient(
             .joinToString("") { "%02x".format(it) }
         val envelope = JSONObject(canonical.toString()).put("signature", signature)
         val connection = pinnedConnection(path)
-        return try {
-            connection.setRequestProperty("Authorization", "Bearer $token")
-            connection.outputStream.use { it.write(envelope.toString().toByteArray(Charsets.UTF_8)) }
-            connection.responseCode
-        } finally {
-            connection.disconnect()
-        }
+        connection.setRequestProperty("Authorization", "Bearer $token")
+        connection.outputStream.use { it.write(envelope.toString().toByteArray(Charsets.UTF_8)) }
+        return connection
     }
 
     private fun canonicalJson(value: Any?): String = when (value) {
