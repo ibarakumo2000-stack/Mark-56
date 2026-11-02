@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import ipaddress
+import io
+import json
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -164,12 +167,22 @@ def build_device_router(
                 desktop_endpoint=companion_endpoint,
                 desktop_fingerprint=companion_fingerprint,
             )
+            qr_data_uri = None
+            try:
+                import qrcode
+                image = qrcode.make(json.dumps(payload, separators=(",", ":")))
+                buffer = io.BytesIO()
+                image.save(buffer, format="PNG")
+                qr_data_uri = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+            except ImportError:
+                pass
         except (ValueError, TypeError, AttributeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         return JSONResponse({
             "ok": True, "code": offer.code, "expires_at": offer.expires_at,
             "approved_scopes": list(offer.approved_scopes),
             "pairing_payload": payload,
+            "qr_data_uri": qr_data_uri,
         })
 
     @router.post("/api/devices/enroll")
