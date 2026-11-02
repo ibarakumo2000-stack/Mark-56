@@ -44,28 +44,49 @@ class JarvisBleGlassesAdapter:
         self._discovered: dict[str, GlassesDescriptor] = {}
         self._clients: dict[str, Any] = {}
         self._lock = threading.RLock()
+        # Bleak clients are event-loop-bound. Keep discovery, connect, writes
+        # and disconnects on one dedicated loop instead of creating a fresh
+        # asyncio.run() loop for every BLE operation.
+        self._loop = asyncio.new_event_loop()
+        self._loop_ready = threading.Event()
+        self._loop_thread = threading.Thread(
+            target=self._serve_loop, name="jarvis-glasses-ble", daemon=True
+        )
+        self._loop_thread.start()
+        if not self._loop_ready.wait(5):
+            raise GlassesBleUnavailable("Could not start the BLE adapter event loop")
 
-    @staticmethod
-    def _run(coroutine):
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(coroutine)
-        result: list[Any] = []
-        errors: list[BaseException] = []
+    def _serve_loop(self) -> None:
+        asyncio.set_event_loop(self._loop)
+        self._loop_ready.set()
+        self._loop.run_forever()
 
-        def worker():
+    def _run(self, coroutine, timeout: float = 30.0):
+        if not self._loop_thread.is_alive() or self._loop.is_closed():
+            coroutine.close()
+            raise GlassesBleUnavailable("BLE adapter is closed")
+        future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        return future.result(timeout=timeout)
+
+    def close(self) -> None:
+        with self._lock:
+            clients = list(self._clients.values())
+            self._clients.clear()
+        async def disconnect_all():
+            for client in clients:
+                try:
+                    if client.is_connected:
+                        await client.disconnect()
+                except Exception:
+                    pass
+        if self._loop_thread.is_alive() and not self._loop.is_closed():
             try:
-                result.append(asyncio.run(coroutine))
-            except BaseException as exc:
-                errors.append(exc)
-
-        thread = threading.Thread(target=worker, daemon=True)
-        thread.start()
-        thread.join()
-        if errors:
-            raise errors[0]
-        return result[0] if result else None
+                self._run(disconnect_all(), timeout=15.0)
+            finally:
+                self._loop.call_soon_threadsafe(self._loop.stop)
+                self._loop_thread.join(timeout=5.0)
+                if not self._loop_thread.is_alive():
+                    self._loop.close()
 
     def discover(self, timeout: float = 5.0) -> list[GlassesDescriptor]:
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0.1 <= timeout <= 20:
@@ -74,7 +95,7 @@ class JarvisBleGlassesAdapter:
         async def scan():
             return await BleakScanner.discover(timeout=float(timeout), return_adv=True)
 
-        found = self._run(scan())
+        found = self._run(scan(), timeout=float(timeout) + 10.0)
         discovered: dict[str, GlassesDescriptor] = {}
         for device, advertisement in found.values():
             services = {str(value).lower() for value in (advertisement.service_uuids or [])}
@@ -112,18 +133,18 @@ class JarvisBleGlassesAdapter:
                 raise GlassesAdapterError("Glasses do not expose the JARVIS display write characteristic")
             return client
 
-        client = self._run(open_client())
+        client = self._run(open_client(), timeout=25.0)
         with self._lock:
             previous = self._clients.pop(device_id, None)
             self._clients[device_id] = client
         if previous is not None:
-            self._run(previous.disconnect())
+            self._run(previous.disconnect(), timeout=10.0)
 
     def disconnect(self, device_id: str) -> None:
         with self._lock:
             client = self._clients.pop(device_id, None)
         if client is not None:
-            self._run(client.disconnect())
+            self._run(client.disconnect(), timeout=10.0)
 
     def render_card(self, device_id: str, card: dict[str, Any]) -> None:
         if not isinstance(card, dict):
@@ -142,7 +163,7 @@ class JarvisBleGlassesAdapter:
         async def write():
             await client.write_gatt_char(DISPLAY_CARD_CHARACTERISTIC, payload)
 
-        self._run(write())
+        self._run(write(), timeout=10.0)
 
     def capture_frame(self, device_id: str) -> bytes:
         raise GlassesAdapterError(
