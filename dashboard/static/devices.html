@@ -95,7 +95,7 @@ function setRelayStatus(state,configured){
  $("relay-status").className="status"+(state==="connected"?" on":"");
  $("relay-status").innerHTML='<i class="dot"></i><span>'+String(state||"stopped").replaceAll("_"," ")+'</span>';
  $("relay-start").disabled=!relayConfigured||state==="connected"||state==="connecting";
- $("relay-stop").disabled=state==="stopped"||state==="error";
+ $("relay-stop").disabled=state==="stopped";
  $("relay-description").textContent=relayConfigured
   ?"Desktop relay status: "+state+". Credentials are stored in the operating-system keyring; event payloads are not displayed here."
   :"Provision a separate desktop principal with least-privilege scopes. The token is stored in the operating-system credential store and is never returned to this page.";
