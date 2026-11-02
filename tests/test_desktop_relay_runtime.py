@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 
 from relay.desktop_runtime import DesktopRelayRuntime
@@ -32,6 +33,41 @@ class DesktopRelayRuntimeTests(unittest.TestCase):
             token="invalid",
         ), "error")
         self.assertEqual(runtime.stop(), "stopped")
+
+
+class FakeBridge:
+    def __init__(self):
+        self.sent = []
+
+    async def send_to_device(self, device_id, message_type, payload):
+        self.sent.append((device_id, message_type, payload))
+
+
+class DesktopRelayPingResponseTests(unittest.IsolatedAsyncioTestCase):
+    async def test_only_assistant_ping_gets_a_fixed_pong_response(self):
+        runtime = DesktopRelayRuntime()
+        bridge = FakeBridge()
+        runtime._bridge = bridge
+
+        runtime._record_message({
+            "type": "command", "device_id": "phone-1",
+            "payload": {"action": "assistant.ping"},
+        })
+        await asyncio.sleep(0)
+        self.assertEqual(bridge.sent, [
+            ("phone-1", "command", {"action": "assistant.pong"})
+        ])
+
+    async def test_other_remote_commands_are_not_executed_or_auto_replied(self):
+        runtime = DesktopRelayRuntime()
+        bridge = FakeBridge()
+        runtime._bridge = bridge
+        runtime._record_message({
+            "type": "command", "device_id": "phone-1",
+            "payload": {"action": "shell.exec", "command": "whoami"},
+        })
+        await asyncio.sleep(0)
+        self.assertEqual(bridge.sent, [])
 
 
 if __name__ == "__main__":
