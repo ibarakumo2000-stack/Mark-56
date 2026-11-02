@@ -15,6 +15,10 @@ import android.widget.TextView
 import android.widget.EditText
 import android.text.InputType
 import androidx.appcompat.app.AlertDialog
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import android.content.res.ColorStateList
 import com.google.android.material.button.MaterialButton
 import androidx.appcompat.app.AppCompatActivity
@@ -33,6 +37,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var remoteRelayButton: Button
     private lateinit var remotePingButton: Button
     private var remoteRelayClient: RemoteRelayClient? = null
+    private var remoteRelayConnected = false
     private lateinit var tokenStore: SecureTokenStore
     private lateinit var settings: CompanionSettings
 
@@ -45,7 +50,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         tokenStore = SecureTokenStore(getSharedPreferences("companion_secure", MODE_PRIVATE))
         settings = CompanionSettings(this)
 
@@ -141,13 +148,44 @@ class MainActivity : AppCompatActivity() {
             alpha = 0.5f
             setOnClickListener { sendRemotePing() }
         }
-        val disconnect = actionButton("DISCONNECT DEVICE", false).apply {
+        val capabilitiesCard = card().apply {
+            addView(sectionHeader("PHONE & WEARABLE FEATURES"))
+            addView(TextView(this@MainActivity).apply {
+                text = "Each feature has its own permission. Nothing starts until you enable it."
+                textSize = 12f
+                setTextColor(Color.rgb(155, 176, 203))
+                setPadding(0, dp(5), 0, dp(12))
+            })
+            addView(batterySyncButton, matchWidth())
+            addView(notificationRelayButton, matchWidth())
+            addView(mediaControlButton, matchWidth())
+            addView(wearBridgeButton, matchWidth())
+        }
+        val remoteCard = card().apply {
+            addView(sectionHeader("REMOTE CONNECTION"))
+            addView(TextView(this@MainActivity).apply {
+                text = "Connect to an owner-managed JARVIS relay when your phone is away from the desktop's trusted network."
+                textSize = 12f
+                setTextColor(Color.rgb(155, 176, 203))
+                setPadding(0, dp(5), 0, dp(12))
+            })
+            addView(remoteRelayButton, matchWidth())
+            addView(remotePingButton, matchWidth())
+        }
+        val disconnect = actionButton("DISCONNECT THIS DEVICE", false).apply {
             setOnClickListener {
                 BatterySync.disable(this@MainActivity)
+                remoteRelayClient?.close()
+                remoteRelayClient = null
+                remoteRelayConnected = false
                 tokenStore.clear()
                 settings.clearConnection()
+                settings.clearRelayConfig()
+                remoteRelayButton.text = "CONFIGURE SECURE REMOTE RELAY"
+                remotePingButton.isEnabled = false
+                remotePingButton.alpha = 0.5f
                 refreshBatteryButton()
-                status.text = "Local credential cleared. Revoke this device in JARVIS desktop to invalidate server access."
+                status.text = "Local credentials cleared. Revoke this device in JARVIS desktop to invalidate its desktop access."
             }
         }
         root.addView(brand)
@@ -156,12 +194,8 @@ class MainActivity : AppCompatActivity() {
         root.addView(connectionCard, matchWidth())
         root.addView(pair, matchWidth())
         root.addView(featuresCard, matchWidth())
-        root.addView(batterySyncButton, matchWidth())
-        root.addView(notificationRelayButton, matchWidth())
-        root.addView(mediaControlButton, matchWidth())
-        root.addView(wearBridgeButton, matchWidth())
-        root.addView(remoteRelayButton, matchWidth())
-        root.addView(remotePingButton, matchWidth())
+        root.addView(capabilitiesCard, matchWidth())
+        root.addView(remoteCard, matchWidth())
         root.addView(disconnect, matchWidth())
         root.addView(TextView(this).apply {
             text = "MARK 56  /  COMPANION"
@@ -174,13 +208,36 @@ class MainActivity : AppCompatActivity() {
         val scroll = android.widget.ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
-            setPadding(0, 0, 0, dp(12))
             addView(root)
         }
-        window.statusBarColor = Color.rgb(5, 12, 28)
-        window.navigationBarColor = Color.rgb(5, 12, 28)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
         setContentView(scroll)
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(0, bars.top, 0, bars.bottom + dp(12))
+            insets
+        }
+        ViewCompat.requestApplyInsets(scroll)
         refreshBatteryButton()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::batterySyncButton.isInitialized) {
+            refreshBatteryButton()
+            if (settings.mediaControlEnabled() && !hasNotificationAccess()) {
+                status.text = "Media controls are enabled but Android Notification Access is not granted. Re-enable access to discover media sessions."
+            }
+        }
+    }
+
+    private fun sectionHeader(label: String): TextView = TextView(this).apply {
+        text = label
+        textSize = 11f
+        letterSpacing = .12f
+        typeface = Typeface.DEFAULT_BOLD
+        setTextColor(Color.rgb(89, 224, 255))
     }
 
     private fun card(): LinearLayout = LinearLayout(this).apply {
@@ -267,6 +324,7 @@ class MainActivity : AppCompatActivity() {
         val paired = tokenStore.read() != null && settings.deviceId() != null
         val approved = paired && settings.hasNotificationScope()
         notificationRelayButton.text = when {
+            approved && settings.notificationRelayEnabled() && !hasNotificationAccess() -> "GRANT NOTIFICATION ACCESS"
             approved && settings.notificationRelayEnabled() -> "DISABLE NOTIFICATION RELAY"
             approved -> "ENABLE NOTIFICATION RELAY  ·  NOTIFICATION ACCESS"
             settings.notificationRelayRequested() -> "NOTIFICATION SCOPE REQUESTED  ·  TAP TO CANCEL"
@@ -280,6 +338,7 @@ class MainActivity : AppCompatActivity() {
         val paired = tokenStore.read() != null && settings.deviceId() != null
         val approved = paired && settings.hasMediaScope()
         mediaControlButton.text = when {
+            approved && settings.mediaControlEnabled() && !hasNotificationAccess() -> "GRANT NOTIFICATION ACCESS FOR MEDIA"
             approved && settings.mediaControlEnabled() -> "DISABLE MEDIA CONTROLS"
             approved -> "ENABLE MEDIA CONTROLS  ·  ACTIVE SESSION ONLY"
             settings.mediaControlRequested() -> "MEDIA SCOPE REQUESTED  ·  TAP TO CANCEL"
@@ -321,14 +380,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun configureOrToggleRemoteRelay() {
-        if (remoteRelayClient != null) {
+        if (remoteRelayClient != null && remoteRelayConnected) {
             remoteRelayClient?.close()
             remoteRelayClient = null
+            remoteRelayConnected = false
             remoteRelayButton.text = "CONNECT SECURE REMOTE RELAY"
             remotePingButton.isEnabled = false
             remotePingButton.alpha = 0.5f
             status.text = "Remote relay disconnected."
             return
+        }
+        if (remoteRelayClient != null) {
+            remoteRelayClient?.close()
+            remoteRelayClient = null
+            remoteRelayConnected = false
         }
         val endpoint = settings.relayEndpoint()
         val channel = settings.relayChannel()
@@ -397,6 +462,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         status.text = message
                         val connected = message.startsWith("Connected")
+                        remoteRelayConnected = connected
                         remoteRelayButton.text = if (connected) "DISCONNECT REMOTE RELAY"
                             else "REMOTE RELAY · TAP TO RECONNECT"
                         remotePingButton.isEnabled = connected
@@ -514,6 +580,9 @@ class MainActivity : AppCompatActivity() {
                         settings.saveConnection(endpoint, fingerprint, deviceId,
                             hasBatteryScope, hasNotificationScope, hasMediaScope,
                             hasScope("command.send"))
+                        settings.setNotificationRelayRequested(false)
+                        settings.setMediaControlRequested(false)
+                        settings.setWearBridgeRequested(false)
                         BatterySync.disable(this)
                         settings.setMediaControlEnabled(false)
                         settings.setWearBridgeEnabled(false)
@@ -542,6 +611,7 @@ class MainActivity : AppCompatActivity() {
         worker.shutdownNow()
         remoteRelayClient?.close()
         remoteRelayClient = null
+        remoteRelayConnected = false
         super.onDestroy()
     }
 }
