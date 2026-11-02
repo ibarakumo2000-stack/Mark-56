@@ -67,6 +67,7 @@ class SmartGlassesAdapter(Protocol):
 class _Session:
     adapter_id: str
     descriptor: GlassesDescriptor
+    physical_device_id: str
     connected_at: float
     consented: set[GlassesCapability]
 
@@ -119,7 +120,7 @@ class GlassesAdapterRegistry:
             raise GlassesAdapterError("Glasses adapter is not installed")
         adapter.connect(device_id)
         with self._lock:
-            self._sessions[identity["device_id"]] = _Session(adapter_id, descriptor, time.monotonic(), set())
+            self._sessions[identity["device_id"]] = _Session(adapter_id, descriptor, device_id, time.monotonic(), set())
 
     def grant_session_consent(self, token: str, capabilities: set[GlassesCapability]) -> None:
         identity = self.devices.authenticate(token)
@@ -148,18 +149,18 @@ class GlassesAdapterRegistry:
             session = self._sessions.pop(identity["device_id"], None)
         if session is None:
             return False
-        self._adapters[session.adapter_id].disconnect(identity["device_id"])
+        self._adapters[session.adapter_id].disconnect(session.physical_device_id)
         return True
 
     def render_card(self, token: str, card: dict[str, Any]) -> None:
         identity, adapter, session = self._authorized(token, GlassesCapability.DISPLAY)
         if not isinstance(card, dict) or len(str(card).encode("utf-8")) > _MAX_TEXT:
             raise GlassesAdapterError("Display card exceeds the safe payload limit")
-        adapter.render_card(identity["device_id"], card)
+        adapter.render_card(session.physical_device_id, card)
 
     def capture_frame(self, token: str) -> bytes:
         identity, adapter, _ = self._authorized(token, GlassesCapability.CAMERA)
-        frame = adapter.capture_frame(identity["device_id"])
+        frame = adapter.capture_frame(session.physical_device_id)
         if not isinstance(frame, bytes) or not frame or len(frame) > _MAX_FRAME_BYTES:
             raise GlassesAdapterError("Adapter returned an invalid camera frame")
         return frame
@@ -168,7 +169,7 @@ class GlassesAdapterRegistry:
         if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or not 100 <= duration_ms <= 15000:
             raise GlassesAdapterError("Audio capture must be between 100 and 15000 ms")
         identity, adapter, _ = self._authorized(token, GlassesCapability.MICROPHONE)
-        audio = adapter.capture_audio(identity["device_id"], duration_ms)
+        audio = adapter.capture_audio(session.physical_device_id, duration_ms)
         if not isinstance(audio, bytes) or not audio or len(audio) > _MAX_FRAME_BYTES:
             raise GlassesAdapterError("Adapter returned invalid audio data")
         return audio
