@@ -563,6 +563,7 @@ def build(target: str, version: str) -> None:
     info = {
         "version": version,
         "target": target,
+        "source_commit": helpers.os.environ.get("GITHUB_SHA", ""),
         "python": PYTHON_BUILD_VERSION,
         "sha256": digest,
         "size": output.stat().st_size,
