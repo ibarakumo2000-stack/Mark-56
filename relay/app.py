@@ -32,6 +32,7 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
     db = registry or RelayRegistry(os.environ.get("JARVIS_RELAY_DATABASE", "relay-data/relay.sqlite3"))
     app = FastAPI(title="JARVIS Secure Relay", docs_url=None, redoc_url=None, openapi_url=None)
     peers: dict[tuple[str, str], WebSocket] = {}
+    desktop_peers: dict[str, WebSocket] = {}
     rate: dict[str, deque[float]] = defaultdict(deque)
 
     @app.get("/health")
@@ -57,13 +58,15 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
             return
         await websocket.accept()
         key = (channel_id, principal_id)
-        old = peers.get(key)
+        old = desktop_peers.get(channel_id) if identity["role"] == "desktop" else peers.get(key)
         if old is not None:
             try:
                 await old.close(code=4001, reason="Replaced by a newer connection")
             except Exception:
                 pass
         peers[key] = websocket
+        if identity["role"] == "desktop":
+            desktop_peers[channel_id] = websocket
         try:
             while True:
                 try:
@@ -113,7 +116,7 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
                     if envelope["target_device_id"] is not None:
                         await websocket.send_json({"type": "error", "error": "device_cannot_select_recipient"})
                         continue
-                    recipient = peers.get((channel_id, "desktop"))
+                    recipient = desktop_peers.get(channel_id)
                     outbound = {"type": message_type, "device_id": principal_id, "payload": envelope["payload"]}
                 else:
                     target = envelope["target_device_id"]
@@ -135,9 +138,12 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
         finally:
             if peers.get(key) is websocket:
                 peers.pop(key, None)
+            if identity["role"] == "desktop" and desktop_peers.get(channel_id) is websocket:
+                desktop_peers.pop(channel_id, None)
 
     app.state.relay_registry = db
     app.state.relay_peers = peers
+    app.state.relay_desktop_peers = desktop_peers
     return app
 
 
