@@ -134,7 +134,9 @@ class GlassesAdapterRegistry:
             self._sessions[identity["device_id"]] = _Session(
                 adapter_id, descriptor, device_id, time.monotonic(), set()
             )
-        if previous is not None:
+        if previous is not None and (
+            previous.adapter_id != adapter_id or previous.physical_device_id != device_id
+        ):
             try:
                 self._adapters[previous.adapter_id].disconnect(previous.physical_device_id)
             except Exception:
