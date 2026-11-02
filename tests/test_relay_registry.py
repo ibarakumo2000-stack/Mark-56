@@ -35,6 +35,20 @@ class RelayRegistryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.registry.provision(channel_id=self.channel, role="device", scopes=["admin"])
 
+    def test_scope_input_must_be_a_collection_of_strings(self):
+        for scopes in ("command.send", [None], [object()], {"admin"}):
+            with self.assertRaises(ValueError):
+                self.registry.provision(
+                    channel_id=self.channel, role="device", scopes=scopes
+                )
+
+    def test_scope_collection_is_bounded(self):
+        with self.assertRaises(ValueError):
+            self.registry.provision(
+                channel_id=self.channel, role="device",
+                scopes=["command.send"] * 17 + ["media.control"],
+            )
+
     def test_desktop_identity_is_unique_per_channel(self):
         first = self.registry.provision(channel_id=self.channel, role="desktop", scopes=[])
         second_channel = str(uuid.uuid4())
