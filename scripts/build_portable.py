@@ -563,12 +563,14 @@ def build(target: str, version: str) -> None:
     info = {
         "version": version,
         "target": target,
+        "source_commit": helpers.os.environ.get("GITHUB_SHA", ""),
         "python": PYTHON_BUILD_VERSION,
         "sha256": digest,
         "size": output.stat().st_size,
         "signed": False if target.startswith("macos-") else None,
     }
     (DIST / f"build-info-{target}.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
+    (DIST / f"SHA256SUMS-{target}.txt").write_text(f"{digest}  {output.name}\n", encoding="utf-8")
     print(f"\nBUILD OK: {output} ({output.stat().st_size / 1_000_000:.1f} MB)")
     print(f"SHA-256: {digest}")
 

@@ -430,9 +430,10 @@ def main() -> None:
     if exe.read_bytes()[:2] != b"MZ":
         die("output is not a Windows executable")
     digest = sha256(exe)
-    (DIST / "SHA256SUMS.txt").write_text(f"{digest}  {exe.name}\n")
+    (DIST / "SHA256SUMS-windows-x86_64.txt").write_text(f"{digest}  {exe.name}\n")
     (DIST / "build-info.json").write_text(json.dumps(
-        {"version": version, "python": args.python, "sha256": digest, "size": exe.stat().st_size,
+        {"version": version, "target": "windows-x86_64", "source_commit": os.environ.get("GITHUB_SHA", ""),
+         "python": args.python, "sha256": digest, "size": exe.stat().st_size,
          "signed": bool(args.sign_command)}, indent=2))
     print(f"  {exe}  ({exe.stat().st_size / 1e6:.0f} MB)\n  sha256 {digest}")
     if not args.sign_command:
