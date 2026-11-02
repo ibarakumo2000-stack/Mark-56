@@ -49,6 +49,7 @@ class GlassesDescriptor:
     model: str
     platform: str
     capabilities: frozenset[GlassesCapability]
+    device_id: str | None = None
 
 
 @runtime_checkable
