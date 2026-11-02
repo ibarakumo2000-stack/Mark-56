@@ -36,6 +36,6 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Compile application modules
-        run: python -m compileall -q main.py ui.py core actions plugins dashboard memory tests
+        run: python -m compileall -q main.py ui.py core actions plugins dashboard memory tests relay
       - name: Verify safe example config exists and parses
         run: python -c "import json,pathlib; p=pathlib.Path('config/api_keys.example.json'); assert p.is_file(), 'Missing example config'; json.loads(p.read_text(encoding='utf-8')); print('Example config valid')"
