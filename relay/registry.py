@@ -50,6 +50,8 @@ class RelayRegistry:
             raise ValueError("Invalid principal ID")
         if not isinstance(scopes, (list, tuple, set)):
             raise ValueError("Scopes must be a list of permission names")
+        if len(scopes) > 16:
+            raise ValueError("Too many relay scopes requested")
         if any(not isinstance(scope, str) for scope in scopes):
             raise ValueError("Every relay scope must be a string")
         clean = sorted(set(scopes))
