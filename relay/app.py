@@ -4,6 +4,7 @@ Deploy behind a TLS reverse proxy and use wss://. The relay does not store
 message bodies, expose a public desktop listener, or interpret user commands.
 """
 from __future__ import annotations
+import asyncio
 import json
 import os
 import time
