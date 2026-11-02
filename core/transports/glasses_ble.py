@@ -85,6 +85,7 @@ class JarvisBleGlassesAdapter:
                 model=device.name or advertisement.local_name or "BLE smart glasses",
                 platform="ble",
                 capabilities=frozenset({GlassesCapability.DISPLAY}),
+                device_id=device.address,
             )
             discovered[device.address] = descriptor
         with self._lock:
