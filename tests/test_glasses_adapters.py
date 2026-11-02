@@ -83,6 +83,13 @@ class GlassesAdapterTests(unittest.TestCase):
         with self.assertRaises(GlassesAdapterError):
             self.registry.capture_audio(self.device.token, 30000)
 
+    def test_revoking_device_disconnects_physical_adapter_session(self):
+        self.registry.grant_session_consent(self.device.token, {GlassesCapability.CAMERA})
+        self.assertTrue(self.devices.revoke_device(self.device.device_id))
+        with self.assertRaises(Exception):
+            self.registry.capture_frame(self.device.token)
+        self.assertTrue(self.adapter.disconnected)
+
     def test_disconnect_closes_adapter_session(self):
         self.assertTrue(self.registry.disconnect(self.device.token))
         self.assertTrue(self.adapter.disconnected)
