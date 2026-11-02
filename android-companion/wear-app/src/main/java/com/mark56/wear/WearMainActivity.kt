@@ -22,7 +22,7 @@ class WearMainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(22, 22, 22, 22)
+            setPadding(dp(14), dp(16), dp(14), dp(16))
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(Color.rgb(5, 12, 28), Color.rgb(14, 30, 54))
@@ -52,11 +52,20 @@ class WearMainActivity : Activity() {
             setPadding(4, 8, 4, 12)
         }
         root.addView(status)
-        root.addView(action("PLAY / PAUSE", "media.play_pause"))
-        root.addView(action("NEXT TRACK", "media.next"))
-        root.addView(action("PREVIOUS", "media.previous"))
-        root.addView(action("PING JARVIS", "assistant.ping"))
-        setContentView(root)
+        listOf(
+            action("PLAY / PAUSE", "media.play_pause"),
+            action("NEXT TRACK", "media.next"),
+            action("PREVIOUS", "media.previous"),
+            action("PING JARVIS", "assistant.ping")
+        ).forEach { button ->
+            root.addView(button, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(5); bottomMargin = dp(5) })
+        }
+        setContentView(android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(root)
+        })
     }
 
     private fun action(label: String, action: String): Button = Button(this).apply {
@@ -72,6 +81,8 @@ class WearMainActivity : Activity() {
         setOnClickListener { sendAction(action) }
     }
 
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
     private fun sendAction(action: String) {
         status.text = "Sending securely…"
         Wearable.getNodeClient(this).connectedNodes
@@ -81,14 +92,17 @@ class WearMainActivity : Activity() {
                     return@addOnSuccessListener
                 }
                 val payload = JSONObject().put("action", action).toString().toByteArray(Charsets.UTF_8)
-                val sends = nodes.map { node ->
-                    Wearable.getMessageClient(this).sendMessage(node.id, "/jarvis/v1/action", payload)
+                val phone = nodes.firstOrNull()
+                if (phone == null) {
+                    status.text = "No paired phone is reachable."
+                    return@addOnSuccessListener
                 }
-                sends.first().addOnSuccessListener {
-                    status.text = "Sent to phone companion."
-                }.addOnFailureListener {
-                    status.text = "Phone bridge unavailable. Open JARVIS on your phone."
-                }
+                Wearable.getMessageClient(this).sendMessage(phone.id, "/jarvis/v1/action", payload)
+                    .addOnSuccessListener {
+                        status.text = "Sent to phone companion."
+                    }.addOnFailureListener {
+                        status.text = "Phone bridge unavailable. Open JARVIS on your phone."
+                    }
             }.addOnFailureListener {
                 status.text = "Could not find a paired phone."
             }
