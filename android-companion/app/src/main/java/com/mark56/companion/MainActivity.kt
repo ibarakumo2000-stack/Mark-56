@@ -495,6 +495,11 @@ class MainActivity : AppCompatActivity() {
     private fun toggleMediaControl() {
         val paired = tokenStore.read() != null && settings.deviceId() != null
         if (paired && settings.hasMediaScope()) {
+            if (settings.mediaControlEnabled() && !hasNotificationAccess()) {
+                status.text = "Grant Android Notification Access so JARVIS can discover media sessions."
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                return
+            }
             val enabled = !settings.mediaControlEnabled()
             settings.setMediaControlEnabled(enabled)
             if (enabled && !hasNotificationAccess()) {
@@ -518,6 +523,11 @@ class MainActivity : AppCompatActivity() {
     private fun toggleNotificationRelay() {
         val paired = tokenStore.read() != null && settings.deviceId() != null
         if (paired && settings.hasNotificationScope()) {
+            if (settings.notificationRelayEnabled() && !hasNotificationAccess()) {
+                status.text = "Grant Android Notification Access to enable notification forwarding."
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                return
+            }
             val enabled = !settings.notificationRelayEnabled()
             settings.setNotificationRelayEnabled(enabled)
             status.text = if (enabled)
