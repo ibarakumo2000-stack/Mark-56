@@ -358,7 +358,7 @@ def build_device_router(
             token = body.get("token", "").strip()
             from relay.desktop_bridge import relay_websocket_url
             relay_websocket_url(endpoint, channel_id, principal_id)
-            if not token.startswith("rly_") or len(token) > 160:
+            if not token.startswith("rly_") or not 32 <= len(token) <= 160:
                 raise ValueError("Relay token is invalid")
             import keyring
             backend = keyring.get_keyring()
