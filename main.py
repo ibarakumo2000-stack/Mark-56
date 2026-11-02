@@ -583,6 +583,7 @@ class JarvisLive:
         self.ui.ptt_hold          = self._on_ptt
         self.ui.on_text_command   = self._on_text_command
         self.ui.on_remote_clicked = self._make_remote_key
+        self.ui.on_pair_device_clicked = self._make_device_pairing_url
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session
         self.ui.on_audio_device_change = self._on_audio_device_change
@@ -827,6 +828,16 @@ class JarvisLive:
             + ("..." if keep else " (starting a fresh conversation)...")
         )
         raise _ReconnectSignal(keep_context=keep)
+
+    def _make_device_pairing_url(self):
+        """Return the authenticated device-management page on this desktop."""
+        if self._dashboard is None:
+            self.ui.write_log(
+                "SYS: Device pairing is unavailable because the dashboard did not start. "
+                "Install dashboard dependencies with: python -m pip install -r requirements.txt"
+            )
+            return None
+        return f"{self._dashboard.get_url().rstrip('/')}/devices"
 
     def _make_remote_key(self):
         """Called from Qt main thread when user presses Remote Control."""
