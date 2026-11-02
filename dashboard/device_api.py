@@ -6,6 +6,7 @@ import base64
 import ipaddress
 import io
 import json
+import socket
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -127,6 +128,17 @@ def build_device_router(
                 certificate=certificate, private_key=private_key,
             )
             server.start()
+            ready = False
+            for _ in range(30):
+                try:
+                    with socket.create_connection((str(address), _COMPANION_PORT), timeout=0.2):
+                        ready = True
+                        break
+                except OSError:
+                    time.sleep(0.1)
+            if not ready:
+                server.stop()
+                raise RuntimeError("Companion listener did not become ready; check port 8765 and the local firewall.")
             companion_app = app
             companion_server = server
             companion_endpoint = f"https://{address}:{_COMPANION_PORT}"
