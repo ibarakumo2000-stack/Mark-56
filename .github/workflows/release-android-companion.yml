@@ -54,7 +54,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_VERSION_NAME: ${{ github.ref_name }}
           ANDROID_VERSION_CODE: ${{ github.run_number }}
-        run: gradle --no-daemon :app:assembleRelease :wear-app:assembleRelease
+        run: gradle --no-daemon :app:testDebugUnitTest :wear-app:testDebugUnitTest :app:assembleRelease :wear-app:assembleRelease
       - name: Verify APK signatures and shared release identity
         run: |
           set -euo pipefail
