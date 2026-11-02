@@ -55,8 +55,12 @@ class DesktopRelayRuntime:
             )
             self._bridge = bridge
             self._set_state("connecting")
-            task = loop.create_task(bridge.run_forever())
-            self._ready.set()
+            async def run_bridge():
+                # Signal only after the event loop is actively executing.
+                self._ready.set()
+                await bridge.run_forever()
+
+            task = loop.create_task(run_bridge())
             loop.run_until_complete(task)
         except Exception:
             self._set_state("error")
