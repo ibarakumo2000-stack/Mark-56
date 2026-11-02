@@ -66,7 +66,20 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
         peers[key] = websocket
         try:
             while True:
-                raw = await websocket.receive_text()
+                try:
+                    raw = await asyncio.wait_for(websocket.receive_text(), timeout=30)
+                except asyncio.TimeoutError:
+                    try:
+                        identity = db.authenticate(auth[7:])
+                    except RelayAuthError:
+                        await websocket.close(code=4403, reason="Relay credential revoked")
+                        break
+                    continue
+                try:
+                    identity = db.authenticate(auth[7:])
+                except RelayAuthError:
+                    await websocket.close(code=4403, reason="Relay credential revoked")
+                    break
                 if len(raw.encode("utf-8")) > MAX_MESSAGE_BYTES:
                     await websocket.close(code=4409, reason="Message too large")
                     break
