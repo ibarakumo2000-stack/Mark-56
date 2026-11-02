@@ -471,7 +471,13 @@ class MainActivity : AppCompatActivity() {
                 },
                 onMessage = { message ->
                     runOnUiThread {
-                        status.text = "Remote JARVIS message received · " + message.optString("type", "message")
+                        val type = message.optString("type", "message")
+                        val action = message.optJSONObject("payload")?.optString("action", "")
+                        status.text = if (type == "command" && action == "assistant.pong") {
+                            "JARVIS desktop is reachable · secure relay round trip confirmed."
+                        } else {
+                            "Remote JARVIS message received · " + type
+                        }
                     }
                 }
             )
