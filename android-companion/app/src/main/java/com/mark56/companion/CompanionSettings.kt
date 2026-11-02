@@ -5,11 +5,11 @@ import android.content.Context
 class CompanionSettings(context: Context) {
     private val prefs = context.getSharedPreferences("companion_settings", Context.MODE_PRIVATE)
     fun saveConnection(endpoint: String, fingerprint: String, deviceId: String,
-                       batteryScope: Boolean, notificationScope: Boolean, mediaScope: Boolean) {
+                       batteryScope: Boolean, notificationScope: Boolean, mediaScope: Boolean, commandScope: Boolean) {
         prefs.edit().putString("endpoint", endpoint).putString("fingerprint", fingerprint)
             .putString("device_id", deviceId).putBoolean("battery_scope", batteryScope)
             .putBoolean("notification_scope", notificationScope)
-            .putBoolean("media_scope", mediaScope).apply()
+            .putBoolean("media_scope", mediaScope).putBoolean("command_scope", commandScope).apply()
     }
     fun endpoint(): String? = prefs.getString("endpoint", null)
     fun fingerprint(): String? = prefs.getString("fingerprint", null)
