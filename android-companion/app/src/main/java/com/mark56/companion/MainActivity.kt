@@ -411,6 +411,8 @@ class MainActivity : AppCompatActivity() {
             )
         } catch (error: Exception) {
             remoteRelayClient = null
+            settings.clearRelayConfig()
+            tokenStore.clearRelayToken()
             remoteRelayButton.text = "REMOTE RELAY · CONFIGURE AGAIN"
             remotePingButton.isEnabled = false
             remotePingButton.alpha = 0.5f
