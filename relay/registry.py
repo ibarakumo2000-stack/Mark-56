@@ -44,11 +44,10 @@ class RelayRegistry:
             channel_id = str(uuid.UUID(channel_id))
         except (ValueError, TypeError, AttributeError) as exc:
             raise ValueError("Channel ID must be a UUID") from exc
-        principal_id = principal_id or (str(uuid.uuid4()) if role == "device" else "desktop")
-        if not principal_id or len(principal_id) > 80:
+        principal_id = principal_id or (str(uuid.uuid4()) if role == "device" else "desktop-" + channel_id)
+        if (not principal_id or len(principal_id) > 80
+                or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for ch in principal_id)):
             raise ValueError("Invalid principal ID")
-        if role == "desktop" and principal_id != "desktop":
-            raise ValueError("Desktop principal ID must be desktop")
         clean = sorted(set(scopes))
         if any(not isinstance(s, str) or s not in {
             "command.send", "notification.receive", "media.control",
