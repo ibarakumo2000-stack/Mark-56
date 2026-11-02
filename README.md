@@ -50,6 +50,20 @@ python -m compileall -q main.py ui.py core actions plugins dashboard memory test
 Local OCR is optional and requires the Tesseract system package plus Python packages `pytesseract` and `Pillow`. Screen capture needs a logged-in graphical desktop session; it may not work in a headless terminal or restricted Wayland environment.
 
 
+### Launch the canonical desktop app and pair a phone
+
+Run the application from the repository root so the desktop UI, action registry, plugin registry, dashboard, and device gateway all use the same source tree:
+
+```bash
+cd ~/Mark56-work/Mark56
+source .venv/bin/activate
+python main.py
+```
+
+The Setup drawer now includes **PAIR PHONE / DEVICE**. It opens the authenticated `/devices` page served by this same desktop process. Sign in to the dashboard, start the secure companion bridge, review and approve the requested permission scopes, then create a one-time QR pairing offer. The same device gateway supports Android, Wear OS, and compatible smart-glasses adapters. Pairing is not available when the dashboard dependencies fail to load; install the repository requirements and restart JARVIS.
+
+The existing **REMOTE CONTROL** button remains separate: it opens the legacy remote-control QR flow and is not the device-enrollment workflow.
+
 ### Plugin management
 
 Open **Controls → Plugins** to enable/disable discovered plugins. You can also add a local `.py` plugin file or remove an existing plugin. The manager validates the plugin contract without executing its code during installation, backs up removed files under `.plugin-backups/`, and records removals in your local settings so an app update does not silently re-enable a removed built-in plugin. **Only install Python plugins from sources you trust:** once loaded, a plugin runs with the same file and network permissions as JARVIS. Restart JARVIS after adding or removing a plugin so its tool list is refreshed.
