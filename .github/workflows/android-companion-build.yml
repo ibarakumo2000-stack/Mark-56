@@ -34,10 +34,12 @@ jobs:
           gradle-version: "8.9"
       - name: Assemble debug APK
         working-directory: android-companion
-        run: gradle --no-daemon :app:assembleDebug
+        run: gradle --no-daemon :app:assembleDebug :wear-app:assembleDebug :app:testDebugUnitTest
       - uses: actions/upload-artifact@v4
         with:
           name: mark56-companion-debug-apk
-          path: android-companion/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            android-companion/app/build/outputs/apk/debug/app-debug.apk
+            android-companion/wear-app/build/outputs/apk/debug/wear-app-debug.apk
           if-no-files-found: error
           retention-days: 14
