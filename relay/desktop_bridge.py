@@ -41,7 +41,7 @@ class DesktopRelayBridge:
             raise ValueError("Channel ID must be a UUID") from exc
         principal_id = principal_id or f"desktop-{channel_id}"
         self.url = relay_websocket_url(base_url, channel_id, principal_id)
-        if not token.startswith("rly_"):
+        if not token.startswith("rly_") or not 32 <= len(token) <= 160:
             raise ValueError("Invalid relay token")
         self.token = token
         self.on_message = on_message
