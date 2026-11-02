@@ -12,6 +12,8 @@ import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.content.res.ColorStateList
+import com.google.android.material.button.MaterialButton
 import androidx.appcompat.app.AppCompatActivity
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -175,20 +177,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun actionButton(label: String, primary: Boolean): Button = Button(this).apply {
+    private fun actionButton(label: String, primary: Boolean): Button = MaterialButton(this).apply {
         text = label
         textSize = 12f
-        letterSpacing = 0.04f
+        letterSpacing = 0.035f
         typeface = Typeface.DEFAULT_BOLD
         isAllCaps = false
-        setTextColor(if (primary) Color.rgb(4, 18, 32) else Color.WHITE)
-        background = GradientDrawable(
-            GradientDrawable.Orientation.LEFT_RIGHT,
-            if (primary) intArrayOf(Color.rgb(86, 225, 255), Color.rgb(104, 170, 255))
-            else intArrayOf(Color.rgb(29, 48, 75), Color.rgb(23, 37, 60))
-        ).apply {
-            cornerRadius = dp(15).toFloat()
-            if (!primary) setStroke(dp(1), Color.rgb(45, 71, 102))
+        setTextColor(if (primary) Color.rgb(4, 18, 32) else Color.rgb(235, 243, 255))
+        backgroundTintList = ColorStateList.valueOf(
+            if (primary) Color.rgb(88, 225, 255) else Color.rgb(25, 43, 69)
+        )
+        rippleColor = ColorStateList.valueOf(Color.argb(65, 115, 215, 255))
+        cornerRadius = dp(15)
+        insetTop = 0
+        insetBottom = 0
+        if (!primary) {
+            strokeWidth = dp(1)
+            strokeColor = ColorStateList.valueOf(Color.rgb(48, 76, 110))
         }
         minimumHeight = dp(54)
         stateListAnimator = null
