@@ -2,7 +2,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from core.glasses_adapters import GlassesAdapterError, GlassesCapability
+from core.device_gateway import DeviceRegistry
+from core.glasses_adapters import GlassesAdapterError, GlassesAdapterRegistry, GlassesCapability
+from core.transports.registration import register_optional_glasses_adapters
 from core.transports.glasses_ble import (
     DISPLAY_CARD_CHARACTERISTIC,
     JARVIS_GLASSES_SERVICE,
@@ -88,6 +90,28 @@ class GlassesBleAdapterTests(unittest.TestCase):
             self.assertIn(b"JARVIS", client.written[1])
             adapter.disconnect("AA:BB:CC")
             self.assertFalse(client.is_connected)
+
+    def test_ble_adapter_registration_is_explicit_and_optional(self):
+        devices = DeviceRegistry()
+        try:
+            registry = GlassesAdapterRegistry(devices)
+            self.assertEqual(register_optional_glasses_adapters(registry), [])
+            self.assertEqual(registry.list_adapters(), [])
+            with patch("core.transports.glasses_ble.BleakScanner", None), patch(
+                "core.transports.glasses_ble.BleakClient", None
+            ):
+                self.assertEqual(
+                    register_optional_glasses_adapters(registry, enable_ble=True), []
+                )
+            with patch("core.transports.glasses_ble.BleakScanner", FakeScanner), patch(
+                "core.transports.glasses_ble.BleakClient", FakeClient
+            ):
+                self.assertEqual(
+                    register_optional_glasses_adapters(registry, enable_ble=True),
+                    ["jarvis.ble.glasses"],
+                )
+        finally:
+            devices.close()
 
     def test_generic_ble_profile_does_not_claim_camera_or_microphone(self):
         with patch("core.transports.glasses_ble.BleakScanner", FakeScanner), patch(
