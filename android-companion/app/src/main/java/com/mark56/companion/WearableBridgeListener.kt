@@ -12,7 +12,7 @@ class WearableBridgeListener : WearableListenerService() {
     private val allowed = setOf("assistant.ping", "media.play_pause", "media.next", "media.previous")
 
     override fun onMessageReceived(event: MessageEvent) {
-        if (event.path != "/jarvis/v1/action") return
+        if (event.path != "/jarvis/v1/action" || event.data.size > 1024) return
         val settings = CompanionSettings(this)
         if (!settings.wearBridgeEnabled() || !settings.hasCommandScope()) {
             Log.i("Mark56Wear", "Watch action ignored: bridge or command scope is disabled")
