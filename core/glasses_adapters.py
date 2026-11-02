@@ -110,6 +110,10 @@ class GlassesAdapterRegistry:
         identity = self.devices.authenticate(token)
         if identity["device_type"] != "glasses":
             raise AuthorizationError("Enrolled identity is not a glasses device")
+        advertised = set(identity.get("capabilities", []))
+        declared = {cap.value for cap in descriptor.capabilities}
+        if not declared.issubset(advertised):
+            raise GlassesAdapterError("Adapter descriptor exceeds capabilities advertised during enrollment")
         adapter = self._adapters.get(adapter_id)
         if adapter is None:
             raise GlassesAdapterError("Glasses adapter is not installed")
@@ -165,7 +169,7 @@ class GlassesAdapterRegistry:
             raise GlassesAdapterError("Audio capture must be between 100 and 15000 ms")
         identity, adapter, _ = self._authorized(token, GlassesCapability.MICROPHONE)
         audio = adapter.capture_audio(identity["device_id"], duration_ms)
-        if not isinstance(audio, bytes) or len(audio) > _MAX_FRAME_BYTES:
+        if not isinstance(audio, bytes) or not audio or len(audio) > _MAX_FRAME_BYTES:
             raise GlassesAdapterError("Adapter returned invalid audio data")
         return audio
 
