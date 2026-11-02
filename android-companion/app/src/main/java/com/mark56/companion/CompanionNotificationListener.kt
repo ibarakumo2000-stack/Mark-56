@@ -20,15 +20,26 @@ class CompanionNotificationListener : NotificationListenerService() {
     private val handler = Handler(Looper.getMainLooper())
 
     private val mediaPoll = object : Runnable {
+        private fun scheduleNext() {
+            handler.postDelayed(this, MediaCommandPolicy.POLL_INTERVAL_MS)
+        }
+
         override fun run() {
             val settings = CompanionSettings(this@CompanionNotificationListener)
-            if (!settings.mediaControlEnabled() || !settings.hasMediaScope()) return
-            val endpoint = settings.endpoint() ?: return
-            val fingerprint = settings.fingerprint() ?: return
-            val deviceId = settings.deviceId() ?: return
+            if (!settings.mediaControlEnabled() || !settings.hasMediaScope()) {
+                scheduleNext()
+                return
+            }
+            val endpoint = settings.endpoint()
+            val fingerprint = settings.fingerprint()
+            val deviceId = settings.deviceId()
             val token = SecureTokenStore(
                 getSharedPreferences("companion_secure", MODE_PRIVATE)
-            ).read() ?: return
+            ).read()
+            if (endpoint == null || fingerprint == null || deviceId == null || token == null) {
+                scheduleNext()
+                return
+            }
 
             worker.execute {
                 try {
@@ -39,12 +50,7 @@ class CompanionNotificationListener : NotificationListenerService() {
                     // Never log media metadata, credentials, or notification content.
                     Log.w("Mark56Media", "Media command poll failed (" + e.javaClass.simpleName + ")")
                 } finally {
-                    handler.post {
-                        val current = CompanionSettings(this@CompanionNotificationListener)
-                        if (current.mediaControlEnabled() && current.hasMediaScope()) {
-                            handler.postDelayed(this, MediaCommandPolicy.POLL_INTERVAL_MS)
-                        }
-                    }
+                    handler.post { scheduleNext() }
                 }
             }
         }
