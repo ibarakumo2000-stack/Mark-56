@@ -32,6 +32,11 @@ def relay_websocket_url(base_url: str, channel_id: str, principal_id: str) -> st
 class DesktopRelayBridge:
     def __init__(self, *, base_url: str, channel_id: str, token: str,
                  on_message: MessageHandler, principal_id: str | None = None):
+        import uuid
+        try:
+            channel_id = str(uuid.UUID(channel_id))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError("Channel ID must be a UUID") from exc
         principal_id = principal_id or f"desktop-{channel_id}"
         self.url = relay_websocket_url(base_url, channel_id, principal_id)
         if not token.startswith("rly_"):
