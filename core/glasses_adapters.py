@@ -112,6 +112,15 @@ class GlassesAdapterRegistry:
         identity = self.devices.authenticate(token)
         if identity["device_type"] != "glasses":
             raise AuthorizationError("Enrolled identity is not a glasses device")
+        if not isinstance(descriptor, GlassesDescriptor):
+            raise GlassesAdapterError("Adapter returned an invalid glasses descriptor")
+        if not all(isinstance(cap, GlassesCapability) for cap in descriptor.capabilities):
+            raise GlassesAdapterError("Descriptor contains an unknown hardware capability")
+        if descriptor.device_id and descriptor.device_id != device_id:
+            raise GlassesAdapterError("Physical device ID does not match the discovered descriptor")
+        if any(not isinstance(value, str) or not value.strip() or len(value) > 120
+               for value in (descriptor.vendor, descriptor.model, descriptor.platform)):
+            raise GlassesAdapterError("Descriptor vendor, model and platform must be bounded text")
         advertised = set(identity.get("capabilities", []))
         declared = {cap.value for cap in descriptor.capabilities}
         if not declared.issubset(advertised):
