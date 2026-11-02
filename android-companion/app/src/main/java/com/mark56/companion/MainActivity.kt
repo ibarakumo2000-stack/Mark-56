@@ -275,7 +275,9 @@ class MainActivity : AppCompatActivity() {
                     val deviceId = response.getString("device_id")
                     val scopes = response.optJSONArray("scopes")
                     val hasNotificationScope = scopes?.let { array ->
-                        (0 until array.length()).any { array.optString(it) == "notification.receive" }\n                    } ?: false\n                    val hasBatteryScope = scopes?.let { array ->
+                        (0 until array.length()).any { array.optString(it) == "notification.receive" }
+                    } ?: false
+                    val hasBatteryScope = scopes?.let { array ->
                         (0 until array.length()).any { array.optString(it) == "battery.read" }
                     } ?: false
                     runOnUiThread {
