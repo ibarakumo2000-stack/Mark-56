@@ -130,7 +130,15 @@ class GlassesAdapterRegistry:
             raise GlassesAdapterError("Glasses adapter is not installed")
         adapter.connect(device_id)
         with self._lock:
-            self._sessions[identity["device_id"]] = _Session(adapter_id, descriptor, device_id, time.monotonic(), set())
+            previous = self._sessions.get(identity["device_id"])
+            self._sessions[identity["device_id"]] = _Session(
+                adapter_id, descriptor, device_id, time.monotonic(), set()
+            )
+        if previous is not None:
+            try:
+                self._adapters[previous.adapter_id].disconnect(previous.physical_device_id)
+            except Exception:
+                pass
 
     def grant_session_consent(self, token: str, capabilities: set[GlassesCapability]) -> None:
         identity = self.devices.authenticate(token)
@@ -205,8 +213,13 @@ class GlassesAdapterRegistry:
         return audio
 
     def _authorized(self, token: str, capability: GlassesCapability):
-        self.reconcile_revoked_sessions()
-        identity = self.devices.authenticate(token, required_scope=_SCOPE_FOR_CAPABILITY[capability])
+        try:
+            identity = self.devices.authenticate(
+                token, required_scope=_SCOPE_FOR_CAPABILITY[capability]
+            )
+        except AuthorizationError:
+            self.reconcile_revoked_sessions()
+            raise
         with self._lock:
             session = self._sessions.get(identity["device_id"])
             if session is None:
