@@ -129,7 +129,7 @@ class WearMainActivity : Activity() {
             .getCapability("jarvis_phone_companion", CapabilityClient.FILTER_REACHABLE)
             .addOnSuccessListener { capability ->
                 val phone = capability.nodes
-                    .sortedByDescending(Node::isNearby)
+                    .sortedByDescending { it.isNearby }
                     .firstOrNull()
                 setPhoneAvailable(phone != null)
             }
