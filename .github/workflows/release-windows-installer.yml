@@ -80,7 +80,7 @@ jobs:
           name: jarvis-windows-installer-${{ env.APP_VERSION }}
           path: |
             dist/MARK-LV-Setup-${{ env.APP_VERSION }}.exe
-            dist/SHA256SUMS.txt
+            dist/SHA256SUMS-windows-x86_64.txt
             dist/build-info.json
           if-no-files-found: error
           retention-days: 14
@@ -114,5 +114,5 @@ jobs:
             and never silently executes installers.
           files: |
             dist/MARK-LV-Setup-${{ env.APP_VERSION }}.exe
-            dist/SHA256SUMS.txt
+            dist/SHA256SUMS-windows-x86_64.txt
             dist/build-info.json
