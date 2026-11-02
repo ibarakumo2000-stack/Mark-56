@@ -73,7 +73,7 @@ jobs:
           gradle-version: "8.9"
       - name: Assemble debug APK
         working-directory: android-companion
-        run: gradle --no-daemon :app:assembleDebug :wear-app:assembleDebug :app:testDebugUnitTest
+        run: gradle --no-daemon :app:assembleDebug :wear-app:assembleDebug :app:testDebugUnitTest :wear-app:testDebugUnitTest
       - name: Run Android unit tests
         working-directory: android-companion
         run: gradle --no-daemon :app:testDebugUnitTest
