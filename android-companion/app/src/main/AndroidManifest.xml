@@ -13,7 +13,7 @@
             android:name=".WearableBridgeListener"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.google.android.gms.wearable.BIND_LISTENER" />
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/jarvis/v1/action" />
             </intent-filter>
         </service>
