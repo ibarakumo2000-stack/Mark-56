@@ -829,16 +829,6 @@ class JarvisLive:
         )
         raise _ReconnectSignal(keep_context=keep)
 
-    def _make_device_pairing_url(self):
-        """Return the authenticated device-management page on this desktop."""
-        if self._dashboard is None:
-            self.ui.write_log(
-                "SYS: Device pairing is unavailable because the dashboard did not start. "
-                "Install dashboard dependencies with: python -m pip install -r requirements.txt"
-            )
-            return None
-        return f"{self._dashboard.get_url().rstrip('/')}/devices"
-
     def _make_remote_key(self):
         """Called from Qt main thread when user presses Remote Control."""
         if self._dashboard is None:
