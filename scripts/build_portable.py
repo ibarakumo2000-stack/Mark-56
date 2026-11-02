@@ -570,6 +570,7 @@ def build(target: str, version: str) -> None:
         "signed": False if target.startswith("macos-") else None,
     }
     (DIST / f"build-info-{target}.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
+    (DIST / f"SHA256SUMS-{target}.txt").write_text(f"{digest}  {output.name}\\n", encoding="utf-8")
     print(f"\nBUILD OK: {output} ({output.stat().st_size / 1_000_000:.1f} MB)")
     print(f"SHA-256: {digest}")
 
