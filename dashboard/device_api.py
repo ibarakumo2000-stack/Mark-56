@@ -322,6 +322,21 @@ def build_device_router(
             return JSONResponse({"error": "Wearable command queue is unavailable."}, status_code=503)
         return JSONResponse({"commands": commands})
 
+    @router.get("/api/devices/wearable-commands")
+    async def drain_wearable_commands(request: Request):
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        if companion_app is None:
+            return JSONResponse({"error": "Start the companion listener first."}, status_code=409)
+        try:
+            commands = companion_app.state.drain_wearable_commands()
+        except (AttributeError, ValueError):
+            return JSONResponse({"error": "Wearable command queue is unavailable."}, status_code=503)
+        return JSONResponse({"commands": commands})
+
     @router.get("/api/device/me")
     async def device_identity(request: Request):
         insecure = _secure(request)
