@@ -23,7 +23,7 @@ Battery sync requires that the desktop pairing offer approved `battery.read`. If
 
 ## Phase 8 — notification relay (owner opt-in)
 
-Notification forwarding is now available as a separately opt-in companion feature. Before pairing, enable **Notification Relay** in the companion to request the desktop-approved `notification.receive` scope as part of the QR enrollment. The desktop owner must approve that scope in the pairing offer. The app then opens Android's Notification Access settings; the OS-level access grant is required as well.
+Notification forwarding is now available as a separately opt-in companion feature. Before pairing, tap **Request Notification Scope** in the companion to request the desktop-approved `notification.receive` scope as part of the QR enrollment. After the desktop approves the scope and pairing completes, enable notification relay separately. The desktop owner must approve that scope in the pairing offer. The app then opens Android's Notification Access settings; the OS-level access grant is required as well.
 
 When both approvals are present, only the displayed app label, notification title, notification text and event timestamp are forwarded. Delivery uses HMAC-SHA256 signed requests over the same TLS certificate-pinned desktop connection. Relay remains disabled unless the user toggles it on in the app. The user can disable forwarding in the app at any time or revoke Android Notification Access from system settings. If scope approval was missed, pair again with the scope approved.
 
