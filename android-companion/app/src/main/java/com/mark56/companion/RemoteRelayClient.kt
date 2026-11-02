@@ -5,6 +5,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -25,7 +26,7 @@ class RemoteRelayClient(
     private val socket: WebSocket
 
     init {
-        val base = okhttp3.HttpUrl.get(baseUrl)
+        val base = baseUrl.toHttpUrl()
         require(base.isHttps && base.encodedPath() in listOf("", "/") &&
             base.query() == null && base.fragment() == null)
         require(channelId.matches(Regex("[0-9a-fA-F-]{36}")))
@@ -42,7 +43,7 @@ class RemoteRelayClient(
             }
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
-                    onMessage(JSONObject(text))
+                    this@RemoteRelayClient.onMessage(JSONObject(text))
                 } catch (_: Exception) {
                     onState("Relay sent an invalid message")
                 }
