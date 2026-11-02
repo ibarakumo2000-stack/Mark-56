@@ -34,7 +34,7 @@ jobs:
           gradle-version: "8.9"
       - name: Build companion debug APK
         working-directory: android-companion
-        run: gradle --no-daemon :app:assembleDebug :wear-app:assembleDebug
+        run: gradle --no-daemon :app:testDebugUnitTest :wear-app:testDebugUnitTest :app:assembleDebug :wear-app:assembleDebug
       - name: Publish rolling Android preview release
         uses: softprops/action-gh-release@v2
         with:
