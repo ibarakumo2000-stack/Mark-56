@@ -37,3 +37,50 @@ Media control is a separate permission. Before pairing, tap **Request Media Cont
 The companion polls the desktop's authenticated media queue over pinned HTTPS every five seconds while its notification-listener service is connected. Only play, pause, play/pause, next, previous and stop are accepted. A command is executed only when exactly one eligible active media session exists; multiple active sessions are treated as ambiguous and left untouched. Media controls are off by default and can be disabled immediately in the app.
 
 See [Phase 7E implementation and validation notes](../docs/ANDROID_MEDIA_CONTROLS.md). This is not a remote-control or arbitrary-device-command channel. Physical-device verification remains required.
+
+
+## Phase 8 — Wear OS companion
+
+The Gradle project now contains a separate `wear-app` module. Install the
+phone and watch debug APKs from the same CI run, pair the watch to the phone
+with Wear OS, request `command.send` before desktop pairing, and explicitly
+enable the phone's Wear OS bridge. The watch exposes a small quick-action
+surface (play/pause, next, previous, JARVIS ping). The phone forwards only
+those allowlisted actions over the signed, certificate-pinned desktop channel.
+The desktop Devices panel displays received watch events; it does not execute
+them automatically.
+
+See [Wear OS Phase 8](../docs/WEAR_OS_PHASE_8.md).
+
+## Phase 9 — smart-glasses adapter framework
+
+`core/glasses_adapters.py` defines a vendor-neutral adapter contract with
+capability declarations, per-device scope checks, explicit per-session
+consent, payload limits, and immediate consent revocation. Real vendor SDK
+connectors are not bundled until a supported glasses model and SDK access are
+selected. See [Smart Glasses Adapters](../docs/SMART_GLASSES_ADAPTERS.md).
+
+## Phase 10 — secure remote relay
+
+The optional relay is in `relay/`: a SQLite hashed-credential registry,
+ephemeral FastAPI WebSocket broker, one-time provisioning CLI, Docker Compose
+deployment behind Caddy TLS, desktop outbound connector, and Android TLS
+WebSocket client. Both endpoints must be provisioned with distinct
+least-privilege credentials in the same channel. Messages are not persisted.
+See [Secure Remote Relay](../docs/SECURE_REMOTE_RELAY.md).
+
+The Android remote-relay screen is opt-in and connects while the companion
+activity is active; a persistent background connection service is not yet
+claimed. Desktop application event-handler wiring and deployment to an
+owner-controlled host remain acceptance tasks.
+
+## Phase 11 — production signing and release integration
+
+The app and watch modules have minified release build variants. The
+`Signed Android Companion Release` workflow builds both APKs from a
+`companion-v*` tag and publishes checksums. It requires four owner-managed
+GitHub Actions secrets. No signing key is stored in this repository and no
+production-signed APK is claimed until those secrets are configured.
+
+See [Android Release Signing](../docs/ANDROID_RELEASE_SIGNING.md) and
+[Android Companion Polish](../docs/ANDROID_COMPANION_POLISH.md).
