@@ -143,7 +143,27 @@ class GlassesAdapterRegistry:
             else:
                 session.consented.difference_update(capabilities)
 
+    def reconcile_revoked_sessions(self) -> int:
+        """Disconnect adapters whose enrolled device has been revoked."""
+        active_ids = {item["device_id"] for item in self.devices.list_devices()}
+        with self._lock:
+            stale = [
+                (device_id, session)
+                for device_id, session in self._sessions.items()
+                if device_id not in active_ids
+            ]
+            for device_id, _ in stale:
+                self._sessions.pop(device_id, None)
+        for _, session in stale:
+            try:
+                self._adapters[session.adapter_id].disconnect(session.physical_device_id)
+            except Exception:
+                # A revoked identity must stay unusable even if vendor cleanup fails.
+                pass
+        return len(stale)
+
     def disconnect(self, token: str) -> bool:
+        self.reconcile_revoked_sessions()
         identity = self.devices.authenticate(token)
         with self._lock:
             session = self._sessions.pop(identity["device_id"], None)
@@ -175,6 +195,7 @@ class GlassesAdapterRegistry:
         return audio
 
     def _authorized(self, token: str, capability: GlassesCapability):
+        self.reconcile_revoked_sessions()
         identity = self.devices.authenticate(token, required_scope=_SCOPE_FOR_CAPABILITY[capability])
         with self._lock:
             session = self._sessions.get(identity["device_id"])
