@@ -1,17 +1,36 @@
 # Android Companion UX and quality pass
 
-The phone companion now uses a Material 3 dark theme, accessible Material
-buttons, a custom JARVIS launcher icon, system bar colors, and a scrollable
-layout that remains usable on short screens. The Wear OS bridge and remote
-relay controls are explicit opt-ins. Remote relay credentials are encrypted
-with Android Keystore AES-GCM, separately from the local desktop pairing token.
+The phone companion has a branded JARVIS splash screen, Material 3 dark theme,
+custom launcher artwork, edge-to-edge system-bar handling, grouped feature
+cards, clear privacy copy, and accessible live connection status. Feature
+controls are grouped by purpose rather than presented as one long flat button
+list. Returning from Android system settings refreshes the visible permission
+state.
 
-The build now supports minified release variants and shared owner-controlled
-signing for the phone and watch packages. The rolling preview remains a debug
-build and is clearly labelled as such. Production releases are created only by
-the tag workflow after the project owner configures the signing secrets.
+Pairing requests remain explicit and scope-based. Notification access and media
+session access require Android's own Notification Access grant as well as the
+desktop-approved scope. Battery sync, notifications, media controls, Wear OS
+forwarding and remote relay remain separately opt-in.
 
-Before claiming a polished public release, run accessibility checks (TalkBack,
-large font/display scaling, contrast), verify on at least one small and one
-large Android screen, test Android 13+ notification permission behavior, and
-test battery-optimized background execution on real devices.
+Disconnect now stops the remote relay, clears the encrypted desktop and relay
+credentials, clears stale requested scopes, and disables scheduled battery
+sync. The desktop owner must still revoke the server-side device identity to
+invalidate it remotely.
+
+Remote relay endpoint parsing rejects plaintext URLs, embedded credentials,
+non-origin URLs, malformed UUIDs, and oversized messages. The UI presents a
+manual reconnect action; it does not silently create an always-on background
+connection.
+
+## Release quality
+
+The phone and watch modules have minified release variants. The signed release
+workflow validates the owner-managed keystore, runs both modules' unit tests,
+verifies both APK signatures, confirms they share the same certificate, and
+publishes SHA-256 checksums. The rolling preview remains a debug build.
+
+Before claiming a polished public release, run TalkBack, large font/display
+scaling, contrast and touch-target checks; verify on at least one small and one
+large Android screen; and test Android 13+ notification access, Android 15
+edge-to-edge behavior, and battery-optimized background execution on physical
+devices.
