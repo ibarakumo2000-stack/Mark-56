@@ -432,6 +432,17 @@ def build_device_router(
             descriptor = glasses_discoveries.get(physical_id)
             if descriptor is None:
                 return JSONResponse({"error": "Scan and select a compatible JARVIS BLE glasses device first."}, status_code=409)
+            existing_config = []
+            if glasses_config_path.is_file():
+                try:
+                    existing_config = json.loads(glasses_config_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    existing_config = []
+            if any(
+                isinstance(item, dict) and item.get("physical_device_id") == physical_id
+                for item in existing_config
+            ):
+                return JSONResponse({"error": "These glasses are already paired. Use the existing device entry to reconnect."}, status_code=409)
             import keyring
             if getattr(keyring.get_keyring(), "priority", 0) <= 0:
                 return JSONResponse({"error": "A secure operating-system keyring is required to pair glasses."}, status_code=503)
