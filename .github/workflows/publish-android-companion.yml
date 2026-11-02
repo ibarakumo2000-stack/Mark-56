@@ -34,7 +34,7 @@ jobs:
           gradle-version: "8.9"
       - name: Build companion debug APK
         working-directory: android-companion
-        run: gradle --no-daemon :app:assembleDebug
+        run: gradle --no-daemon :app:assembleDebug :wear-app:assembleDebug
       - name: Publish rolling Android preview release
         uses: softprops/action-gh-release@v2
         with:
@@ -43,11 +43,13 @@ jobs:
           body: |
             Rolling testing build of the JARVIS Android Companion.
 
-            This is a debug APK intended for testing QR pairing and battery synchronisation. It is not a production-signed public release.
+            These are debug APKs intended for testing phone pairing, Wear OS quick actions and battery synchronisation. They are not production-signed public releases.
 
             The APK is rebuilt and replaces the previous APK whenever Android companion code is updated on main.
           prerelease: true
           make_latest: false
-          files: android-companion/app/build/outputs/apk/debug/app-debug.apk
+          files: |
+            android-companion/app/build/outputs/apk/debug/app-debug.apk
+            android-companion/wear-app/build/outputs/apk/debug/wear-app-debug.apk
           fail_on_unmatched_files: true
           overwrite_files: true
