@@ -17,6 +17,11 @@ class CompanionSettings(context: Context) {
     fun hasBatteryScope(): Boolean = prefs.getBoolean("battery_scope", false)
     fun hasNotificationScope(): Boolean = prefs.getBoolean("notification_scope", false)
     fun hasMediaScope(): Boolean = prefs.getBoolean("media_scope", false)
+    fun hasCommandScope(): Boolean = prefs.getBoolean("command_scope", false)
+    fun wearBridgeRequested(): Boolean = prefs.getBoolean("wear_bridge_requested", false)
+    fun setWearBridgeRequested(requested: Boolean) { prefs.edit().putBoolean("wear_bridge_requested", requested).apply() }
+    fun wearBridgeEnabled(): Boolean = prefs.getBoolean("wear_bridge_enabled", false)
+    fun setWearBridgeEnabled(enabled: Boolean) { prefs.edit().putBoolean("wear_bridge_enabled", enabled).apply() }
     fun batterySyncEnabled(): Boolean = prefs.getBoolean("battery_sync_enabled", false)
     fun setBatterySyncEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("battery_sync_enabled", enabled).apply()
@@ -39,9 +44,9 @@ class CompanionSettings(context: Context) {
     }
     fun clearConnection() {
         prefs.edit().remove("endpoint").remove("fingerprint").remove("device_id")
-            .remove("battery_scope").remove("notification_scope").remove("media_scope")
+            .remove("battery_scope").remove("notification_scope").remove("media_scope").remove("command_scope")
             .putBoolean("battery_sync_enabled", false)
             .putBoolean("notification_relay_enabled", false)
-            .putBoolean("media_control_enabled", false).apply()
+            .putBoolean("media_control_enabled", false).putBoolean("wear_bridge_enabled", false).apply()
     }
 }
