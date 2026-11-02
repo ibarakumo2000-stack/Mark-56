@@ -62,6 +62,7 @@ def create_companion_app(registry: DeviceRegistry):
     verifier = CompanionMessageVerifier(registry)
     features = AndroidDeviceFeatures(verifier)
     commands: dict[str, deque[dict[str, Any]]] = defaultdict(lambda: deque(maxlen=_MAX_QUEUE))
+    wearable_commands: deque[dict[str, Any]] = deque(maxlen=_MAX_QUEUE)
     command_lock = threading.RLock()
     app = FastAPI(title="Mark 56 Companion", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -131,6 +132,38 @@ def create_companion_app(registry: DeviceRegistry):
         except (InvalidCompanionMessage, DeviceFeatureError, ValueError, TypeError):
             return JSONResponse({"detail": "Invalid or unauthenticated companion message"}, status_code=400)
 
+    @app.post("/v1/wearable/action")
+    async def wearable_action(request: Request):
+        body = await json_body(request)
+        try:
+            envelope = _message(body)
+            if envelope.method != "POST" or envelope.path != "/v1/wearable/action":
+                raise ValueError("Invalid wearable route")
+            token = request.headers.get("authorization", "")
+            if not token.startswith("Bearer "):
+                return JSONResponse({"detail": "Authentication required"}, status_code=401)
+            identity = verifier.verify(token[7:], envelope, required_scope="command.send")
+            payload = envelope.body
+            if not isinstance(payload, dict) or set(payload) != {"action", "source"}:
+                raise ValueError("Invalid wearable action")
+            action = payload.get("action")
+            if payload.get("source") != "wear_os" or action not in {
+                "assistant.ping", "media.play_pause", "media.next", "media.previous"
+            }:
+                raise ValueError("Unsupported wearable action")
+            with command_lock:
+                if len(wearable_commands) >= _MAX_QUEUE:
+                    return JSONResponse({"detail": "Wearable action queue is full"}, status_code=429)
+                wearable_commands.append({
+                    "device_id": identity["device_id"], "source": "wear_os",
+                    "action": action, "received_at": int(time.time()),
+                })
+            return {"accepted": True, "action": action}
+        except AuthorizationError:
+            return JSONResponse({"detail": "Device is not authorized"}, status_code=403)
+        except (InvalidCompanionMessage, ValueError, TypeError):
+            return JSONResponse({"detail": "Invalid or unauthenticated wearable action"}, status_code=400)
+
     @app.post("/v1/media/next")
     async def next_media_command(request: Request):
         body = await json_body(request)
@@ -168,6 +201,13 @@ def create_companion_app(registry: DeviceRegistry):
     app.state.device_verifier = verifier
     app.state.device_features = features
     app.state.media_commands = commands
+    app.state.wearable_commands = wearable_commands
+    def drain_wearable_commands(limit: int = 20):
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= _MAX_QUEUE:
+            raise ValueError("Invalid wearable command limit")
+        with command_lock:
+            return [wearable_commands.popleft() for _ in range(min(limit, len(wearable_commands)))]
+    app.state.drain_wearable_commands = drain_wearable_commands
     app.state.queue_media_command = queue_media_command
     return app
 
