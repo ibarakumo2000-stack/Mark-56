@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.content.Intent
+import android.content.ComponentName
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -22,6 +23,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var batterySyncButton: Button
     private lateinit var notificationRelayButton: Button
+    private lateinit var mediaControlButton: Button
     private lateinit var tokenStore: SecureTokenStore
     private lateinit var settings: CompanionSettings
 
@@ -116,6 +118,9 @@ class MainActivity : AppCompatActivity() {
         notificationRelayButton = actionButton("ENABLE NOTIFICATION RELAY", false).apply {
             setOnClickListener { toggleNotificationRelay() }
         }
+        mediaControlButton = actionButton("REQUEST MEDIA CONTROL SCOPE", false).apply {
+            setOnClickListener { toggleMediaControl() }
+        }
         val disconnect = actionButton("DISCONNECT DEVICE", false).apply {
             setOnClickListener {
                 BatterySync.disable(this@MainActivity)
@@ -133,6 +138,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(featuresCard, matchWidth())
         root.addView(batterySyncButton, matchWidth())
         root.addView(notificationRelayButton, matchWidth())
+        root.addView(mediaControlButton, matchWidth())
         root.addView(disconnect, matchWidth())
         root.addView(TextView(this).apply {
             text = "MARK 56  /  COMPANION"
@@ -219,28 +225,82 @@ class MainActivity : AppCompatActivity() {
             settings.fingerprint() != null && settings.hasBatteryScope()
         batterySyncButton.alpha = if (batterySyncButton.isEnabled) 1f else 0.55f
         refreshNotificationRelayButton()
+        refreshMediaControlButton()
     }
 
     private fun refreshNotificationRelayButton() {
-        val paired = tokenStore.read() != null && settings.deviceId() != null &&
-            settings.endpoint() != null && settings.fingerprint() != null
-        notificationRelayButton.text = if (settings.notificationRelayEnabled())
-            "DISABLE NOTIFICATION RELAY" else "ENABLE NOTIFICATION RELAY  ·  NOTIFICATION ACCESS"
-        notificationRelayButton.isEnabled = paired && settings.hasNotificationScope()
-        notificationRelayButton.alpha = if (notificationRelayButton.isEnabled) 1f else 0.55f
+        val paired = tokenStore.read() != null && settings.deviceId() != null
+        val approved = paired && settings.hasNotificationScope()
+        notificationRelayButton.text = when {
+            approved && settings.notificationRelayEnabled() -> "DISABLE NOTIFICATION RELAY"
+            approved -> "ENABLE NOTIFICATION RELAY  ·  NOTIFICATION ACCESS"
+            settings.notificationRelayRequested() -> "NOTIFICATION SCOPE REQUESTED  ·  TAP TO CANCEL"
+            else -> "REQUEST NOTIFICATION SCOPE  ·  PAIR AGAIN"
+        }
+        notificationRelayButton.isEnabled = true
+        notificationRelayButton.alpha = 1f
+    }
+
+    private fun refreshMediaControlButton() {
+        val paired = tokenStore.read() != null && settings.deviceId() != null
+        val approved = paired && settings.hasMediaScope()
+        mediaControlButton.text = when {
+            approved && settings.mediaControlEnabled() -> "DISABLE MEDIA CONTROLS"
+            approved -> "ENABLE MEDIA CONTROLS  ·  ACTIVE SESSION ONLY"
+            settings.mediaControlRequested() -> "MEDIA SCOPE REQUESTED  ·  TAP TO CANCEL"
+            else -> "REQUEST MEDIA CONTROL SCOPE  ·  PAIR AGAIN"
+        }
+        mediaControlButton.isEnabled = true
+        mediaControlButton.alpha = 1f
+    }
+
+    private fun hasNotificationAccess(): Boolean {
+        val enabled = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: return false
+        val component = ComponentName(this, CompanionNotificationListener::class.java).flattenToString()
+        return enabled.split(':').contains(component)
+    }
+
+    private fun toggleMediaControl() {
+        val paired = tokenStore.read() != null && settings.deviceId() != null
+        if (paired && settings.hasMediaScope()) {
+            val enabled = !settings.mediaControlEnabled()
+            settings.setMediaControlEnabled(enabled)
+            if (enabled && !hasNotificationAccess()) {
+                status.text = "Media control needs Android Notification Access to discover active media sessions. Enable JARVIS access in Settings."
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            } else {
+                status.text = if (enabled)
+                    "Media controls enabled. Desktop commands will target a single unambiguous active media session."
+                else "Media controls disabled. No desktop media commands will be executed."
+            }
+        } else {
+            val requested = !settings.mediaControlRequested()
+            settings.setMediaControlRequested(requested)
+            status.text = if (requested)
+                "Media scope requested for your next pairing. Disconnect, then scan a fresh desktop QR with media.control approved."
+            else "Media scope request cancelled."
+        }
+        refreshMediaControlButton()
     }
 
     private fun toggleNotificationRelay() {
-        if (settings.notificationRelayEnabled()) {
-            settings.setNotificationRelayEnabled(false)
-            status.text = "Notification relay disabled. No notification content will be forwarded."
+        val paired = tokenStore.read() != null && settings.deviceId() != null
+        if (paired && settings.hasNotificationScope()) {
+            val enabled = !settings.notificationRelayEnabled()
+            settings.setNotificationRelayEnabled(enabled)
+            status.text = if (enabled)
+                "Enable JARVIS notification access in Android Settings. Notification text is forwarded only while both approvals and this toggle remain enabled."
+            else "Notification relay disabled. No notification content will be forwarded."
             refreshNotificationRelayButton()
-            return
+            if (enabled) startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        } else {
+            val requested = !settings.notificationRelayRequested()
+            settings.setNotificationRelayRequested(requested)
+            status.text = if (requested)
+                "Notification scope requested for your next pairing. Disconnect, then scan a fresh desktop QR with notification.receive approved."
+            else "Notification scope request cancelled."
+            refreshNotificationRelayButton()
         }
-        settings.setNotificationRelayEnabled(true)
-        status.text = "Enable JARVIS notification access in Android Settings. Only notifications will be forwarded after desktop scope approval."
-        refreshNotificationRelayButton()
-        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
     }
 
     private fun toggleBatterySync() {
@@ -267,27 +327,33 @@ class MainActivity : AppCompatActivity() {
             status.text = "Connecting securely to JARVIS…"
             worker.execute {
                 try {
+                    val requestedScopes = mutableListOf("battery.read")
+                    if (settings.notificationRelayRequested()) requestedScopes.add("notification.receive")
+                    if (settings.mediaControlRequested()) requestedScopes.add("media.control")
                     val response = PinnedCompanionClient(endpoint, fingerprint).pair(
-                        code, android.os.Build.MODEL ?: "Android device",
-                        if (settings.notificationRelayEnabled()) listOf("battery.read", "notification.receive") else listOf("battery.read")
+                        code, android.os.Build.MODEL ?: "Android device", requestedScopes
                     )
                     val token = response.getString("token")
                     val deviceId = response.getString("device_id")
                     val scopes = response.optJSONArray("scopes")
-                    val hasNotificationScope = scopes?.let { array ->
-                        (0 until array.length()).any { array.optString(it) == "notification.receive" }
+                    fun hasScope(scope: String): Boolean = scopes?.let { array ->
+                        (0 until array.length()).any { array.optString(it) == scope }
                     } ?: false
-                    val hasBatteryScope = scopes?.let { array ->
-                        (0 until array.length()).any { array.optString(it) == "battery.read" }
-                    } ?: false
+                    val hasNotificationScope = hasScope("notification.receive")
+                    val hasBatteryScope = hasScope("battery.read")
+                    val hasMediaScope = hasScope("media.control")
                     runOnUiThread {
                         tokenStore.save(token)
-                        settings.saveConnection(endpoint, fingerprint, deviceId, hasBatteryScope, hasNotificationScope)
+                        settings.saveConnection(endpoint, fingerprint, deviceId,
+                            hasBatteryScope, hasNotificationScope, hasMediaScope)
                         BatterySync.disable(this)
+                        settings.setMediaControlEnabled(false)
                         refreshBatteryButton()
                         status.text = "Paired with " + response.optString("device_name", "JARVIS desktop") +
-                            ". Battery sharing is off until you enable it. Notification relay is " +
-                            (if (hasNotificationScope) "available after Android notification access is enabled." else "not approved; pair again with notification.receive approved to use it.")
+                            ". Battery sharing is off. Notification relay and media controls remain off until separately enabled."
+                        if (settings.mediaControlRequested() && !hasMediaScope) {
+                            status.text = status.text.toString() + " Desktop did not approve media.control; pair again after approval."
+                        }
                         if (!hasBatteryScope) status.text =
                             "Paired, but battery.read was not approved on desktop. Battery sync is unavailable."
                     }

@@ -9,7 +9,7 @@ Buildable Android pairing client (Phase 7B). Open this directory in Android Stud
 4. The app verifies the QR-provided SHA-256 certificate fingerprint before sending the one-time code. The bearer token is stored using Android Keystore-backed AES-GCM.
 
 ## Current limits
-This milestone provides QR pairing and secure credential storage. Background notification forwarding, battery polling, authenticated HMAC event generation, media polling/execution, reconnect lifecycle and desktop UI integration remain subsequent work. Disconnect clears the local token; revoke the device in Jarvis to invalidate its server-side token. Do not expose the listener publicly.
+QR pairing, Keystore-backed credential storage, opt-in battery reporting, notification forwarding and scoped Android MediaSession polling/execution are implemented in the companion source. Physical-device validation is still required for each Android version and media app. Desktop UI controls for queueing media actions, reconnect UX, certificate rotation UX and production APK signing remain separate release tasks. Disconnect clears the local token; revoke the device in JARVIS to invalidate its server-side token. Do not expose the listener publicly.
 
 
 ## Phase 7C — opt-in battery reporting
@@ -23,8 +23,17 @@ Battery sync requires that the desktop pairing offer approved `battery.read`. If
 
 ## Phase 8 — notification relay (owner opt-in)
 
-Notification forwarding is now available as a separately opt-in companion feature. Before pairing, enable **Notification Relay** in the companion to request the desktop-approved `notification.receive` scope as part of the QR enrollment. The desktop owner must approve that scope in the pairing offer. The app then opens Android's Notification Access settings; the OS-level access grant is required as well.
+Notification forwarding is now available as a separately opt-in companion feature. Before pairing, tap **Request Notification Scope** in the companion to request the desktop-approved `notification.receive` scope as part of the QR enrollment. After the desktop approves the scope and pairing completes, enable notification relay separately. The desktop owner must approve that scope in the pairing offer. The app then opens Android's Notification Access settings; the OS-level access grant is required as well.
 
 When both approvals are present, only the displayed app label, notification title, notification text and event timestamp are forwarded. Delivery uses HMAC-SHA256 signed requests over the same TLS certificate-pinned desktop connection. Relay remains disabled unless the user toggles it on in the app. The user can disable forwarding in the app at any time or revoke Android Notification Access from system settings. If scope approval was missed, pair again with the scope approved.
 
 Notification contents can contain sensitive personal information. This feature is intentionally opt-in at both the desktop pairing and Android OS levels; do not enable it on shared devices or relay notifications to an untrusted desktop.
+
+
+## Phase 7E — opt-in Android media controls
+
+Media control is a separate permission. Before pairing, tap **Request Media Control Scope** so the Android client requests media.control in the QR enrollment. The desktop owner must approve it. After pairing, tap **Enable Media Controls**. Android Notification Access is required so the companion can discover active media sessions; the app opens the system settings page when this access is missing.
+
+The companion polls the desktop's authenticated media queue over pinned HTTPS every five seconds while its notification-listener service is connected. Only play, pause, play/pause, next, previous and stop are accepted. A command is executed only when exactly one eligible active media session exists; multiple active sessions are treated as ambiguous and left untouched. Media controls are off by default and can be disabled immediately in the app.
+
+See [Phase 7E implementation and validation notes](../docs/ANDROID_MEDIA_CONTROLS.md). This is not a remote-control or arbitrary-device-command channel. Physical-device verification remains required.
