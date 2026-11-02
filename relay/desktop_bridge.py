@@ -11,6 +11,7 @@ from typing import Awaitable, Callable
 from urllib.parse import urlparse
 
 MessageHandler = Callable[[dict], Awaitable[None] | None]
+StateHandler = Callable[[str], None]
 
 
 def relay_websocket_url(base_url: str, channel_id: str, principal_id: str) -> str:
@@ -31,7 +32,8 @@ def relay_websocket_url(base_url: str, channel_id: str, principal_id: str) -> st
 
 class DesktopRelayBridge:
     def __init__(self, *, base_url: str, channel_id: str, token: str,
-                 on_message: MessageHandler, principal_id: str | None = None):
+                 on_message: MessageHandler, principal_id: str | None = None,
+                 on_state: StateHandler | None = None):
         import uuid
         try:
             channel_id = str(uuid.UUID(channel_id))
@@ -43,10 +45,19 @@ class DesktopRelayBridge:
             raise ValueError("Invalid relay token")
         self.token = token
         self.on_message = on_message
+        self.on_state = on_state
         self._stop = asyncio.Event()
         self._socket = None
 
+    def _notify_state(self, state: str) -> None:
+        if self.on_state is not None:
+            try:
+                self.on_state(state)
+            except Exception:
+                pass
+
     async def run_forever(self) -> None:
+        self._notify_state("connecting")
         try:
             import websockets
         except ImportError as exc:
@@ -60,6 +71,7 @@ class DesktopRelayBridge:
                     ping_interval=20, ping_timeout=20,
                 ) as socket:
                     self._socket = socket
+                    self._notify_state("connected")
                     delay = 1.0
                     async for raw in socket:
                         try:
@@ -83,6 +95,7 @@ class DesktopRelayBridge:
             except asyncio.CancelledError:
                 raise
             except Exception:
+                self._notify_state("reconnecting")
                 try:
                     await asyncio.wait_for(
                         self._stop.wait(), timeout=delay + random.uniform(0, delay * 0.15)
@@ -92,6 +105,8 @@ class DesktopRelayBridge:
                 delay = min(delay * 2, 60.0)
             finally:
                 self._socket = None
+                if not self._stop.is_set():
+                    self._notify_state("disconnected")
 
     async def send_to_device(self, device_id: str, message_type: str, payload: dict) -> None:
         if self._socket is None:
@@ -113,3 +128,4 @@ class DesktopRelayBridge:
         self._stop.set()
         if self._socket is not None:
             await self._socket.close()
+        self._notify_state("stopped")
