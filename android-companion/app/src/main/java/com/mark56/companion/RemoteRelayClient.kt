@@ -27,8 +27,8 @@ class RemoteRelayClient(
 
     init {
         val base = baseUrl.toHttpUrl()
-        require(base.isHttps && base.encodedPath() in listOf("", "/") &&
-            base.query() == null && base.fragment() == null)
+        require(base.isHttps && base.encodedPath in listOf("", "/") &&
+            base.query == null && base.fragment == null)
         require(channelId.matches(Regex("[0-9a-fA-F-]{36}")))
         require(java.util.UUID.fromString(channelId).toString().equals(channelId, ignoreCase = true))
         require(principalId.matches(Regex("[A-Za-z0-9._-]{1,80}")))
