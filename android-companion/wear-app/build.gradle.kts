@@ -11,7 +11,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = providers.environmentVariable("ANDROID_VERSION_CODE").orElse("1").get().toInt()
-        versionName = providers.environmentVariable("ANDROID_VERSION_NAME").orElse("1.1.0").get()
+        versionName = providers.environmentVariable("ANDROID_VERSION_NAME").orElse("1.1.0").get().removePrefix("companion-v")
     }
 
     signingConfigs {
