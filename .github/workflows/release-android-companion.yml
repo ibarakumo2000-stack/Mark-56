@@ -55,6 +55,19 @@ jobs:
           ANDROID_VERSION_NAME: ${{ github.ref_name }}
           ANDROID_VERSION_CODE: ${{ github.run_number }}
         run: gradle --no-daemon :app:assembleRelease :wear-app:assembleRelease
+      - name: Verify APK signatures and shared release identity
+        run: |
+          set -euo pipefail
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          PHONE_APK="android-companion/app/build/outputs/apk/release/app-release.apk"
+          WATCH_APK="android-companion/wear-app/build/outputs/apk/release/wear-app-release.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$PHONE_APK" > "$RUNNER_TEMP/phone-signature.txt"
+          "$APKSIGNER" verify --verbose --print-certs "$WATCH_APK" > "$RUNNER_TEMP/watch-signature.txt"
+          PHONE_CERT="$(grep -m1 'Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/phone-signature.txt" | awk '{print $NF}')"
+          WATCH_CERT="$(grep -m1 'Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/watch-signature.txt" | awk '{print $NF}')"
+          test -n "$PHONE_CERT"
+          test "$PHONE_CERT" = "$WATCH_CERT"
+          echo "Both APKs are signed by the same owner-controlled certificate."
       - name: Stage release APKs and checksums
         run: |
           set -euo pipefail
