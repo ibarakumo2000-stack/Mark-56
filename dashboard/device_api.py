@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from core.device_gateway import (
     AuthorizationError, DeviceRegistry, PairingError, PERMISSION_SCOPES,
 )
+from core.glasses_adapters import GlassesAdapterRegistry, GlassesCapability
 
 _MEDIA_ACTIONS = frozenset({"play", "pause", "play_pause", "next", "previous", "stop"})
 _COMPANION_PORT = 8765
@@ -52,6 +53,13 @@ def build_device_router(
     companion_app = None
     companion_endpoint = None
     companion_fingerprint = None
+    relay_runtime = None
+    relay_config_path = Path.home() / ".jarvis" / "relay.json"
+    glasses_runtime = GlassesAdapterRegistry(registry)
+    glasses_adapter_registered = False
+    glasses_discoveries = {}
+    glasses_connected: set[str] = set()
+    glasses_config_path = Path.home() / ".jarvis" / "glasses.json"
 
     def _owner(request: Request) -> bool:
         return bool(owner_auth(request))
@@ -272,8 +280,32 @@ def build_device_router(
             return insecure
         if not _owner(request):
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        device = next((item for item in registry.list_devices()
+                       if item["device_id"] == device_id), None)
+        if device is None:
+            return JSONResponse({"error": "Device not found or already revoked."}, status_code=404)
+        if device.get("device_type") == "glasses":
+            try:
+                import keyring
+                token = keyring.get_password("mark56-glasses", device_id)
+                if token:
+                    try:
+                        glasses_runtime.disconnect(token)
+                    except AuthorizationError:
+                        pass
+                    keyring.delete_password("mark56-glasses", device_id)
+                glasses_connected.discard(device_id)
+                try:
+                    saved = json.loads(glasses_config_path.read_text(encoding="utf-8"))
+                    saved = [item for item in saved if item.get("device_id") != device_id]
+                    glasses_config_path.write_text(json.dumps(saved, indent=2), encoding="utf-8")
+                except (OSError, ValueError, TypeError):
+                    pass
+            except Exception:
+                pass
         if not registry.revoke_device(device_id):
             return JSONResponse({"error": "Device not found or already revoked."}, status_code=404)
+        glasses_runtime.reconcile_revoked_sessions()
         return JSONResponse({"ok": True, "revoked": True, "device_id": device_id})
 
     @router.post("/api/devices/{device_id}/media")
@@ -322,20 +354,404 @@ def build_device_router(
             return JSONResponse({"error": "Wearable command queue is unavailable."}, status_code=503)
         return JSONResponse({"commands": commands})
 
-    @router.get("/api/devices/wearable-commands")
-    async def drain_wearable_commands(request: Request):
+    @router.get("/api/devices/glasses")
+    async def list_glasses(request: Request):
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        config = []
+        try:
+            if glasses_config_path.is_file():
+                config = json.loads(glasses_config_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            config = []
+        metadata = {item.get("device_id"): item for item in config if isinstance(item, dict)}
+        devices = []
+        for item in registry.list_devices():
+            if item.get("device_type") != "glasses":
+                continue
+            saved = metadata.get(item["device_id"], {})
+            devices.append({
+                "device_id": item["device_id"],
+                "device_name": item["device_name"],
+                "platform": item["platform"],
+                "scopes": item["scopes"],
+                "vendor": saved.get("vendor", "Unknown"),
+                "model": saved.get("model", "Smart glasses"),
+                "connected": item["device_id"] in glasses_connected,
+            })
+        return JSONResponse({"devices": devices})
+
+    @router.post("/api/devices/glasses/discover")
+    async def discover_glasses(request: Request):
+        nonlocal glasses_adapter_registered
         insecure = _secure(request)
         if insecure:
             return insecure
         if not _owner(request):
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
-        if companion_app is None:
-            return JSONResponse({"error": "Start the companion listener first."}, status_code=409)
         try:
-            commands = companion_app.state.drain_wearable_commands()
-        except (AttributeError, ValueError):
-            return JSONResponse({"error": "Wearable command queue is unavailable."}, status_code=503)
-        return JSONResponse({"commands": commands})
+            from core.transports.registration import register_optional_glasses_adapters
+            if not glasses_adapter_registered:
+                registered = register_optional_glasses_adapters(
+                    glasses_runtime, enable_ble=True
+                )
+                if "jarvis.ble.glasses" not in registered:
+                    return JSONResponse({
+                        "error": "BLE glasses support is unavailable. Install the optional bleak package and enable Bluetooth."
+                    }, status_code=503)
+                glasses_adapter_registered = True
+            body = await request.json()
+            timeout = body.get("timeout", 5.0)
+            descriptors = glasses_runtime.discover("jarvis.ble.glasses", timeout=timeout)
+            glasses_discoveries.clear()
+            for descriptor in descriptors:
+                if descriptor.device_id:
+                    glasses_discoveries[descriptor.device_id] = descriptor
+            return JSONResponse({"devices": [{
+                "physical_device_id": descriptor.device_id,
+                "vendor": descriptor.vendor, "model": descriptor.model,
+                "platform": descriptor.platform,
+                "capabilities": sorted(capability.value for capability in descriptor.capabilities),
+            } for descriptor in descriptors]})
+        except (ValueError, TypeError, AttributeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": "Glasses discovery failed: " + exc.__class__.__name__}, status_code=503)
+
+    @router.post("/api/devices/glasses/pair")
+    async def pair_glasses(request: Request):
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            body = await request.json()
+            physical_id = body.get("physical_device_id", "")
+            name = body.get("device_name", "JARVIS smart glasses")
+            descriptor = glasses_discoveries.get(physical_id)
+            if descriptor is None:
+                return JSONResponse({"error": "Scan and select a compatible JARVIS BLE glasses device first."}, status_code=409)
+            existing_config = []
+            if glasses_config_path.is_file():
+                try:
+                    existing_config = json.loads(glasses_config_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    existing_config = []
+            if any(
+                isinstance(item, dict) and item.get("physical_device_id") == physical_id
+                for item in existing_config
+            ):
+                return JSONResponse({"error": "These glasses are already paired. Use the existing device entry to reconnect."}, status_code=409)
+            import keyring
+            if getattr(keyring.get_keyring(), "priority", 0) <= 0:
+                return JSONResponse({"error": "A secure operating-system keyring is required to pair glasses."}, status_code=503)
+            offer = registry.create_pairing_offer(("display.render",), expires_in=300)
+            device = registry.redeem_pairing_code(
+                offer.code, device_name=name, device_type="glasses",
+                platform=descriptor.platform,
+                capabilities=sorted(capability.value for capability in descriptor.capabilities),
+                requested_scopes=("display.render",),
+            )
+            try:
+                keyring.set_password("mark56-glasses", device.device_id, device.token)
+                glasses_runtime.connect(
+                    device.token, "jarvis.ble.glasses", physical_id, descriptor
+                )
+                glasses_runtime.grant_session_consent(
+                    device.token, {GlassesCapability.DISPLAY}
+                )
+                glasses_connected.add(device.device_id)
+                glasses_config_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                try:
+                    glasses_config_path.parent.chmod(0o700)
+                except OSError:
+                    pass
+                saved = []
+                if glasses_config_path.is_file():
+                    try:
+                        saved = json.loads(glasses_config_path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        saved = []
+                saved = [item for item in saved if item.get("device_id") != device.device_id]
+                saved.append({
+                    "device_id": device.device_id, "physical_device_id": physical_id,
+                    "adapter_id": "jarvis.ble.glasses", "vendor": descriptor.vendor,
+                    "model": descriptor.model, "platform": descriptor.platform,
+                })
+                glasses_config_path.write_text(json.dumps(saved, indent=2), encoding="utf-8")
+                try:
+                    glasses_config_path.chmod(0o600)
+                except OSError:
+                    pass
+            except Exception:
+                try:
+                    keyring.delete_password("mark56-glasses", device.device_id)
+                except Exception:
+                    pass
+                registry.revoke_device(device.device_id)
+                glasses_runtime.reconcile_revoked_sessions()
+                raise
+            return JSONResponse({
+                "ok": True, "device": {
+                    "device_id": device.device_id, "device_name": device.device_name,
+                    "vendor": descriptor.vendor, "model": descriptor.model,
+                    "capabilities": sorted(capability.value for capability in descriptor.capabilities),
+                    "scopes": list(device.scopes),
+                },
+            })
+        except (ValueError, TypeError, AttributeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": "Could not pair glasses: " + exc.__class__.__name__}, status_code=503)
+
+    @router.post("/api/devices/glasses/{device_id}/connect")
+    async def reconnect_glasses(device_id: str, request: Request):
+        nonlocal glasses_adapter_registered
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            import keyring
+            token = keyring.get_password("mark56-glasses", device_id)
+            if not token:
+                return JSONResponse({"error": "Glasses credential is unavailable. Re-pair this device."}, status_code=409)
+            saved = json.loads(glasses_config_path.read_text(encoding="utf-8"))
+            item = next((entry for entry in saved if entry.get("device_id") == device_id), None)
+            if item is None:
+                return JSONResponse({"error": "Glasses metadata is missing. Scan and pair again."}, status_code=404)
+            physical_id = item["physical_device_id"]
+            descriptor = glasses_discoveries.get(physical_id)
+            if descriptor is None:
+                return JSONResponse({"error": "Scan for nearby JARVIS-compatible glasses before reconnecting."}, status_code=409)
+            if not glasses_adapter_registered:
+                from core.transports.registration import register_optional_glasses_adapters
+                glasses_adapter_registered = bool(register_optional_glasses_adapters(
+                    glasses_runtime, enable_ble=True
+                ))
+            glasses_runtime.connect(token, "jarvis.ble.glasses", physical_id, descriptor)
+            glasses_runtime.grant_session_consent(token, {GlassesCapability.DISPLAY})
+            glasses_connected.add(device_id)
+            return JSONResponse({"ok": True, "connected": True})
+        except Exception as exc:
+            return JSONResponse({"error": "Could not reconnect glasses: " + exc.__class__.__name__}, status_code=503)
+
+    @router.post("/api/devices/glasses/{device_id}/disconnect")
+    async def disconnect_glasses(device_id: str, request: Request):
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            import keyring
+            token = keyring.get_password("mark56-glasses", device_id)
+            if token:
+                glasses_runtime.disconnect(token)
+            glasses_connected.discard(device_id)
+            return JSONResponse({"ok": True, "connected": False})
+        except Exception as exc:
+            return JSONResponse({"error": "Could not disconnect glasses: " + exc.__class__.__name__}, status_code=503)
+
+    @router.post("/api/devices/glasses/{device_id}/display")
+    async def render_glasses_card(device_id: str, request: Request):
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            import keyring
+            token = keyring.get_password("mark56-glasses", device_id)
+            if not token:
+                return JSONResponse({"error": "Glasses credential is unavailable."}, status_code=404)
+            body = await request.json()
+            card = body.get("card")
+            glasses_runtime.render_card(token, card)
+            return JSONResponse({"ok": True, "rendered": True})
+        except (ValueError, TypeError, AttributeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": "Could not render glasses card: " + exc.__class__.__name__}, status_code=503)
+
+    @router.get("/api/devices/relay")
+    async def relay_status(request: Request):
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        config = {}
+        try:
+            if relay_config_path.is_file():
+                config = json.loads(relay_config_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            config = {}
+        return JSONResponse({
+            "configured": bool(config.get("endpoint") and config.get("channel_id") and config.get("principal_id")),
+            "endpoint": config.get("endpoint"),
+            "channel_id": config.get("channel_id"),
+            "principal_id": config.get("principal_id"),
+            "status": relay_runtime.status() if relay_runtime is not None else "stopped",
+        })
+
+    @router.post("/api/devices/relay/configure")
+    async def configure_relay(request: Request):
+        nonlocal relay_runtime
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            body = await request.json()
+            endpoint = body.get("endpoint", "").strip()
+            channel_id = body.get("channel_id", "").strip()
+            principal_id = body.get("principal_id", "").strip()
+            token = body.get("token", "").strip()
+            from relay.desktop_bridge import relay_websocket_url
+            relay_websocket_url(endpoint, channel_id, principal_id)
+            if not token.startswith("rly_") or not 32 <= len(token) <= 160:
+                raise ValueError("Relay token is invalid")
+            import keyring
+            backend = keyring.get_keyring()
+            if getattr(backend, "priority", 0) <= 0:
+                return JSONResponse({"error": "No secure operating-system credential store is available."}, status_code=503)
+            if relay_runtime is not None:
+                relay_runtime.stop()
+                relay_runtime = None
+            relay_config_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            try:
+                relay_config_path.parent.chmod(0o700)
+            except OSError:
+                pass
+            keyring.set_password("mark56-relay", f"{channel_id}:{principal_id}", token)
+            relay_config_path.write_text(json.dumps({
+                "endpoint": endpoint, "channel_id": channel_id,
+                "principal_id": principal_id,
+            }, indent=2), encoding="utf-8")
+            try:
+                relay_config_path.chmod(0o600)
+            except OSError:
+                pass
+        except (ValueError, TypeError, AttributeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": "Could not store relay credentials in the operating-system keyring: " + exc.__class__.__name__}, status_code=503)
+        return JSONResponse({"ok": True, "configured": True, "token_stored_securely": True})
+
+    @router.post("/api/devices/relay/start")
+    async def start_relay(request: Request):
+        nonlocal relay_runtime
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            config = json.loads(relay_config_path.read_text(encoding="utf-8"))
+            import keyring
+            token = keyring.get_password(
+                "mark56-relay",
+                f"{config['channel_id']}:{config['principal_id']}",
+            )
+            if not token:
+                return JSONResponse({"error": "Relay credential is missing from the operating-system keyring. Configure the relay again."}, status_code=409)
+            if relay_runtime is None:
+                from relay.desktop_runtime import DesktopRelayRuntime
+                relay_runtime = DesktopRelayRuntime()
+            state = relay_runtime.start(
+                base_url=config["endpoint"], channel_id=config["channel_id"],
+                principal_id=config["principal_id"], token=token,
+            )
+            if state == "error":
+                return JSONResponse({"error": "Relay runtime could not initialize. Check the relay URL and desktop dependencies."}, status_code=503)
+            return JSONResponse({"ok": True, "status": state})
+        except FileNotFoundError:
+            return JSONResponse({"error": "Configure the remote relay before starting it."}, status_code=409)
+        except (KeyError, ValueError, OSError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": "Could not start desktop relay: " + exc.__class__.__name__}, status_code=503)
+
+    @router.post("/api/devices/relay/stop")
+    async def stop_relay(request: Request):
+        nonlocal relay_runtime
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        if relay_runtime is not None:
+            try:
+                relay_runtime.stop()
+            except Exception as exc:
+                return JSONResponse({"error": "Could not stop desktop relay: " + exc.__class__.__name__}, status_code=503)
+            relay_runtime = None
+        return JSONResponse({"ok": True, "status": "stopped"})
+
+    @router.delete("/api/devices/relay/configuration")
+    async def forget_relay_configuration(request: Request):
+        nonlocal relay_runtime
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        if relay_runtime is not None:
+            try:
+                relay_runtime.stop()
+            except Exception as exc:
+                return JSONResponse({"error": "Could not stop desktop relay: " + exc.__class__.__name__}, status_code=503)
+            relay_runtime = None
+        try:
+            if relay_config_path.is_file():
+                config = json.loads(relay_config_path.read_text(encoding="utf-8"))
+                import keyring
+                if config.get("channel_id") and config.get("principal_id"):
+                    try:
+                        keyring.delete_password(
+                            "mark56-relay",
+                            f"{config['channel_id']}:{config['principal_id']}",
+                        )
+                    except Exception:
+                        pass
+                relay_config_path.unlink(missing_ok=True)
+        except Exception:
+            return JSONResponse({"error": "Could not clear saved relay configuration."}, status_code=503)
+        return JSONResponse({"ok": True, "status": "stopped", "credentials_cleared": True})
+
+    @router.post("/api/devices/relay/ping")
+    async def ping_remote_device(request: Request):
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        if relay_runtime is None or relay_runtime.status() != "connected":
+            return JSONResponse({"error": "Start the desktop relay connection first."}, status_code=409)
+        try:
+            body = await request.json()
+            principal_id = body.get("principal_id", "")
+            if not isinstance(principal_id, str) or not principal_id.strip() or len(principal_id) > 80:
+                raise ValueError("Enter a valid remote device principal ID")
+            relay_runtime.send_to_device(
+                principal_id, "command", {"action": "assistant.ping"}
+            )
+        except (ValueError, TypeError, AttributeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": "Remote ping failed: " + exc.__class__.__name__}, status_code=503)
+        return JSONResponse({"ok": True, "sent": True, "principal_id": principal_id})
+
+    @router.get("/api/devices/relay/events")
+    async def relay_events(request: Request):
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        events = relay_runtime.drain_events() if relay_runtime is not None else []
+        return JSONResponse({"events": events})
 
     @router.get("/api/device/me")
     async def device_identity(request: Request):
@@ -348,5 +764,25 @@ def build_device_router(
         except AuthorizationError:
             return JSONResponse({"error": "Invalid or revoked device credentials."}, status_code=401)
         return JSONResponse({"device": device})
+
+    @router.on_event("shutdown")
+    async def shutdown_device_services():
+        nonlocal companion_server, relay_runtime
+        if relay_runtime is not None:
+            try:
+                await asyncio.to_thread(relay_runtime.stop)
+            except Exception:
+                pass
+            relay_runtime = None
+        if companion_server is not None:
+            try:
+                await asyncio.to_thread(companion_server.stop)
+            except Exception:
+                pass
+            companion_server = None
+        try:
+            await asyncio.to_thread(glasses_runtime.close)
+        except Exception:
+            pass
 
     return router

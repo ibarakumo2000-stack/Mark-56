@@ -127,9 +127,12 @@ being simulated.
       listing, per-device revocation, and device identity endpoints.
 - [x] Add owner-only per-device permission editing and authenticated Android companion routes.
 - [x] Add a desktop Devices panel with QR and manual pairing code, bridge lifecycle, status, media queue controls, and revocation.
-- [x] Build phone and Wear OS debug APKs, add Material 3 companion UI, and add the opt-in Android remote relay client.
-- [ ] Configure production signing secrets and publish a signed release.
-- [x] Add a Wear OS companion module, phone Data Layer bridge and bounded desktop action queue.
-- [x] Add a vendor-neutral smart-glasses adapter contract with per-device scopes and session consent; vendor SDK integrations remain model-dependent.
-- [x] Add an ephemeral TLS WebSocket relay, hashed credential registry, provisioning CLI, Docker/Caddy deployment, and desktop/Android client transports.
+- [x] Upgrade the phone companion UI with a branded splash screen, Material 3 feature cards, edge-to-edge layout, explicit permission recovery, and safe disconnect cleanup.
+- [x] Add a separate Wear OS app, reachable-phone discovery, strict action allowlist, phone Data Layer bridge, and rate-limited desktop forwarding.
+- [x] Add a vendor-neutral smart-glasses contract, revocation-aware session cleanup, and a reference BLE display adapter for the documented JARVIS GATT profile.
+- [x] Add an ephemeral TLS WebSocket relay, hashed credential registry, two-sided scope checks, provisioning CLI, Docker/Caddy deployment, desktop runtime, keyring-backed dashboard configuration, and Android client transport.
+- [x] Add a tag-based signed phone/watch release workflow with secret validation, APK signature verification, shared-certificate check, and SHA-256 checksums.
+- [ ] Configure owner-managed Android signing secrets and publish a signed release.
 - [ ] Deploy relay to an owner-controlled host and complete cross-network end-to-end security tests.
+- [ ] Connect authenticated relay events to the desktop assistant's application-owned action/notification handlers; no remote command is auto-executed by the transport layer.
+- [ ] Add vendor-specific glasses SDKs after the target models and SDK access are selected; validate on physical glasses.

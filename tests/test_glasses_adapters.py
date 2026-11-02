@@ -1,6 +1,6 @@
 import unittest
 
-from core.device_gateway import DeviceRegistry
+from core.device_gateway import AuthorizationError, DeviceRegistry
 from core.glasses_adapters import (
     GlassesAdapterError, GlassesAdapterRegistry, GlassesCapability, GlassesDescriptor,
 )
@@ -59,6 +59,14 @@ class GlassesAdapterTests(unittest.TestCase):
         self.registry.grant_session_consent(self.device.token, {GlassesCapability.CAMERA})
         self.assertEqual(self.registry.capture_frame(self.device.token), b"frame")
 
+    def test_camera_capture_uses_the_connected_physical_device(self):
+        self.registry.grant_session_consent(self.device.token, {GlassesCapability.CAMERA})
+        self.assertEqual(self.registry.capture_frame(self.device.token), b"frame")
+
+    def test_microphone_capture_uses_the_connected_physical_device(self):
+        self.registry.grant_session_consent(self.device.token, {GlassesCapability.MICROPHONE})
+        self.assertEqual(self.registry.capture_audio(self.device.token, 5000), b"audio")
+
     def test_consent_cannot_invent_hardware_capability(self):
         with self.assertRaises(GlassesAdapterError):
             self.registry.grant_session_consent(self.device.token, {GlassesCapability.IMU})
@@ -74,6 +82,13 @@ class GlassesAdapterTests(unittest.TestCase):
         self.registry.grant_session_consent(self.device.token, {GlassesCapability.MICROPHONE})
         with self.assertRaises(GlassesAdapterError):
             self.registry.capture_audio(self.device.token, 30000)
+
+    def test_revoking_device_disconnects_physical_adapter_session(self):
+        self.registry.grant_session_consent(self.device.token, {GlassesCapability.CAMERA})
+        self.assertTrue(self.devices.revoke_device(self.device.device_id))
+        with self.assertRaises(AuthorizationError):
+            self.registry.capture_frame(self.device.token)
+        self.assertTrue(self.adapter.disconnected)
 
     def test_disconnect_closes_adapter_session(self):
         self.assertTrue(self.registry.disconnect(self.device.token))

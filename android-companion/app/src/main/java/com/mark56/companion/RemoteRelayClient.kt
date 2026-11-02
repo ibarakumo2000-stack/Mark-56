@@ -27,12 +27,12 @@ class RemoteRelayClient(
 
     init {
         val base = baseUrl.toHttpUrl()
-        require(base.isHttps && base.encodedPath in listOf("", "/") &&
-            base.query == null && base.fragment == null)
+        require(base.isHttps && base.username.isEmpty() && base.password.isEmpty() &&
+            base.encodedPath in listOf("", "/") && base.query == null && base.fragment == null)
         require(channelId.matches(Regex("[0-9a-fA-F-]{36}")))
         require(java.util.UUID.fromString(channelId).toString().equals(channelId, ignoreCase = true))
         require(principalId.matches(Regex("[A-Za-z0-9._-]{1,80}")))
-        require(token.startsWith("rly_") && token.length <= 160)
+        require(token.startsWith("rly_") && token.length in 32..160)
         val url = base.newBuilder().scheme("https")
             .addPathSegments("v1/connect/$channelId/$principalId").build()
         val request = Request.Builder().url(url)
@@ -44,7 +44,13 @@ class RemoteRelayClient(
             }
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
-                    this@RemoteRelayClient.onMessage(JSONObject(text))
+                    require(text.toByteArray(Charsets.UTF_8).size <= 32_768)
+                    val message = JSONObject(text)
+                    require(message.optString("type") in setOf(
+                        "command", "notification", "media", "battery", "display", "voice", "camera"
+                    ))
+                    require(message.optJSONObject("payload") != null)
+                    this@RemoteRelayClient.onMessage(message)
                 } catch (_: Exception) {
                     onState("Relay sent an invalid message")
                 }
@@ -60,10 +66,16 @@ class RemoteRelayClient(
 
     fun send(type: String, payload: JSONObject, targetDeviceId: String? = null): Boolean {
         require(type in setOf("command", "notification", "media", "battery", "display", "voice", "camera"))
+        require(targetDeviceId == null ||
+            targetDeviceId.matches(Regex("[A-Za-z0-9._-]{1,80}")))
         val envelope = JSONObject().put("type", type)
             .put("target_device_id", targetDeviceId)
             .put("payload", payload)
-        return socket.send(envelope.toString())
+        val encoded = envelope.toString()
+        require(encoded.toByteArray(Charsets.UTF_8).size <= 32_768) {
+            "Relay message exceeds the 32 KB limit"
+        }
+        return socket.send(encoded)
     }
 
     fun close() {

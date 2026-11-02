@@ -4,7 +4,10 @@
     <application
         android:allowBackup="false"
         android:label="JARVIS Watch"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:icon="@drawable/ic_jarvis_watch"
+        android:roundIcon="@drawable/ic_jarvis_watch"
+        android:usesCleartextTraffic="false"
+        android:theme="@style/WearTheme">
         <activity android:name=".WearMainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

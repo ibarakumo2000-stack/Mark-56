@@ -57,6 +57,10 @@ class CompanionSettings(context: Context) {
             .remove("battery_scope").remove("notification_scope").remove("media_scope").remove("command_scope")
             .putBoolean("battery_sync_enabled", false)
             .putBoolean("notification_relay_enabled", false)
-            .putBoolean("media_control_enabled", false).putBoolean("wear_bridge_enabled", false).apply()
+            .putBoolean("media_control_enabled", false)
+            .putBoolean("wear_bridge_enabled", false)
+            .putBoolean("notification_relay_requested", false)
+            .putBoolean("media_control_requested", false)
+            .putBoolean("wear_bridge_requested", false).apply()
     }
 }

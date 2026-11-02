@@ -37,7 +37,7 @@ class SecureTokenStore(private val prefs: android.content.SharedPreferences) {
         } catch (_: Exception) { clear(); null }
     }
     fun saveRelayToken(token: String) {
-        require(token.startsWith("rly_") && token.length <= 160)
+        require(token.startsWith("rly_") && token.length in 32..160)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val encrypted = cipher.doFinal(token.toByteArray(Charsets.UTF_8))

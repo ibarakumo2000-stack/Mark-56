@@ -5,14 +5,21 @@ import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
 import org.json.JSONObject
 import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentHashMap
 
 /** Receives allowlisted watch actions and forwards only with explicit local and desktop consent. */
 class WearableBridgeListener : WearableListenerService() {
     private val worker = Executors.newSingleThreadExecutor()
+    private val lastAcceptedAt = ConcurrentHashMap<String, Long>()
     private val allowed = setOf("assistant.ping", "media.play_pause", "media.next", "media.previous")
 
     override fun onMessageReceived(event: MessageEvent) {
         if (event.path != "/jarvis/v1/action" || event.data.size > 1024) return
+        val source = event.sourceNodeId
+        if (source.isBlank()) return
+        val now = System.currentTimeMillis()
+        val previous = lastAcceptedAt.put(source, now)
+        if (previous != null && now - previous < 750L) return
         val settings = CompanionSettings(this)
         if (!settings.wearBridgeEnabled() || !settings.hasCommandScope()) {
             Log.i("Mark56Wear", "Watch action ignored: bridge or command scope is disabled")

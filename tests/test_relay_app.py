@@ -48,6 +48,46 @@ class RelayAppTests(unittest.TestCase):
                 self.assertEqual(device_ws.receive_json()["payload"]["action"], "media.play_pause")
                 self.assertEqual(desktop_ws.receive_json()["type"], "ack")
 
+    def test_device_message_requires_desktop_recipient_scope(self):
+        self.registry.revoke(self.desktop["principal_id"], self.channel)
+        self.desktop = self.registry.provision(
+            channel_id=self.channel, role="desktop", scopes=[],
+            principal_id="desktop-limited",
+        )
+        desktop_path = f"/v1/connect/{self.channel}/{self.desktop['principal_id']}"
+        device_path = f"/v1/connect/{self.channel}/{self.device['principal_id']}"
+        with self.client.websocket_connect(
+            desktop_path, headers={"Authorization": "Bearer " + self.desktop["token"]}
+        ):
+            with self.client.websocket_connect(
+                device_path, headers={"Authorization": "Bearer " + self.device["token"]}
+            ) as device_ws:
+                device_ws.send_json({
+                    "type": "command", "target_device_id": None,
+                    "payload": {"action": "assistant.ping"},
+                })
+                self.assertEqual(device_ws.receive_json()["error"], "recipient_scope_denied")
+
+    def test_desktop_message_requires_device_recipient_scope(self):
+        self.registry.revoke(self.device["principal_id"], self.channel)
+        self.device = self.registry.provision(
+            channel_id=self.channel, role="device", scopes=[],
+            principal_id="device-limited",
+        )
+        desktop_path = f"/v1/connect/{self.channel}/{self.desktop['principal_id']}"
+        device_path = f"/v1/connect/{self.channel}/{self.device['principal_id']}"
+        with self.client.websocket_connect(
+            desktop_path, headers={"Authorization": "Bearer " + self.desktop["token"]}
+        ) as desktop_ws:
+            with self.client.websocket_connect(
+                device_path, headers={"Authorization": "Bearer " + self.device["token"]}
+            ):
+                desktop_ws.send_json({
+                    "type": "media", "target_device_id": self.device["principal_id"],
+                    "payload": {"action": "media.play_pause"},
+                })
+                self.assertEqual(desktop_ws.receive_json()["error"], "recipient_scope_denied")
+
     def test_device_cannot_select_another_recipient(self):
         path = f"/v1/connect/{self.channel}/{self.device['principal_id']}"
         with self.client.websocket_connect(
