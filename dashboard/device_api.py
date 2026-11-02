@@ -344,6 +344,7 @@ def build_device_router(
 
     @router.post("/api/devices/relay/configure")
     async def configure_relay(request: Request):
+        nonlocal relay_runtime
         insecure = _secure(request)
         if insecure:
             return insecure
@@ -363,6 +364,9 @@ def build_device_router(
             backend = keyring.get_keyring()
             if getattr(backend, "priority", 0) <= 0:
                 return JSONResponse({"error": "No secure operating-system credential store is available."}, status_code=503)
+            if relay_runtime is not None:
+                relay_runtime.stop()
+                relay_runtime = None
             relay_config_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             try:
                 relay_config_path.parent.chmod(0o700)
@@ -435,6 +439,9 @@ def build_device_router(
 
     @router.get("/api/devices/relay/events")
     async def relay_events(request: Request):
+        insecure = _secure(request)
+        if insecure:
+            return insecure
         if not _owner(request):
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
         events = relay_runtime.drain_events() if relay_runtime is not None else []
