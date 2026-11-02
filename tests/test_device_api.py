@@ -43,6 +43,7 @@ class DeviceApiTests(unittest.TestCase):
             ("/api/devices/pairing-offers", ("POST",)),
             ("/api/devices/enroll", ("POST",)),
             ("/api/devices", ("GET",)),
+            ("/api/devices/{device_id}/scopes", ("PUT",)),
             ("/api/devices/{device_id}", ("DELETE",)),
             ("/api/devices/{device_id}/media", ("POST",)),
             ("/api/device/me", ("GET",)),
