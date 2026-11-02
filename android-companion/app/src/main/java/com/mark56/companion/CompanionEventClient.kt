@@ -12,7 +12,7 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
 import java.security.cert.X509Certificate
 
-/** Sends small, signed companion events over the certificate-pinned desktop channel. */
+/** Sends permission-scoped, HMAC-authenticated events over certificate-pinned HTTPS. */
 class CompanionEventClient(
     private val endpoint: String,
     private val fingerprint: String,
@@ -28,7 +28,21 @@ class CompanionEventClient(
 
     fun postBattery(level: Int, charging: Boolean): Int {
         require(level in 0..100)
-        val body = JSONObject().put("level", level).put("charging", charging)
+        return postEvent("/v1/battery", JSONObject().put("level", level).put("charging", charging))
+    }
+
+    /** Notification text is forwarded only when the user enables relay and scope is approved. */
+    fun postNotification(app: String, title: String, text: String, occurredAt: Long): Int {
+        require(app.length <= 80 && title.length <= 512 && text.length <= 512)
+        require(app.none { it.code < 32 } && title.none { it.code < 32 && it != '\n' && it != '\t' })
+        require(text.none { it.code < 32 && it != '\n' && it != '\t' })
+        require(occurredAt >= 0)
+        val body = JSONObject().put("kind", "notification").put("app", app)
+            .put("title", title).put("text", text).put("occurred_at", occurredAt)
+        return postEvent("/v1/notifications", body)
+    }
+
+    private fun postEvent(path: String, body: JSONObject): Int {
         val timestamp = System.currentTimeMillis() / 1000L
         val random = ByteArray(24).also { SecureRandom().nextBytes(it) }
         val nonce = android.util.Base64.encodeToString(
@@ -36,8 +50,7 @@ class CompanionEventClient(
         )
         val canonical = JSONObject()
             .put("version", 1).put("device_id", deviceId).put("method", "POST")
-            .put("path", "/v1/battery").put("timestamp", timestamp)
-            .put("nonce", nonce).put("body", body)
+            .put("path", path).put("timestamp", timestamp).put("nonce", nonce).put("body", body)
         val key = MessageDigest.getInstance("SHA-256")
             .digest(("mark56-companion-v1:" + token).toByteArray(Charsets.UTF_8))
         val mac = Mac.getInstance("HmacSHA256")
@@ -45,12 +58,11 @@ class CompanionEventClient(
         val signature = mac.doFinal(canonicalJson(canonical).toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
         val envelope = JSONObject(canonical.toString()).put("signature", signature)
-        val connection = pinnedConnection("/v1/battery")
+        val connection = pinnedConnection(path)
         return try {
             connection.setRequestProperty("Authorization", "Bearer $token")
             connection.outputStream.use { it.write(envelope.toString().toByteArray(Charsets.UTF_8)) }
-            val status = connection.responseCode
-            status
+            connection.responseCode
         } finally {
             connection.disconnect()
         }
