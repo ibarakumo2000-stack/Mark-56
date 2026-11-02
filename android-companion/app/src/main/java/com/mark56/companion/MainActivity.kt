@@ -342,7 +342,7 @@ class MainActivity : AppCompatActivity() {
                 setHintTextColor(Color.rgb(145, 165, 190))
                 setSingleLine(true)
             }
-        val urlField = field("Relay HTTPS URL (https://relay.example.com)", InputType.TYPE_TEXT_VARIATION_URI)
+        val urlField = field("Relay HTTPS URL (https://relay.example.com)", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
         val channelField = field("Channel UUID")
         val principalField = field("Device principal ID")
         val tokenField = field("One-time relay token")
