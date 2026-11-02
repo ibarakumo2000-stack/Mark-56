@@ -125,8 +125,8 @@ being simulated.
       SQLite database, without replacing legacy remote-control routes.
 - [x] Add TLS-gated pairing offers, one-time enrollment, authenticated device
       listing, per-device revocation, and device identity endpoints.
-- [ ] Add permission editing and end-to-end companion-device authentication.
-- [ ] Add a desktop Devices settings panel with QR and manual pairing code.
+- [x] Add owner-only per-device permission editing and authenticated Android companion routes.
+- [x] Add a desktop Devices panel with QR and manual pairing code, bridge lifecycle, status, media queue controls, and revocation.
 - [ ] Build the Android companion app and its secure local/remote transports.
 - [ ] Add Wear OS and supported vendor-glasses adapters.
 - [ ] Add remote relay deployment, monitoring, and end-to-end security tests.
