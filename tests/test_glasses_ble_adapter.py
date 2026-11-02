@@ -72,7 +72,10 @@ class GlassesBleAdapterTests(unittest.TestCase):
             "core.transports.glasses_ble.BleakClient", FakeClient
         ):
             adapter = JarvisBleGlassesAdapter()
-            descriptors = adapter.discover()
+            try:
+                descriptors = adapter.discover()
+            finally:
+                adapter.close()
         self.assertEqual(len(descriptors), 1)
         self.assertEqual(descriptors[0].device_id, "AA:BB:CC")
         self.assertEqual(descriptors[0].capabilities, frozenset({GlassesCapability.DISPLAY}))
@@ -82,14 +85,17 @@ class GlassesBleAdapterTests(unittest.TestCase):
             "core.transports.glasses_ble.BleakClient", FakeClient
         ):
             adapter = JarvisBleGlassesAdapter()
-            adapter.discover()
-            adapter.connect("AA:BB:CC")
-            client = adapter._clients["AA:BB:CC"]
-            adapter.render_card("AA:BB:CC", {"title": "JARVIS"})
-            self.assertEqual(client.written[0], DISPLAY_CARD_CHARACTERISTIC)
-            self.assertIn(b"JARVIS", client.written[1])
-            adapter.disconnect("AA:BB:CC")
-            self.assertFalse(client.is_connected)
+            try:
+                adapter.discover()
+                adapter.connect("AA:BB:CC")
+                client = adapter._clients["AA:BB:CC"]
+                adapter.render_card("AA:BB:CC", {"title": "JARVIS"})
+                self.assertEqual(client.written[0], DISPLAY_CARD_CHARACTERISTIC)
+                self.assertIn(b"JARVIS", client.written[1])
+                adapter.disconnect("AA:BB:CC")
+                self.assertFalse(client.is_connected)
+            finally:
+                adapter.close()
 
     def test_ble_adapter_registration_is_explicit_and_optional(self):
         devices = DeviceRegistry()
@@ -111,6 +117,7 @@ class GlassesBleAdapterTests(unittest.TestCase):
                     ["jarvis.ble.glasses"],
                 )
         finally:
+            registry.close()
             devices.close()
 
     def test_generic_ble_profile_does_not_claim_camera_or_microphone(self):
@@ -118,10 +125,13 @@ class GlassesBleAdapterTests(unittest.TestCase):
             "core.transports.glasses_ble.BleakClient", FakeClient
         ):
             adapter = JarvisBleGlassesAdapter()
-            with self.assertRaises(GlassesAdapterError):
-                adapter.capture_frame("AA:BB:CC")
-            with self.assertRaises(GlassesAdapterError):
-                adapter.capture_audio("AA:BB:CC", 5000)
+            try:
+                with self.assertRaises(GlassesAdapterError):
+                    adapter.capture_frame("AA:BB:CC")
+                with self.assertRaises(GlassesAdapterError):
+                    adapter.capture_audio("AA:BB:CC", 5000)
+            finally:
+                adapter.close()
 
 
 if __name__ == "__main__":
