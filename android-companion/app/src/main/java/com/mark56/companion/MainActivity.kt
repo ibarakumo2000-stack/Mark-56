@@ -341,7 +341,7 @@ class MainActivity : AppCompatActivity() {
                         status.text = "Paired with " + response.optString("device_name", "JARVIS desktop") +
                             ". Battery sharing is off. Notification relay and media controls remain off until separately enabled."
                         if (settings.mediaControlRequested() && !hasMediaScope) {
-                            status.text += " Desktop did not approve media.control; pair again after approval."
+                            status.text = status.text.toString() + " Desktop did not approve media.control; pair again after approval."
                         }
                         if (!hasBatteryScope) status.text =
                             "Paired, but battery.read was not approved on desktop. Battery sync is unavailable."
