@@ -490,4 +490,20 @@ def build_device_router(
             return JSONResponse({"error": "Invalid or revoked device credentials."}, status_code=401)
         return JSONResponse({"device": device})
 
+    @router.on_event("shutdown")
+    async def shutdown_device_services():
+        nonlocal companion_server, relay_runtime
+        if relay_runtime is not None:
+            try:
+                await asyncio.to_thread(relay_runtime.stop)
+            except Exception:
+                pass
+            relay_runtime = None
+        if companion_server is not None:
+            try:
+                await asyncio.to_thread(companion_server.stop)
+            except Exception:
+                pass
+            companion_server = None
+
     return router
