@@ -51,7 +51,8 @@ class RelayAppTests(unittest.TestCase):
     def test_device_message_requires_desktop_recipient_scope(self):
         self.registry.revoke(self.desktop["principal_id"], self.channel)
         self.desktop = self.registry.provision(
-            channel_id=self.channel, role="desktop", scopes=[]
+            channel_id=self.channel, role="desktop", scopes=[],
+            principal_id="desktop-limited",
         )
         desktop_path = f"/v1/connect/{self.channel}/{self.desktop['principal_id']}"
         device_path = f"/v1/connect/{self.channel}/{self.device['principal_id']}"
@@ -70,7 +71,8 @@ class RelayAppTests(unittest.TestCase):
     def test_desktop_message_requires_device_recipient_scope(self):
         self.registry.revoke(self.device["principal_id"], self.channel)
         self.device = self.registry.provision(
-            channel_id=self.channel, role="device", scopes=[]
+            channel_id=self.channel, role="device", scopes=[],
+            principal_id="device-limited",
         )
         desktop_path = f"/v1/connect/{self.channel}/{self.desktop['principal_id']}"
         device_path = f"/v1/connect/{self.channel}/{self.device['principal_id']}"
