@@ -720,6 +720,29 @@ def build_device_router(
             return JSONResponse({"error": "Could not clear saved relay configuration."}, status_code=503)
         return JSONResponse({"ok": True, "status": "stopped", "credentials_cleared": True})
 
+    @router.post("/api/devices/relay/ping")
+    async def ping_remote_device(request: Request):
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        if relay_runtime is None or relay_runtime.status() != "connected":
+            return JSONResponse({"error": "Start the desktop relay connection first."}, status_code=409)
+        try:
+            body = await request.json()
+            principal_id = body.get("principal_id", "")
+            if not isinstance(principal_id, str) or not principal_id.strip() or len(principal_id) > 80:
+                raise ValueError("Enter a valid remote device principal ID")
+            relay_runtime.send_to_device(
+                principal_id, "command", {"action": "assistant.ping"}
+            )
+        except (ValueError, TypeError, AttributeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": "Remote ping failed: " + exc.__class__.__name__}, status_code=503)
+        return JSONResponse({"ok": True, "sent": True, "principal_id": principal_id})
+
     @router.get("/api/devices/relay/events")
     async def relay_events(request: Request):
         insecure = _secure(request)
