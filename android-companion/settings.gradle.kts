@@ -4,4 +4,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "Mark56Companion"
-include(":app")
+include(":app", ":wear-app")
