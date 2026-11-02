@@ -42,6 +42,16 @@ class CompanionSettings(context: Context) {
     fun setMediaControlEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("media_control_enabled", enabled).apply()
     }
+    fun saveRelayConfig(endpoint: String, channelId: String, principalId: String) {
+        prefs.edit().putString("relay_endpoint", endpoint)
+            .putString("relay_channel", channelId).putString("relay_principal", principalId).apply()
+    }
+    fun relayEndpoint(): String? = prefs.getString("relay_endpoint", null)
+    fun relayChannel(): String? = prefs.getString("relay_channel", null)
+    fun relayPrincipal(): String? = prefs.getString("relay_principal", null)
+    fun clearRelayConfig() {
+        prefs.edit().remove("relay_endpoint").remove("relay_channel").remove("relay_principal").apply()
+    }
     fun clearConnection() {
         prefs.edit().remove("endpoint").remove("fingerprint").remove("device_id")
             .remove("battery_scope").remove("notification_scope").remove("media_scope").remove("command_scope")
