@@ -9,7 +9,7 @@
 - Reuses the dashboard's locally generated TLS certificate and requires the Android client to pin its SHA-256 fingerprint.
 - Creates five-minute, single-use pairing offers with explicit owner-selected scopes. The QR payload contains only the HTTPS endpoint, one-time code, expiry, and certificate fingerprint; it never contains a long-lived device token.
 - Generates a QR image locally using the already-declared qrcode dependency. The page also exposes a copyable payload/manual code fallback.
-- Allows the owner to revoke a paired device immediately.
+- Allows the owner to edit a device's approved scopes or revoke the device immediately. Scope changes take effect on the next authenticated request.
 - Adds owner-authorized media queue controls for devices that were explicitly granted media.control. The command allowlist remains play, pause, play/pause, next, previous, and stop.
 
 ## Security behavior
