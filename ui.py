@@ -3341,6 +3341,7 @@ class MainWindow(QMainWindow):
 
         self.on_text_command   = None
         self.on_remote_clicked = None   # callable: () -> (url, key) | None
+        self.on_pair_device_clicked = None  # callable: () -> device-management URL | None
         self.on_interrupt      = None   # callable: () -> None — stop JARVIS mid-speech
         self.on_voice_change   = None   # callable: () -> None — rebuild session with new voice
         self.on_audio_device_change = None  # callable: () -> None — reopen audio streams
@@ -4677,6 +4678,15 @@ class MainWindow(QMainWindow):
         remote_btn.clicked.connect(self._open_remote)
         lay.addWidget(remote_btn)
 
+        pair_btn = QPushButton("＋  PAIR PHONE / DEVICE")
+        pair_btn.setFixedHeight(30)
+        pair_btn.setFont(QFont(_mono(), 8, QFont.Weight.Bold))
+        pair_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        pair_btn.setStyleSheet(_BTN_STYLE_DIM)
+        pair_btn.setToolTip("Open secure phone, Wear OS and smart-glasses pairing")
+        pair_btn.clicked.connect(self._open_device_pairing)
+        lay.addWidget(pair_btn)
+
         sc_btn = QPushButton("⊞  CREATE DESKTOP SHORTCUT")
         sc_btn.setFixedHeight(26)
         sc_btn.setFont(QFont(_mono(), 7))
@@ -5400,6 +5410,22 @@ class MainWindow(QMainWindow):
     def notify_phone_connected(self) -> None:
         if self._remote_overlay and self._remote_overlay.isVisible():
             self._remote_overlay.mark_connected()
+
+    def _open_device_pairing(self):
+        """Open the dashboard's secure device-enrollment and management page."""
+        if not self.on_pair_device_clicked:
+            self._log.append_log("SYS: Device pairing is not connected to the desktop runtime.")
+            return
+        try:
+            target = self.on_pair_device_clicked()
+            if not target:
+                return
+            if not QDesktopServices.openUrl(QUrl(str(target))):
+                self._log.append_log(f"SYS: Could not open device pairing page: {target}")
+                return
+            self._log.append_log("SYS: Opened secure device pairing. Sign in, start the companion bridge, then create a QR pairing offer.")
+        except Exception as exc:
+            self._log.append_log(f"SYS: Could not open device pairing: {type(exc).__name__}: {exc}")
 
     def _open_remote(self):
         if not self.on_remote_clicked:
@@ -6270,6 +6296,14 @@ class JarvisUI:
     @on_text_command.setter
     def on_text_command(self, cb):
         self._win.on_text_command = cb
+
+    @property
+    def on_pair_device_clicked(self):
+        return self._win.on_pair_device_clicked
+
+    @on_pair_device_clicked.setter
+    def on_pair_device_clicked(self, cb):
+        self._win.on_pair_device_clicked = cb
 
     @property
     def on_remote_clicked(self):
