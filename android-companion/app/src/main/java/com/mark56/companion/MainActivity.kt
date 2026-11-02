@@ -229,12 +229,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshNotificationRelayButton() {
-        val paired = tokenStore.read() != null && settings.deviceId() != null &&
-            settings.endpoint() != null && settings.fingerprint() != null
-        notificationRelayButton.text = if (settings.notificationRelayEnabled())
-            "DISABLE NOTIFICATION RELAY" else "ENABLE NOTIFICATION RELAY  ·  NOTIFICATION ACCESS"
-        notificationRelayButton.isEnabled = paired && settings.hasNotificationScope()
-        notificationRelayButton.alpha = if (notificationRelayButton.isEnabled) 1f else 0.55f
+        val paired = tokenStore.read() != null && settings.deviceId() != null
+        val approved = paired && settings.hasNotificationScope()
+        notificationRelayButton.text = when {
+            approved && settings.notificationRelayEnabled() -> "DISABLE NOTIFICATION RELAY"
+            approved -> "ENABLE NOTIFICATION RELAY  ·  NOTIFICATION ACCESS"
+            settings.notificationRelayRequested() -> "NOTIFICATION SCOPE REQUESTED  ·  TAP TO CANCEL"
+            else -> "REQUEST NOTIFICATION SCOPE  ·  PAIR AGAIN"
+        }
+        notificationRelayButton.isEnabled = true
+        notificationRelayButton.alpha = 1f
     }
 
     private fun refreshMediaControlButton() {
@@ -280,16 +284,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleNotificationRelay() {
-        if (settings.notificationRelayEnabled()) {
-            settings.setNotificationRelayEnabled(false)
-            status.text = "Notification relay disabled. No notification content will be forwarded."
+        val paired = tokenStore.read() != null && settings.deviceId() != null
+        if (paired && settings.hasNotificationScope()) {
+            val enabled = !settings.notificationRelayEnabled()
+            settings.setNotificationRelayEnabled(enabled)
+            status.text = if (enabled)
+                "Enable JARVIS notification access in Android Settings. Notification text is forwarded only while both approvals and this toggle remain enabled."
+            else "Notification relay disabled. No notification content will be forwarded."
             refreshNotificationRelayButton()
-            return
+            if (enabled) startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        } else {
+            val requested = !settings.notificationRelayRequested()
+            settings.setNotificationRelayRequested(requested)
+            status.text = if (requested)
+                "Notification scope requested for your next pairing. Disconnect, then scan a fresh desktop QR with notification.receive approved."
+            else "Notification scope request cancelled."
+            refreshNotificationRelayButton()
         }
-        settings.setNotificationRelayEnabled(true)
-        status.text = "Enable JARVIS notification access in Android Settings. Only notifications will be forwarded after desktop scope approval."
-        refreshNotificationRelayButton()
-        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
     }
 
     private fun toggleBatterySync() {
@@ -317,7 +328,7 @@ class MainActivity : AppCompatActivity() {
             worker.execute {
                 try {
                     val requestedScopes = mutableListOf("battery.read")
-                    if (settings.notificationRelayEnabled()) requestedScopes.add("notification.receive")
+                    if (settings.notificationRelayRequested()) requestedScopes.add("notification.receive")
                     if (settings.mediaControlRequested()) requestedScopes.add("media.control")
                     val response = PinnedCompanionClient(endpoint, fingerprint).pair(
                         code, android.os.Build.MODEL ?: "Android device", requestedScopes
