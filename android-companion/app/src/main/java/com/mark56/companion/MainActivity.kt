@@ -274,7 +274,8 @@ class MainActivity : AppCompatActivity() {
                     val token = response.getString("token")
                     val deviceId = response.getString("device_id")
                     val scopes = response.optJSONArray("scopes")
-                    val hasNotificationScope = scopes?.let { array ->\n                        (0 until array.length()).any { array.optString(it) == "notification.receive" }\n                    } ?: false\n                    val hasBatteryScope = scopes?.let { array ->
+                    val hasNotificationScope = scopes?.let { array ->
+                        (0 until array.length()).any { array.optString(it) == "notification.receive" }\n                    } ?: false\n                    val hasBatteryScope = scopes?.let { array ->
                         (0 until array.length()).any { array.optString(it) == "battery.read" }
                     } ?: false
                     runOnUiThread {
@@ -283,7 +284,8 @@ class MainActivity : AppCompatActivity() {
                         BatterySync.disable(this)
                         refreshBatteryButton()
                         status.text = "Paired with " + response.optString("device_name", "JARVIS desktop") +
-                            ". Battery sharing is off until you enable it. Notification relay is " +\n                            (if (hasNotificationScope) "available after Android notification access is enabled." else "not approved; pair again with notification.receive approved to use it.")
+                            ". Battery sharing is off until you enable it. Notification relay is " +
+                            (if (hasNotificationScope) "available after Android notification access is enabled." else "not approved; pair again with notification.receive approved to use it.")
                         if (!hasBatteryScope) status.text =
                             "Paired, but battery.read was not approved on desktop. Battery sync is unavailable."
                     }
