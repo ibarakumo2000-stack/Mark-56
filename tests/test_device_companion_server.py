@@ -1,4 +1,7 @@
 import unittest
+from dataclasses import asdict
+from fastapi.testclient import TestClient
+from core.device_companion import sign_companion_message
 
 from core.device_gateway import DeviceRegistry, AuthorizationError
 from core.device_companion_server import create_companion_app
@@ -50,6 +53,46 @@ class CompanionServerTests(unittest.TestCase):
         self.assertEqual(self.app.state.drain_wearable_commands(), [])
         with self.assertRaises(ValueError):
             self.app.state.drain_wearable_commands(0)
+
+
+    def test_wearable_action_is_authenticated_scoped_and_queued(self):
+        offer = self.registry.create_pairing_offer(("command.send",))
+        device = self.registry.redeem_pairing_code(
+            offer.code, device_name="Phone", device_type="android",
+            platform="android", capabilities=("wear_bridge",),
+            requested_scopes=("command.send",),
+        )
+        signed = sign_companion_message(
+            device.token, device_id=device.device_id, method="POST",
+            path="/v1/wearable/action",
+            body={"action": "assistant.ping", "source": "wear_os"},
+        )
+        response = TestClient(self.app).post(
+            "/v1/wearable/action", json=asdict(signed),
+            headers={"Authorization": "Bearer " + device.token},
+        )
+        self.assertEqual(response.status_code, 200)
+        queued = self.app.state.drain_wearable_commands()
+        self.assertEqual(queued[0]["action"], "assistant.ping")
+        self.assertEqual(queued[0]["source"], "wear_os")
+
+    def test_wearable_action_rejects_unapproved_scope(self):
+        offer = self.registry.create_pairing_offer(("battery.read",))
+        device = self.registry.redeem_pairing_code(
+            offer.code, device_name="Phone", device_type="android",
+            platform="android", capabilities=(),
+            requested_scopes=("battery.read",),
+        )
+        signed = sign_companion_message(
+            device.token, device_id=device.device_id, method="POST",
+            path="/v1/wearable/action",
+            body={"action": "assistant.ping", "source": "wear_os"},
+        )
+        response = TestClient(self.app).post(
+            "/v1/wearable/action", json=asdict(signed),
+            headers={"Authorization": "Bearer " + device.token},
+        )
+        self.assertEqual(response.status_code, 403)
 
     def test_pairing_code_is_one_time(self):
         offer = self.registry.create_pairing_offer(("battery.read",))
