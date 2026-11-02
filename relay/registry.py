@@ -70,7 +70,7 @@ class RelayRegistry:
         return {"principal_id": principal_id, "channel_id": channel_id, "role": role, "token": token}
 
     def authenticate(self, token: str) -> dict:
-        if not isinstance(token, str) or not token.startswith("rly_") or len(token) > 160:
+        if not isinstance(token, str) or not token.startswith("rly_") or not 32 <= len(token) <= 160:
             raise RelayAuthError("Invalid relay credentials")
         with self._lock:
             row = self._db.execute(
