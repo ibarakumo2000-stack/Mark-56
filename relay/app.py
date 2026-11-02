@@ -34,6 +34,7 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
     app = FastAPI(title="JARVIS Secure Relay", docs_url=None, redoc_url=None, openapi_url=None)
     peers: dict[tuple[str, str], WebSocket] = {}
     desktop_peers: dict[str, WebSocket] = {}
+    desktop_peer_identities: dict[str, dict[str, Any]] = {}
     peer_identities: dict[tuple[str, str], dict[str, Any]] = {}
     rate: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
@@ -70,6 +71,7 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
         peer_identities[key] = identity
         if identity["role"] == "desktop":
             desktop_peers[channel_id] = websocket
+            desktop_peer_identities[channel_id] = identity
         try:
             while True:
                 try:
@@ -120,11 +122,7 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
                         await websocket.send_json({"type": "error", "error": "device_cannot_select_recipient"})
                         continue
                     recipient = desktop_peers.get(channel_id)
-                    recipient_identity = next(
-                        (peer_identity for (cid, _), peer_identity in peer_identities.items()
-                         if cid == channel_id and peer_identity["role"] == "desktop"),
-                        None,
-                    )
+                    recipient_identity = desktop_peer_identities.get(channel_id)
                     outbound = {"type": message_type, "device_id": principal_id, "payload": envelope["payload"]}
                 else:
                     target = envelope["target_device_id"]
@@ -136,6 +134,10 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
                     outbound = {"type": message_type, "payload": envelope["payload"]}
                 if recipient is None or recipient_identity is None:
                     await websocket.send_json({"type": "error", "error": "peer_offline"})
+                    continue
+                expected_recipient_role = "desktop" if identity["role"] == "device" else "device"
+                if recipient_identity["role"] != expected_recipient_role:
+                    await websocket.send_json({"type": "error", "error": "invalid_recipient_role"})
                     continue
                 required_scope = SCOPE_BY_TYPE[message_type]
                 if required_scope not in recipient_identity["scopes"]:
@@ -154,10 +156,12 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
                 peer_identities.pop(key, None)
             if identity["role"] == "desktop" and desktop_peers.get(channel_id) is websocket:
                 desktop_peers.pop(channel_id, None)
+                desktop_peer_identities.pop(channel_id, None)
 
     app.state.relay_registry = db
     app.state.relay_peers = peers
     app.state.relay_desktop_peers = desktop_peers
+    app.state.relay_desktop_peer_identities = desktop_peer_identities
     app.state.relay_peer_identities = peer_identities
     return app
 
