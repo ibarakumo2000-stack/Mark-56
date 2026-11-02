@@ -9,7 +9,7 @@ Buildable Android pairing client (Phase 7B). Open this directory in Android Stud
 4. The app verifies the QR-provided SHA-256 certificate fingerprint before sending the one-time code. The bearer token is stored using Android Keystore-backed AES-GCM.
 
 ## Current limits
-This milestone provides QR pairing and secure credential storage. Background notification forwarding, battery polling, authenticated HMAC event generation, media polling/execution, reconnect lifecycle and desktop UI integration remain subsequent work. Disconnect clears the local token; revoke the device in Jarvis to invalidate its server-side token. Do not expose the listener publicly.
+QR pairing, Keystore-backed credential storage, opt-in battery reporting, notification forwarding and scoped Android MediaSession polling/execution are implemented in the companion source. Physical-device validation is still required for each Android version and media app. Desktop UI controls for queueing media actions, reconnect UX, certificate rotation UX and production APK signing remain separate release tasks. Disconnect clears the local token; revoke the device in JARVIS to invalidate its server-side token. Do not expose the listener publicly.
 
 
 ## Phase 7C — opt-in battery reporting
