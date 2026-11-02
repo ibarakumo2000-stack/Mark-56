@@ -234,6 +234,25 @@ def build_device_router(
             device["online"] = bool(seen and now - seen <= _ONLINE_WINDOW)
         return JSONResponse({"devices": devices})
 
+    @router.put("/api/devices/{device_id}/scopes")
+    async def update_device_scopes(device_id: str, request: Request):
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            body = await request.json()
+            scopes = body.get("scopes")
+            if not isinstance(scopes, list):
+                raise ValueError("Scopes must be a list")
+            updated = registry.update_device_scopes(device_id, scopes)
+        except (ValueError, TypeError, AttributeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        if not updated:
+            return JSONResponse({"error": "Device not found or already revoked."}, status_code=404)
+        return JSONResponse({"ok": True, "device_id": device_id, "scopes": sorted(set(scopes))})
+
     @router.delete("/api/devices/{device_id}")
     async def revoke_device(device_id: str, request: Request):
         insecure = _secure(request)
