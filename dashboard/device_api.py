@@ -76,9 +76,10 @@ def build_device_router(
         return False
 
     @router.get("/devices")
-    async def devices_page(request: Request):
-        if not _owner(request):
-            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    async def devices_page():
+        # Browser navigations cannot attach the dashboard bearer header. The
+        # page itself checks sessionStorage and every data/action route remains
+        # owner-authenticated.
         page = Path(__file__).parent / "static" / "devices.html"
         if not page.is_file():
             return JSONResponse({"error": "Device management UI is unavailable."}, status_code=503)
