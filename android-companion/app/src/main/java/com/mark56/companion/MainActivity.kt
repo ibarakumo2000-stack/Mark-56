@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.content.Intent
+import android.content.ComponentName
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -249,14 +250,25 @@ class MainActivity : AppCompatActivity() {
         mediaControlButton.alpha = 1f
     }
 
+    private fun hasNotificationAccess(): Boolean {
+        val enabled = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: return false
+        val component = ComponentName(this, CompanionNotificationListener::class.java).flattenToString()
+        return enabled.split(':').contains(component)
+    }
+
     private fun toggleMediaControl() {
         val paired = tokenStore.read() != null && settings.deviceId() != null
         if (paired && settings.hasMediaScope()) {
             val enabled = !settings.mediaControlEnabled()
             settings.setMediaControlEnabled(enabled)
-            status.text = if (enabled)
-                "Media controls enabled. Desktop commands will target a single unambiguous active media session."
-            else "Media controls disabled. No desktop media commands will be executed."
+            if (enabled && !hasNotificationAccess()) {
+                status.text = "Media control needs Android Notification Access to discover active media sessions. Enable JARVIS access in Settings."
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            } else {
+                status.text = if (enabled)
+                    "Media controls enabled. Desktop commands will target a single unambiguous active media session."
+                else "Media controls disabled. No desktop media commands will be executed."
+            }
         } else {
             val requested = !settings.mediaControlRequested()
             settings.setMediaControlRequested(requested)
