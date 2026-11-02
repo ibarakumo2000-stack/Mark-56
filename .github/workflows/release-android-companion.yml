@@ -29,7 +29,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Validate release signing secrets
+      - name: Validate release tag and signing secrets
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -37,6 +37,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          [[ "${GITHUB_REF_NAME}" =~ ^companion-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           for name in KEYSTORE_B64 KEY_ALIAS KEYSTORE_PASSWORD KEY_PASSWORD; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing GitHub Actions secret for Android release signing: ${name}"
@@ -44,8 +45,12 @@ jobs:
             fi
           done
           printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/mark56-release.keystore"
+          test -s "$RUNNER_TEMP/mark56-release.keystore"
           keytool -list -keystore "$RUNNER_TEMP/mark56-release.keystore" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
-      - name: Build signed phone and watch APKs
+      - name: Run phone and Wear OS unit tests
+        working-directory: android-companion
+        run: gradle --no-daemon :app:testDebugUnitTest :wear-app:testDebugUnitTest
+      - name: Build signed APKs and Play-ready app bundles
         working-directory: android-companion
         env:
           ANDROID_SIGNING_KEYSTORE_PATH: ${{ runner.temp }}/mark56-release.keystore
@@ -54,31 +59,45 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_VERSION_NAME: ${{ github.ref_name }}
           ANDROID_VERSION_CODE: ${{ github.run_number }}
-        run: gradle --no-daemon :app:testDebugUnitTest :wear-app:testDebugUnitTest :app:assembleRelease :wear-app:assembleRelease
-      - name: Verify APK signatures and shared release identity
+        run: |
+          set -euo pipefail
+          gradle --no-daemon \
+            :app:assembleRelease :wear-app:assembleRelease \
+            :app:bundleRelease :wear-app:bundleRelease
+      - name: Verify package identities, APK signatures and AAB signatures
         run: |
           set -euo pipefail
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           PHONE_APK="android-companion/app/build/outputs/apk/release/app-release.apk"
           WATCH_APK="android-companion/wear-app/build/outputs/apk/release/wear-app-release.apk"
+          PHONE_AAB="android-companion/app/build/outputs/bundle/release/app-release.aab"
+          WATCH_AAB="android-companion/wear-app/build/outputs/bundle/release/wear-app-release.aab"
+
+          test "$("$APKANALYZER" manifest application-id "$PHONE_APK")" = "com.mark56.companion"
+          test "$("$APKANALYZER" manifest application-id "$WATCH_APK")" = "com.mark56.wear"
           "$APKSIGNER" verify --verbose --print-certs "$PHONE_APK" > "$RUNNER_TEMP/phone-signature.txt"
           "$APKSIGNER" verify --verbose --print-certs "$WATCH_APK" > "$RUNNER_TEMP/watch-signature.txt"
           PHONE_CERT="$(grep -m1 'Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/phone-signature.txt" | awk '{print $NF}')"
           WATCH_CERT="$(grep -m1 'Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/watch-signature.txt" | awk '{print $NF}')"
           test -n "$PHONE_CERT"
           test "$PHONE_CERT" = "$WATCH_CERT"
-          echo "Both APKs are signed by the same owner-controlled certificate."
-      - name: Stage release APKs and checksums
+          jarsigner -verify "$PHONE_AAB" >/dev/null
+          jarsigner -verify "$WATCH_AAB" >/dev/null
+          echo "Both APKs and AABs are signed. Phone/watch APKs use the same owner-controlled certificate."
+      - name: Stage stable release packages and checksums
         run: |
           set -euo pipefail
           mkdir -p release-apks
-          cp android-companion/app/build/outputs/apk/release/app-release.apk "release-apks/JARVIS-Companion-${GITHUB_REF_NAME}.apk"
-          cp android-companion/wear-app/build/outputs/apk/release/wear-app-release.apk "release-apks/JARVIS-Watch-${GITHUB_REF_NAME}.apk"
+          cp android-companion/app/build/outputs/apk/release/app-release.apk "release-apks/JARVIS-Companion.apk"
+          cp android-companion/wear-app/build/outputs/apk/release/wear-app-release.apk "release-apks/JARVIS-Watch.apk"
+          cp android-companion/app/build/outputs/bundle/release/app-release.aab "release-apks/JARVIS-Companion.aab"
+          cp android-companion/wear-app/build/outputs/bundle/release/wear-app-release.aab "release-apks/JARVIS-Watch.aab"
           cd release-apks
-          sha256sum *.apk > SHA256SUMS.txt
+          sha256sum *.apk *.aab > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: jarvis-signed-android-apks
+          name: jarvis-signed-android-release
           path: release-apks/*
           if-no-files-found: error
           retention-days: 90
@@ -86,9 +105,11 @@ jobs:
         with:
           name: JARVIS Android Companion ${{ github.ref_name }}
           body: |
-            Signed Android phone companion and Wear OS companion APKs.
+            Production-signed Android phone and Wear OS packages.
 
-            Verify downloads with SHA256SUMS.txt. Install the phone companion on Android and the watch companion on a supported Wear OS device. First-run pairing and device permissions remain opt-in.
+            Direct APK installs are available below. Play-ready AAB files are also included for Play Console submission. Verify each download with SHA256SUMS.txt.
+
+            The app requires Android 8.0 or later. First-run pairing, notification relay, media controls, Wear OS forwarding and remote relay remain opt-in.
           files: release-apks/*
           fail_on_unmatched_files: true
-          make_latest: false
+          make_latest: true
