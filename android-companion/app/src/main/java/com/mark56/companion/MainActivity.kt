@@ -559,10 +559,13 @@ class MainActivity : AppCompatActivity() {
             status.text = "Connecting securely to JARVIS…"
             worker.execute {
                 try {
+                    val requestedNotificationRelay = settings.notificationRelayRequested()
+                    val requestedMediaControl = settings.mediaControlRequested()
+                    val requestedWearBridge = settings.wearBridgeRequested()
                     val requestedScopes = mutableListOf("battery.read")
-                    if (settings.notificationRelayRequested()) requestedScopes.add("notification.receive")
-                    if (settings.mediaControlRequested()) requestedScopes.add("media.control")
-                    if (settings.wearBridgeRequested()) requestedScopes.add("command.send")
+                    if (requestedNotificationRelay) requestedScopes.add("notification.receive")
+                    if (requestedMediaControl) requestedScopes.add("media.control")
+                    if (requestedWearBridge) requestedScopes.add("command.send")
                     val response = PinnedCompanionClient(endpoint, fingerprint).pair(
                         code, android.os.Build.MODEL ?: "Android device", requestedScopes
                     )
@@ -589,11 +592,14 @@ class MainActivity : AppCompatActivity() {
                         refreshBatteryButton()
                         status.text = "Paired with " + response.optString("device_name", "JARVIS desktop") +
                             ". Battery sharing is off. Notification relay and media controls remain off until separately enabled."
-                        if (settings.mediaControlRequested() && !hasMediaScope) {
+                        if (requestedMediaControl && !hasMediaScope) {
                             status.text = status.text.toString() + " Desktop did not approve media.control; pair again after approval."
                         }
-                        if (settings.wearBridgeRequested() && !hasScope("command.send")) {
+                        if (requestedWearBridge && !hasScope("command.send")) {
                             status.text = status.text.toString() + " Desktop did not approve command.send; Wear OS bridge is unavailable."
+                        }
+                        if (requestedNotificationRelay && !hasNotificationScope) {
+                            status.text = status.text.toString() + " Desktop did not approve notification.receive; notification relay is unavailable."
                         }
                         if (!hasBatteryScope) status.text =
                             "Paired, but battery.read was not approved on desktop. Battery sync is unavailable."
