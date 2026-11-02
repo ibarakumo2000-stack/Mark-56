@@ -71,10 +71,13 @@ def main() -> None:
         if checksum_name not in assets:
             fail(f"missing checksum manifest for {target}: {checksum_name}")
 
-        metadata_url = assets[metadata_name].get("browser_download_url")
+        metadata_url = assets[metadata_name].get("url")
         if not metadata_url:
-            fail(f"metadata asset has no download URL: {metadata_name}")
+            fail(f"metadata asset has no API URL: {metadata_name}")
         metadata_request = urllib.request.Request(metadata_url, headers={
+            "Accept": "application/octet-stream",
+            "Authorization": "Bearer " + token,
+            "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "JARVIS-Release-Preflight",
         })
         try:
