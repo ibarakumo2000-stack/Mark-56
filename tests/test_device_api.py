@@ -59,6 +59,7 @@ class DeviceApiTests(unittest.TestCase):
             ("/api/devices/relay/configuration", ("DELETE",)),
             ("/api/devices/relay/stop", ("POST",)),
             ("/api/devices/relay/events", ("GET",)),
+            ("/api/devices/relay/ping", ("POST",)),
             ("/api/device/me", ("GET",)),
         }
         self.assertTrue(expected.issubset(routes))
