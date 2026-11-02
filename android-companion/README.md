@@ -19,3 +19,12 @@ After pairing, the app stores the desktop endpoint, certificate fingerprint and 
 Each battery report contains only the integer battery percentage and a charging boolean. Requests are signed with the enrolled device token using the desktop HMAC-SHA256 canonical JSON contract, and sent over the same certificate-pinned HTTPS connection. No location, contacts, SMS, microphone, camera, notification text or health data is collected by this feature. Disconnect cancels the scheduled work and clears the local credential and connection metadata; revoke the device in Mark 56 to invalidate its server-side token.
 
 Battery sync requires that the desktop pairing offer approved `battery.read`. If that scope was not approved, the control remains unavailable. WorkManager's 15-minute interval is a minimum scheduling interval, not an exact delivery guarantee; Android may defer updates for battery optimization or connectivity.
+
+
+## Phase 8 — notification relay (owner opt-in)
+
+Notification forwarding is now available as a separately opt-in companion feature. Before pairing, enable **Notification Relay** in the companion to request the desktop-approved `notification.receive` scope as part of the QR enrollment. The desktop owner must approve that scope in the pairing offer. The app then opens Android's Notification Access settings; the OS-level access grant is required as well.
+
+When both approvals are present, only the displayed app label, notification title, notification text and event timestamp are forwarded. Delivery uses HMAC-SHA256 signed requests over the same TLS certificate-pinned desktop connection. Relay remains disabled unless the user toggles it on in the app. The user can disable forwarding in the app at any time or revoke Android Notification Access from system settings. If scope approval was missed, pair again with the scope approved.
+
+Notification contents can contain sensitive personal information. This feature is intentionally opt-in at both the desktop pairing and Android OS levels; do not enable it on shared devices or relay notifications to an untrusted desktop.
