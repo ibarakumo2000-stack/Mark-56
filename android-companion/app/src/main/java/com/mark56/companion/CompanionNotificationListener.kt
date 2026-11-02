@@ -24,23 +24,23 @@ class CompanionNotificationListener : NotificationListenerService() {
         val extras = sbn.notification.extras
         val title = extras.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString().orEmpty()
         val text = extras.getCharSequence(android.app.Notification.EXTRA_TEXT)?.toString().orEmpty()
-        if (title.isBlank() && text.isBlank()) return
 
-        // Restrict the payload to app label and the displayed title/text; no icon,
-        // URI, actions, person objects, or notification metadata is forwarded.
+        // Resolve only the user-visible app label; never forward package-specific metadata.
         val appLabel = try {
             packageManager.getApplicationLabel(packageManager.getApplicationInfo(sbn.packageName, 0)).toString()
         } catch (_: Exception) {
             sbn.packageName
-        }.take(80)
+        }
+        val payload = NotificationRelayPolicy.create(appLabel, title, text, sbn.postTime / 1000L) ?: return
 
         worker.execute {
             try {
                 val client = CompanionEventClient(endpoint, fingerprint, token, deviceId)
-                val result = client.postNotification(appLabel, title.take(512), text.take(512), sbn.postTime / 1000L)
+                val result = client.postNotification(payload.app, payload.title, payload.text, payload.occurredAt)
                 if (result !in 200..299) Log.w("Mark56Relay", "Desktop rejected notification event ($result)")
             } catch (e: Exception) {
-                Log.w("Mark56Relay", "Notification relay delivery failed", e)
+                // Avoid logging notification text, endpoint credentials, or payload content.
+                Log.w("Mark56Relay", "Notification relay delivery failed (" + e.javaClass.simpleName + ")")
             }
         }
     }
