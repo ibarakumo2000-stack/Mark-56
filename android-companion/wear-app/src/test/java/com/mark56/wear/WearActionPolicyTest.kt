@@ -2,7 +2,7 @@ package com.mark56.wear
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue\nimport org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WearActionPolicyTest {
