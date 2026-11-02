@@ -4,6 +4,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.content.Intent
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -19,6 +21,7 @@ class MainActivity : AppCompatActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var status: TextView
     private lateinit var batterySyncButton: Button
+    private lateinit var notificationRelayButton: Button
     private lateinit var tokenStore: SecureTokenStore
     private lateinit var settings: CompanionSettings
 
@@ -110,6 +113,9 @@ class MainActivity : AppCompatActivity() {
         batterySyncButton = actionButton("ENABLE BATTERY SYNC", false).apply {
             setOnClickListener { toggleBatterySync() }
         }
+        notificationRelayButton = actionButton("ENABLE NOTIFICATION RELAY", false).apply {
+            setOnClickListener { toggleNotificationRelay() }
+        }
         val disconnect = actionButton("DISCONNECT DEVICE", false).apply {
             setOnClickListener {
                 BatterySync.disable(this@MainActivity)
@@ -126,6 +132,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(pair, matchWidth())
         root.addView(featuresCard, matchWidth())
         root.addView(batterySyncButton, matchWidth())
+        root.addView(notificationRelayButton, matchWidth())
         root.addView(disconnect, matchWidth())
         root.addView(TextView(this).apply {
             text = "MARK 56  /  COMPANION"
@@ -211,6 +218,29 @@ class MainActivity : AppCompatActivity() {
             settings.deviceId() != null && settings.endpoint() != null &&
             settings.fingerprint() != null && settings.hasBatteryScope()
         batterySyncButton.alpha = if (batterySyncButton.isEnabled) 1f else 0.55f
+        refreshNotificationRelayButton()
+    }
+
+    private fun refreshNotificationRelayButton() {
+        val paired = tokenStore.read() != null && settings.deviceId() != null &&
+            settings.endpoint() != null && settings.fingerprint() != null
+        notificationRelayButton.text = if (settings.notificationRelayEnabled())
+            "DISABLE NOTIFICATION RELAY" else "ENABLE NOTIFICATION RELAY  ·  NOTIFICATION ACCESS"
+        notificationRelayButton.isEnabled = paired && settings.hasNotificationScope()
+        notificationRelayButton.alpha = if (notificationRelayButton.isEnabled) 1f else 0.55f
+    }
+
+    private fun toggleNotificationRelay() {
+        if (settings.notificationRelayEnabled()) {
+            settings.setNotificationRelayEnabled(false)
+            status.text = "Notification relay disabled. No notification content will be forwarded."
+            refreshNotificationRelayButton()
+            return
+        }
+        settings.setNotificationRelayEnabled(true)
+        status.text = "Enable JARVIS notification access in Android Settings. Only notifications will be forwarded after desktop scope approval."
+        refreshNotificationRelayButton()
+        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
     }
 
     private fun toggleBatterySync() {
@@ -239,21 +269,25 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val response = PinnedCompanionClient(endpoint, fingerprint).pair(
                         code, android.os.Build.MODEL ?: "Android device",
-                        listOf("battery.read")
+                        if (settings.notificationRelayEnabled()) listOf("battery.read", "notification.receive") else listOf("battery.read")
                     )
                     val token = response.getString("token")
                     val deviceId = response.getString("device_id")
                     val scopes = response.optJSONArray("scopes")
+                    val hasNotificationScope = scopes?.let { array ->
+                        (0 until array.length()).any { array.optString(it) == "notification.receive" }
+                    } ?: false
                     val hasBatteryScope = scopes?.let { array ->
                         (0 until array.length()).any { array.optString(it) == "battery.read" }
                     } ?: false
                     runOnUiThread {
                         tokenStore.save(token)
-                        settings.saveConnection(endpoint, fingerprint, deviceId, hasBatteryScope)
+                        settings.saveConnection(endpoint, fingerprint, deviceId, hasBatteryScope, hasNotificationScope)
                         BatterySync.disable(this)
                         refreshBatteryButton()
                         status.text = "Paired with " + response.optString("device_name", "JARVIS desktop") +
-                            ". Battery sharing is off until you enable it."
+                            ". Battery sharing is off until you enable it. Notification relay is " +
+                            (if (hasNotificationScope) "available after Android notification access is enabled." else "not approved; pair again with notification.receive approved to use it.")
                         if (!hasBatteryScope) status.text =
                             "Paired, but battery.read was not approved on desktop. Battery sync is unavailable."
                     }
