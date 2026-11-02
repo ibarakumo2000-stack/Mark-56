@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
+import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -57,7 +58,7 @@ class WearMainActivity : Activity() {
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(170, 190, 215))
             setPadding(dp(4), dp(8), dp(4), dp(12))
-            accessibilityLiveRegion = TextView.ACCESSIBILITY_LIVE_REGION_POLITE
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         root.addView(status)
         root.addView(sectionLabel("QUICK ACTIONS"))
