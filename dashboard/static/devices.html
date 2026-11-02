@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JARVIS · Devices</title>
+<style>
+:root{color-scheme:dark;--bg:#080b13;--panel:#111827;--line:#263246;--text:#e7edf7;--muted:#8b9ab1;--accent:#818cf8;--green:#34d399;--red:#fb7185}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 15% 0%,#17213b 0,transparent 45%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,sans-serif}
+header{display:flex;align-items:center;gap:14px;padding:20px max(20px,calc((100vw - 1080px)/2));border-bottom:1px solid var(--line);background:#080b13d9;position:sticky;top:0;backdrop-filter:blur(16px);z-index:2}
+.brand{font-weight:800;letter-spacing:.25em}.brand span{color:var(--accent)}a{color:var(--accent);text-decoration:none}.back{font-size:13px;color:var(--muted)}.wrap{max-width:1080px;margin:34px auto;padding:0 20px 60px}
+h1{font-size:clamp(26px,4vw,38px);margin:0 0 8px;letter-spacing:-.04em}.sub{color:var(--muted);margin:0 0 26px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.panel{background:linear-gradient(145deg,#141d2d,#0e1522);border:1px solid var(--line);border-radius:18px;padding:22px;min-width:0}.wide{grid-column:1/-1}.panel h2{font-size:17px;margin:0 0 7px}.hint{color:var(--muted);font-size:13px;margin:0 0 18px}
+.actions{display:flex;gap:9px;flex-wrap:wrap}.btn{border:1px solid #394761;border-radius:10px;padding:10px 14px;background:#1b2740;color:var(--text);font-weight:650;cursor:pointer}.btn.primary{background:#555bd4;border-color:#6b72ed}.btn.danger{background:#351b27;border-color:#713244;color:#fecdd3}.btn:disabled{opacity:.45;cursor:not-allowed}
+.status{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:99px;padding:5px 10px;color:var(--muted);font-size:12px}.dot{width:7px;height:7px;border-radius:50%;background:#64748b}.status.on{color:var(--green);border-color:#1d594b}.status.on .dot{background:var(--green)}
+.scopes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}.scope{display:flex;gap:8px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:13px}.scope input{margin-top:3px;accent-color:var(--accent)}
+#pair-result{display:none;margin-top:18px;padding:16px;border:1px solid #3a4770;background:#111a31;border-radius:14px}.pair-layout{display:flex;gap:18px;align-items:center;flex-wrap:wrap}.qr{width:180px;height:180px;object-fit:contain;background:#fff;padding:8px;border-radius:12px}.code{font:800 30px/1.2 ui-monospace,monospace;letter-spacing:.18em;color:#fff;margin:5px 0 10px}.payload{white-space:pre-wrap;overflow-wrap:anywhere;max-height:150px;overflow:auto;background:#080d18;padding:10px;border-radius:9px;color:#aab8d0;font-size:11px;margin-top:12px}
+.device-list{display:grid;gap:12px}.device{border:1px solid var(--line);border-radius:13px;padding:16px;background:#0b1220}.device-top{display:flex;align-items:flex-start;gap:12px}.device-icon{width:42px;height:42px;display:grid;place-items:center;background:#1d2942;border-radius:12px;font-size:20px}.device-main{flex:1;min-width:0}.device-name{font-weight:750}.meta{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.online{color:var(--green)}.offline{color:var(--muted)}.chips{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.chip{font-size:11px;padding:4px 8px;border:1px solid #35425a;border-radius:99px;color:#bac7dc}.empty{border:1px dashed #344158;border-radius:12px;padding:28px;text-align:center;color:var(--muted)}
+#notice{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#18243a;border:1px solid #3a4a68;padding:10px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:.2s;max-width:90vw}#notice.show{opacity:1}
+@media(max-width:720px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.scopes{grid-template-columns:1fr}.wrap{margin-top:24px}.panel{padding:18px}}
+</style>
+</head>
+<body>
+<header><div class="brand"><span>J</span>ARVIS</div><a class="back" href="/">← Dashboard</a><div style="flex:1"></div><span class="status" id="service-status"><i class="dot"></i><span>Checking bridge…</span></span></header>
+<div class="wrap">
+<h1>Connected devices</h1><p class="sub">Pair phones, watches and glasses through scoped, revocable device identities. Only capabilities approved here are enabled.</p>
+<div class="grid">
+<section class="panel">
+<h2>Secure companion bridge</h2><p class="hint">The listener binds only to this computer’s private LAN address and requires the dashboard TLS certificate. It stays off until you start it.</p>
+<div class="actions"><button class="btn primary" id="start">Start secure bridge</button><button class="btn danger" id="stop" disabled>Stop bridge</button></div>
+<p class="hint" id="endpoint" style="margin:14px 0 0">Bridge is stopped.</p>
+</section>
+<section class="panel">
+<h2>Pair a new device</h2><p class="hint">Choose the exact permissions to approve. The code expires after five minutes and can be redeemed once.</p>
+<div class="scopes" id="scopes">
+<label class="scope"><input type="checkbox" value="notification.receive" checked> Notifications</label>
+<label class="scope"><input type="checkbox" value="battery.read" checked> Battery status</label>
+<label class="scope"><input type="checkbox" value="media.control"> Media controls</label>
+<label class="scope"><input type="checkbox" value="command.send"> Send commands</label>
+<label class="scope"><input type="checkbox" value="voice.capture"> Microphone capture</label>
+<label class="scope"><input type="checkbox" value="camera.capture"> Camera capture</label>
+<label class="scope"><input type="checkbox" value="display.render"> Display cards</label>
+<label class="scope"><input type="checkbox" value="haptics.send"> Haptic feedback</label>
+<label class="scope"><input type="checkbox" value="health.read"> Health summaries</label>
+<label class="scope"><input type="checkbox" value="desktop.control"> Desktop actions</label>
+</div>
+<button class="btn primary" id="create" disabled>Create one-time pairing QR</button>
+<div id="pair-result"><div class="pair-layout"><img class="qr" id="qr" alt="One-time device pairing QR code" hidden><div><div class="hint" style="margin:0">One-time pairing code</div><div class="code" id="pair-code"></div><div class="meta" id="expiry"></div><div class="actions" style="margin-top:12px"><button class="btn" id="copy-code">Copy code</button><button class="btn" id="copy-payload">Copy QR payload</button></div></div></div><pre class="payload" id="payload"></pre></div>
+</section>
+<section class="panel wide">
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1"><h2>Paired devices</h2><p class="hint" style="margin:4px 0 0">Online status reflects recent authenticated device activity, not guaranteed reachability.</p></div><button class="btn" id="refresh">Refresh</button></div>
+<div class="device-list" id="device-list" style="margin-top:16px"><div class="empty">Loading paired devices…</div></div>
+</section>
+</div>
+</div>
+<div id="notice" role="status" aria-live="polite"></div>
+<script>
+const token=sessionStorage.getItem("jarvis_token");
+if(!token) location.replace("/login");
+const headers={"Authorization":"Bearer "+token,"Content-Type":"application/json"};
+const $=id=>document.getElementById(id);
+let bridgeRunning=false,lastPayload=null,lastCode="";
+function notice(message){$("notice").textContent=message;$("notice").classList.add("show");setTimeout(()=>$("notice").classList.remove("show"),2800)}
+async function api(url,options={}){const response=await fetch(url,{...options,headers:{...headers,...options.headers}});let data={};try{data=await response.json()}catch{}if(!response.ok)throw new Error(data.error||data.detail||("Request failed ("+response.status+")"));return data}
+function setBridge(running,endpoint){bridgeRunning=running;$("service-status").className="status"+(running?" on":"");$("service-status").innerHTML='<i class="dot"></i><span>'+(running?"Bridge running":"Bridge stopped")+'</span>';$("start").disabled=running;$("stop").disabled=!running;$("create").disabled=!running;$("endpoint").textContent=running?"Secure endpoint: "+endpoint:"Bridge is stopped. Start it to enable pairing."}
+async function loadStatus(){try{const s=await api("/api/devices/companion");setBridge(s.running,s.endpoint)}catch(e){notice(e.message)}}
+async function loadDevices(){const root=$("device-list");try{const data=await api("/api/devices");root.replaceChildren();if(!data.devices.length){const empty=document.createElement("div");empty.className="empty";empty.textContent="No devices paired yet. Start the bridge and create a pairing QR to connect your first device.";root.append(empty);return}
+for(const d of data.devices){const card=document.createElement("article");card.className="device";const top=document.createElement("div");top.className="device-top";const ico=document.createElement("div");ico.className="device-icon";ico.textContent=({android:"📱",watch:"⌚",glasses:"🥽",desktop:"💻"}[d.device_type]||"◈");const main=document.createElement("div");main.className="device-main";const name=document.createElement("div");name.className="device-name";name.textContent=d.device_name;const meta=document.createElement("div");meta.className="meta";meta.textContent=d.platform+" · "+d.device_type+" · last seen "+(d.last_seen?new Date(d.last_seen*1000).toLocaleString():"never");const state=document.createElement("div");state.className="meta "+(d.online?"online":"offline");state.textContent=d.online?"● Online":"○ Offline";main.append(name,meta,state);top.append(ico,main);card.append(top);const chips=document.createElement("div");chips.className="chips";for(const s of d.scopes){const c=document.createElement("span");c.className="chip";c.textContent=s;chips.append(c)}card.append(chips);const actions=document.createElement("div");actions.className="actions";if(d.scopes.includes("media.control")){for(const action of ["play_pause","previous","next","stop"]){const b=document.createElement("button");b.className="btn";b.textContent=action.replace("_"," / ");b.addEventListener("click",()=>sendMedia(d.device_id,action));actions.append(b)}}const revoke=document.createElement("button");revoke.className="btn danger";revoke.textContent="Revoke device";revoke.addEventListener("click",()=>revokeDevice(d.device_id,d.device_name));actions.append(revoke);card.append(actions);root.append(card)}
+}catch(e){root.textContent=e.message}}
+async function sendMedia(id,action){try{await api("/api/devices/"+encodeURIComponent(id)+"/media",{method:"POST",body:JSON.stringify({action})});notice("Media command queued: "+action)}catch(e){notice(e.message)}}
+async function revokeDevice(id,name){if(!confirm("Revoke "+name+"? Its saved credential will stop working immediately."))return;try{await api("/api/devices/"+encodeURIComponent(id),{method:"DELETE"});notice("Device revoked");await loadDevices()}catch(e){notice(e.message)}}
+$("start").addEventListener("click",async()=>{try{const r=await api("/api/devices/companion/start",{method:"POST",body:"{}"});setBridge(r.running,r.endpoint);notice("Secure companion bridge started")}catch(e){notice(e.message)}});
+$("stop").addEventListener("click",async()=>{if(!confirm("Stop the companion listener? Connected phones will disconnect."))return;try{await api("/api/devices/companion/stop",{method:"POST",body:"{}"});setBridge(false,null);$("pair-result").style.display="none";notice("Companion bridge stopped")}catch(e){notice(e.message)}});
+$("create").addEventListener("click",async()=>{const scopes=[...document.querySelectorAll("#scopes input:checked")].map(x=>x.value);if(!scopes.length){notice("Choose at least one permission");return}try{const r=await api("/api/devices/pairing-offers",{method:"POST",body:JSON.stringify({scopes,expires_in:300})});lastCode=r.code;lastPayload=r.pairing_payload;$("pair-code").textContent=r.code;$("expiry").textContent="Expires "+new Date(r.expires_at*1000).toLocaleTimeString()+" · approved: "+r.approved_scopes.join(", ");$("payload").textContent=JSON.stringify(lastPayload,null,2);if(r.qr_data_uri){$("qr").src=r.qr_data_uri;$("qr").hidden=false}else{$("qr").hidden=true} $("pair-result").style.display="block";notice("One-time pairing offer created")}catch(e){notice(e.message)}});
+$("copy-code").addEventListener("click",async()=>{try{await navigator.clipboard.writeText(lastCode);notice("Pairing code copied")}catch{notice("Clipboard unavailable")}});
+$("copy-payload").addEventListener("click",async()=>{try{await navigator.clipboard.writeText(JSON.stringify(lastPayload));notice("QR payload copied")}catch{notice("Clipboard unavailable")}});
+$("refresh").addEventListener("click",loadDevices);
+loadStatus();loadDevices();setInterval(loadDevices,15000);
+</script>
+</body></html>
