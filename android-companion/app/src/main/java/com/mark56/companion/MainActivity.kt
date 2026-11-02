@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mediaControlButton: Button
     private lateinit var wearBridgeButton: Button
     private lateinit var remoteRelayButton: Button
+    private lateinit var remotePingButton: Button
     private var remoteRelayClient: RemoteRelayClient? = null
     private lateinit var tokenStore: SecureTokenStore
     private lateinit var settings: CompanionSettings
@@ -135,6 +136,11 @@ class MainActivity : AppCompatActivity() {
         remoteRelayButton = actionButton("CONFIGURE SECURE REMOTE RELAY", false).apply {
             setOnClickListener { configureOrToggleRemoteRelay() }
         }
+        remotePingButton = actionButton("SEND REMOTE JARVIS PING", false).apply {
+            isEnabled = false
+            alpha = 0.5f
+            setOnClickListener { sendRemotePing() }
+        }
         val disconnect = actionButton("DISCONNECT DEVICE", false).apply {
             setOnClickListener {
                 BatterySync.disable(this@MainActivity)
@@ -155,6 +161,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(mediaControlButton, matchWidth())
         root.addView(wearBridgeButton, matchWidth())
         root.addView(remoteRelayButton, matchWidth())
+        root.addView(remotePingButton, matchWidth())
         root.addView(disconnect, matchWidth())
         root.addView(TextView(this).apply {
             text = "MARK 56  /  COMPANION"
@@ -318,6 +325,8 @@ class MainActivity : AppCompatActivity() {
             remoteRelayClient?.close()
             remoteRelayClient = null
             remoteRelayButton.text = "CONNECT SECURE REMOTE RELAY"
+            remotePingButton.isEnabled = false
+            remotePingButton.alpha = 0.5f
             status.text = "Remote relay disconnected."
             return
         }
@@ -368,6 +377,17 @@ class MainActivity : AppCompatActivity() {
             }.show()
     }
 
+    private fun sendRemotePing() {
+        val client = remoteRelayClient ?: return
+        try {
+            val sent = client.send("command", JSONObject().put("action", "assistant.ping"))
+            status.text = if (sent) "Remote JARVIS ping sent to the desktop relay."
+                else "Remote relay is not ready to send."
+        } catch (error: Exception) {
+            status.text = "Remote ping failed: " + (error.message ?: "relay unavailable")
+        }
+    }
+
     private fun connectRemoteRelay(endpoint: String, channel: String, principal: String, token: String) {
         try {
             remoteRelayButton.text = "CONNECTING TO REMOTE RELAY…"
@@ -376,8 +396,11 @@ class MainActivity : AppCompatActivity() {
                 onState = { message ->
                     runOnUiThread {
                         status.text = message
-                        remoteRelayButton.text = if (message.startsWith("Connected")) "DISCONNECT REMOTE RELAY"
+                        val connected = message.startsWith("Connected")
+                        remoteRelayButton.text = if (connected) "DISCONNECT REMOTE RELAY"
                             else "REMOTE RELAY · TAP TO RECONNECT"
+                        remotePingButton.isEnabled = connected
+                        remotePingButton.alpha = if (connected) 1f else 0.5f
                     }
                 },
                 onMessage = { message ->
@@ -389,6 +412,8 @@ class MainActivity : AppCompatActivity() {
         } catch (error: Exception) {
             remoteRelayClient = null
             remoteRelayButton.text = "REMOTE RELAY · CONFIGURE AGAIN"
+            remotePingButton.isEnabled = false
+            remotePingButton.alpha = 0.5f
             status.text = "Could not connect to relay: " + (error.message ?: "invalid configuration")
         }
     }
