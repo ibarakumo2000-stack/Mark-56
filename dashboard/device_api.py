@@ -757,5 +757,9 @@ def build_device_router(
             except Exception:
                 pass
             companion_server = None
+        try:
+            await asyncio.to_thread(glasses_runtime.close)
+        except Exception:
+            pass
 
     return router
