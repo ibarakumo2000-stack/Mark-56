@@ -22,6 +22,7 @@ class CompanionServerTests(unittest.TestCase):
         self.assertIn("/v1/notifications", paths)
         self.assertIn("/v1/battery", paths)
         self.assertIn("/v1/media/next", paths)
+        self.assertIn("/v1/wearable/action", paths)
         self.assertNotIn("/v1/devices/{device_id}/media", paths)
 
     def test_media_queue_requires_device_scope_and_identity(self):
@@ -36,6 +37,19 @@ class CompanionServerTests(unittest.TestCase):
         self.assertEqual(result, {"queued": True, "action": "pause"})
         with self.assertRaises(AuthorizationError):
             queue("different-device", enrolled.token, "pause")
+
+
+    def test_wearable_queue_is_bounded_and_exposes_drain_callback(self):
+        offer = self.registry.create_pairing_offer(("command.send",))
+        device = self.registry.redeem_pairing_code(
+            offer.code, device_name="Phone", device_type="android",
+            platform="android", capabilities=("wear_bridge",),
+            requested_scopes=("command.send",),
+        )
+        self.assertEqual(self.app.state.wearable_commands.maxlen, 32)
+        self.assertEqual(self.app.state.drain_wearable_commands(), [])
+        with self.assertRaises(ValueError):
+            self.app.state.drain_wearable_commands(0)
 
     def test_pairing_code_is_one_time(self):
         offer = self.registry.create_pairing_offer(("battery.read",))
