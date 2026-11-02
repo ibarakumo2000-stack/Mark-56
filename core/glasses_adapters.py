@@ -214,6 +214,25 @@ class GlassesAdapterRegistry:
             raise GlassesAdapterError("Adapter returned invalid audio data")
         return audio
 
+    def close(self) -> None:
+        """Disconnect active physical sessions and release adapter resources."""
+        with self._lock:
+            sessions = list(self._sessions.values())
+            adapters = list(self._adapters.values())
+            self._sessions.clear()
+        for session in sessions:
+            try:
+                self._adapters[session.adapter_id].disconnect(session.physical_device_id)
+            except Exception:
+                pass
+        for adapter in adapters:
+            close = getattr(adapter, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+
     def _authorized(self, token: str, capability: GlassesCapability):
         try:
             identity = self.devices.authenticate(
