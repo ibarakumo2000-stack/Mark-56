@@ -35,11 +35,35 @@ class DeviceApiTests(unittest.TestCase):
             self.registry, owner_auth=lambda req: True
         )
         routes = {(route.path, tuple(sorted(route.methods or []))) for route in router.routes}
-        self.assertIn(("/api/devices/pairing-offers", ("POST",)), routes)
-        self.assertIn(("/api/devices/enroll", ("POST",)), routes)
-        self.assertIn(("/api/devices", ("GET",)), routes)
-        self.assertIn(("/api/devices/{device_id}", ("DELETE",)), routes)
-        self.assertIn(("/api/device/me", ("GET",)), routes)
+        expected = {
+            ("/devices", ("GET",)),
+            ("/api/devices/companion", ("GET",)),
+            ("/api/devices/companion/start", ("POST",)),
+            ("/api/devices/companion/stop", ("POST",)),
+            ("/api/devices/pairing-offers", ("POST",)),
+            ("/api/devices/enroll", ("POST",)),
+            ("/api/devices", ("GET",)),
+            ("/api/devices/{device_id}/scopes", ("PUT",)),
+            ("/api/devices/{device_id}", ("DELETE",)),
+            ("/api/devices/{device_id}/media", ("POST",)),
+            ("/api/device/me", ("GET",)),
+        }
+        self.assertTrue(expected.issubset(routes))
+
+    def test_pairing_offer_scopes_remain_allowlisted(self):
+        with self.assertRaises(ValueError):
+            self.registry.create_pairing_offer(("admin",))
+
+    def test_revoked_device_is_removed_from_active_listing(self):
+        offer = self.registry.create_pairing_offer(("media.control",))
+        device = self.registry.redeem_pairing_code(
+            offer.code, device_name="Test phone", device_type="android",
+            platform="android", capabilities=("media",),
+            requested_scopes=("media.control",),
+        )
+        self.assertEqual(len(self.registry.list_devices()), 1)
+        self.assertTrue(self.registry.revoke_device(device.device_id))
+        self.assertEqual(self.registry.list_devices(), [])
 
 
 if __name__ == "__main__":

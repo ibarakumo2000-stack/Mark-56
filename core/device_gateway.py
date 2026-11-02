@@ -303,6 +303,18 @@ class DeviceRegistry:
             )
             return cursor.rowcount == 1
 
+    def update_device_scopes(self, device_id: str, scopes: Iterable[str]) -> bool:
+        """Replace one active device's approved scopes; return False if absent."""
+        normalized = _clean_items(scopes, field="approved scopes")
+        if not set(normalized).issubset(PERMISSION_SCOPES):
+            raise ValueError("Unknown permission scope")
+        with self._lock:
+            cursor = self._db.execute(
+                "UPDATE devices SET scopes_json = ? WHERE device_id = ? AND revoked_at IS NULL",
+                (json.dumps(normalized), device_id),
+            )
+            return cursor.rowcount == 1
+
     def revoke_all(self) -> int:
         with self._lock:
             cursor = self._db.execute(
