@@ -68,13 +68,27 @@ class DesktopRelayBridge:
                             continue
                         if not isinstance(message, dict) or message.get("type") in {"ack", "error"}:
                             continue
+                        if message.get("type") not in {
+                            "command", "notification", "media", "battery",
+                            "display", "voice", "camera",
+                        }:
+                            continue
+                        if not isinstance(message.get("device_id"), str) or not message["device_id"] or len(message["device_id"]) > 80:
+                            continue
+                        if not isinstance(message.get("payload"), dict):
+                            continue
                         result = self.on_message(message)
                         if asyncio.iscoroutine(result):
                             await result
             except asyncio.CancelledError:
                 raise
             except Exception:
-                await asyncio.sleep(delay + random.uniform(0, delay * 0.15))
+                try:
+                    await asyncio.wait_for(
+                        self._stop.wait(), timeout=delay + random.uniform(0, delay * 0.15)
+                    )
+                except asyncio.TimeoutError:
+                    pass
                 delay = min(delay * 2, 60.0)
             finally:
                 self._socket = None
@@ -84,11 +98,16 @@ class DesktopRelayBridge:
             raise ConnectionError("JARVIS relay is not connected")
         if message_type not in {"command", "notification", "media", "battery", "display", "voice", "camera"}:
             raise ValueError("Unsupported relay message type")
+        if not isinstance(device_id, str) or not device_id or len(device_id) > 80:
+            raise ValueError("Invalid target device identity")
         if not isinstance(payload, dict):
             raise ValueError("Relay payload must be an object")
-        await self._socket.send(json.dumps({
+        encoded = json.dumps({
             "type": message_type, "target_device_id": device_id, "payload": payload,
-        }, separators=(",", ":")))
+        }, separators=(",", ":"))
+        if len(encoded.encode("utf-8")) > 32_768:
+            raise ValueError("Relay message exceeds the 32 KB limit")
+        await self._socket.send(encoded)
 
     async def stop(self) -> None:
         self._stop.set()
