@@ -31,7 +31,7 @@ class RemoteRelayClient(
         require(channelId.matches(Regex("[0-9a-fA-F-]{36}")))
         require(principalId.isNotBlank() && !principalId.contains("/"))
         require(token.startsWith("rly_") && token.length <= 160)
-        val url = base.newBuilder().scheme("wss")
+        val url = base.newBuilder().scheme("https")
             .addPathSegments("v1/connect/$channelId/$principalId").build()
         val request = Request.Builder().url(url)
             .header("Authorization", "Bearer $token")
