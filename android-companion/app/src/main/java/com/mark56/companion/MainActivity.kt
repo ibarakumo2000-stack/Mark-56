@@ -24,6 +24,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var batterySyncButton: Button
     private lateinit var notificationRelayButton: Button
     private lateinit var mediaControlButton: Button
+    private lateinit var wearBridgeButton: Button
     private lateinit var tokenStore: SecureTokenStore
     private lateinit var settings: CompanionSettings
 
@@ -121,6 +122,9 @@ class MainActivity : AppCompatActivity() {
         mediaControlButton = actionButton("REQUEST MEDIA CONTROL SCOPE", false).apply {
             setOnClickListener { toggleMediaControl() }
         }
+        wearBridgeButton = actionButton("REQUEST WEAR OS BRIDGE", false).apply {
+            setOnClickListener { toggleWearBridge() }
+        }
         val disconnect = actionButton("DISCONNECT DEVICE", false).apply {
             setOnClickListener {
                 BatterySync.disable(this@MainActivity)
@@ -139,6 +143,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(batterySyncButton, matchWidth())
         root.addView(notificationRelayButton, matchWidth())
         root.addView(mediaControlButton, matchWidth())
+        root.addView(wearBridgeButton, matchWidth())
         root.addView(disconnect, matchWidth())
         root.addView(TextView(this).apply {
             text = "MARK 56  /  COMPANION"
@@ -148,7 +153,15 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, dp(14), 0, 0)
         })
-        setContentView(root)
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            setPadding(0, 0, 0, dp(12))
+            addView(root)
+        }
+        window.statusBarColor = Color.rgb(5, 12, 28)
+        window.navigationBarColor = Color.rgb(5, 12, 28)
+        setContentView(scroll)
         refreshBatteryButton()
     }
 
@@ -226,6 +239,7 @@ class MainActivity : AppCompatActivity() {
         batterySyncButton.alpha = if (batterySyncButton.isEnabled) 1f else 0.55f
         refreshNotificationRelayButton()
         refreshMediaControlButton()
+        refreshWearBridgeButton()
     }
 
     private fun refreshNotificationRelayButton() {
@@ -252,6 +266,37 @@ class MainActivity : AppCompatActivity() {
         }
         mediaControlButton.isEnabled = true
         mediaControlButton.alpha = 1f
+    }
+
+    private fun refreshWearBridgeButton() {
+        val paired = tokenStore.read() != null && settings.deviceId() != null
+        val approved = paired && settings.hasCommandScope()
+        wearBridgeButton.text = when {
+            approved && settings.wearBridgeEnabled() -> "DISABLE WEAR OS BRIDGE"
+            approved -> "ENABLE WEAR OS BRIDGE  ·  PHONE RELAY"
+            settings.wearBridgeRequested() -> "WEAR OS SCOPE REQUESTED  ·  TAP TO CANCEL"
+            else -> "REQUEST WEAR OS BRIDGE  ·  PAIR AGAIN"
+        }
+        wearBridgeButton.isEnabled = true
+        wearBridgeButton.alpha = 1f
+    }
+
+    private fun toggleWearBridge() {
+        val paired = tokenStore.read() != null && settings.deviceId() != null
+        if (paired && settings.hasCommandScope()) {
+            val enabled = !settings.wearBridgeEnabled()
+            settings.setWearBridgeEnabled(enabled)
+            status.text = if (enabled)
+                "Wear OS bridge enabled. Watch actions are limited to the approved quick-action list."
+            else "Wear OS bridge disabled. Watch actions will be ignored."
+        } else {
+            val requested = !settings.wearBridgeRequested()
+            settings.setWearBridgeRequested(requested)
+            status.text = if (requested)
+                "Wear OS command scope requested. Disconnect and pair again after the desktop owner approves command.send."
+            else "Wear OS bridge request cancelled."
+        }
+        refreshWearBridgeButton()
     }
 
     private fun hasNotificationAccess(): Boolean {
@@ -330,6 +375,7 @@ class MainActivity : AppCompatActivity() {
                     val requestedScopes = mutableListOf("battery.read")
                     if (settings.notificationRelayRequested()) requestedScopes.add("notification.receive")
                     if (settings.mediaControlRequested()) requestedScopes.add("media.control")
+                    if (settings.wearBridgeRequested()) requestedScopes.add("command.send")
                     val response = PinnedCompanionClient(endpoint, fingerprint).pair(
                         code, android.os.Build.MODEL ?: "Android device", requestedScopes
                     )
@@ -345,14 +391,19 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         tokenStore.save(token)
                         settings.saveConnection(endpoint, fingerprint, deviceId,
-                            hasBatteryScope, hasNotificationScope, hasMediaScope)
+                            hasBatteryScope, hasNotificationScope, hasMediaScope,
+                            hasScope("command.send"))
                         BatterySync.disable(this)
                         settings.setMediaControlEnabled(false)
+                        settings.setWearBridgeEnabled(false)
                         refreshBatteryButton()
                         status.text = "Paired with " + response.optString("device_name", "JARVIS desktop") +
                             ". Battery sharing is off. Notification relay and media controls remain off until separately enabled."
                         if (settings.mediaControlRequested() && !hasMediaScope) {
                             status.text = status.text.toString() + " Desktop did not approve media.control; pair again after approval."
+                        }
+                        if (settings.wearBridgeRequested() && !hasScope("command.send")) {
+                            status.text = status.text.toString() + " Desktop did not approve command.send; Wear OS bridge is unavailable."
                         }
                         if (!hasBatteryScope) status.text =
                             "Paired, but battery.read was not approved on desktop. Battery sync is unavailable."
