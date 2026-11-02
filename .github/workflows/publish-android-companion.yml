@@ -1,4 +1,4 @@
-name: Publish Android Companion APK
+name: Build Android Companion Testing Artifacts
 
 on:
   push:
@@ -9,14 +9,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: android-companion-preview-release
+  group: android-companion-testing-build
   cancel-in-progress: false
 
 jobs:
-  build-and-publish:
+  build-testing-artifacts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,24 +32,18 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Build companion debug APK
+      - name: Run phone and watch tests and build debug APKs
         working-directory: android-companion
-        run: gradle --no-daemon :app:testDebugUnitTest :wear-app:testDebugUnitTest :app:assembleDebug :wear-app:assembleDebug
-      - name: Publish rolling Android preview release
-        uses: softprops/action-gh-release@v2
+        run: |
+          gradle --no-daemon \
+            :app:testDebugUnitTest :wear-app:testDebugUnitTest \
+            :app:assembleDebug :wear-app:assembleDebug
+      - name: Upload debug artifacts for CI testing only
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: android-companion-preview
-          name: JARVIS Android Companion — Testing Preview
-          body: |
-            Rolling testing build of the JARVIS Android Companion.
-
-            These are debug APKs intended for testing phone pairing, Wear OS quick actions and battery synchronisation. They are not production-signed public releases.
-
-            The APK is rebuilt and replaces the previous APK whenever Android companion code is updated on main.
-          prerelease: true
-          make_latest: false
-          files: |
+          name: jarvis-companion-debug-testing-only
+          path: |
             android-companion/app/build/outputs/apk/debug/app-debug.apk
             android-companion/wear-app/build/outputs/apk/debug/wear-app-debug.apk
-          fail_on_unmatched_files: true
-          overwrite_files: true
+          if-no-files-found: error
+          retention-days: 14
