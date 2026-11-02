@@ -12,6 +12,9 @@ import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.EditText
+import android.text.InputType
+import androidx.appcompat.app.AlertDialog
 import android.content.res.ColorStateList
 import com.google.android.material.button.MaterialButton
 import androidx.appcompat.app.AppCompatActivity
@@ -27,6 +30,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var notificationRelayButton: Button
     private lateinit var mediaControlButton: Button
     private lateinit var wearBridgeButton: Button
+    private lateinit var remoteRelayButton: Button
+    private var remoteRelayClient: RemoteRelayClient? = null
     private lateinit var tokenStore: SecureTokenStore
     private lateinit var settings: CompanionSettings
 
@@ -127,6 +132,9 @@ class MainActivity : AppCompatActivity() {
         wearBridgeButton = actionButton("REQUEST WEAR OS BRIDGE", false).apply {
             setOnClickListener { toggleWearBridge() }
         }
+        remoteRelayButton = actionButton("CONFIGURE SECURE REMOTE RELAY", false).apply {
+            setOnClickListener { configureOrToggleRemoteRelay() }
+        }
         val disconnect = actionButton("DISCONNECT DEVICE", false).apply {
             setOnClickListener {
                 BatterySync.disable(this@MainActivity)
@@ -146,6 +154,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(notificationRelayButton, matchWidth())
         root.addView(mediaControlButton, matchWidth())
         root.addView(wearBridgeButton, matchWidth())
+        root.addView(remoteRelayButton, matchWidth())
         root.addView(disconnect, matchWidth())
         root.addView(TextView(this).apply {
             text = "MARK 56  /  COMPANION"
@@ -304,6 +313,86 @@ class MainActivity : AppCompatActivity() {
         refreshWearBridgeButton()
     }
 
+    private fun configureOrToggleRemoteRelay() {
+        if (remoteRelayClient != null) {
+            remoteRelayClient?.close()
+            remoteRelayClient = null
+            remoteRelayButton.text = "CONNECT SECURE REMOTE RELAY"
+            status.text = "Remote relay disconnected."
+            return
+        }
+        val endpoint = settings.relayEndpoint()
+        val channel = settings.relayChannel()
+        val principal = settings.relayPrincipal()
+        val token = tokenStore.readRelayToken()
+        if (!endpoint.isNullOrBlank() && !channel.isNullOrBlank() &&
+            !principal.isNullOrBlank() && !token.isNullOrBlank()) {
+            connectRemoteRelay(endpoint, channel, principal, token)
+            return
+        }
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+        }
+        fun field(hint: String, inputType: Int = InputType.TYPE_CLASS_TEXT): EditText =
+            EditText(this).apply {
+                this.hint = hint
+                this.inputType = inputType
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.rgb(145, 165, 190))
+                setSingleLine(true)
+            }
+        val urlField = field("Relay HTTPS URL (https://relay.example.com)", InputType.TYPE_TEXT_VARIATION_URI)
+        val channelField = field("Channel UUID")
+        val principalField = field("Device principal ID")
+        val tokenField = field("One-time relay token")
+        tokenField.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        listOf(urlField, channelField, principalField, tokenField).forEach { form.addView(it) }
+        AlertDialog.Builder(this)
+            .setTitle("Connect a remote JARVIS relay")
+            .setMessage("Create a device credential with relay/provision.py on your trusted relay host. The token is encrypted with Android Keystore on this phone.")
+            .setView(form)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save & connect") { _, _ ->
+                val url = urlField.text.toString().trim()
+                val channelId = channelField.text.toString().trim()
+                val principalId = principalField.text.toString().trim()
+                val relayToken = tokenField.text.toString().trim()
+                try {
+                    settings.saveRelayConfig(url, channelId, principalId)
+                    tokenStore.saveRelayToken(relayToken)
+                    connectRemoteRelay(url, channelId, principalId, relayToken)
+                } catch (error: Exception) {
+                    status.text = "Relay configuration invalid: " + (error.message ?: "check the values")
+                }
+            }.show()
+    }
+
+    private fun connectRemoteRelay(endpoint: String, channel: String, principal: String, token: String) {
+        try {
+            remoteRelayButton.text = "CONNECTING TO REMOTE RELAY…"
+            remoteRelayClient = RemoteRelayClient(
+                endpoint, channel, principal, token,
+                onState = { message ->
+                    runOnUiThread {
+                        status.text = message
+                        remoteRelayButton.text = if (message.startsWith("Connected")) "DISCONNECT REMOTE RELAY"
+                            else "REMOTE RELAY · TAP TO RECONNECT"
+                    }
+                },
+                onMessage = { message ->
+                    runOnUiThread {
+                        status.text = "Remote JARVIS message received · " + message.optString("type", "message")
+                    }
+                }
+            )
+        } catch (error: Exception) {
+            remoteRelayClient = null
+            remoteRelayButton.text = "REMOTE RELAY · CONFIGURE AGAIN"
+            status.text = "Could not connect to relay: " + (error.message ?: "invalid configuration")
+        }
+    }
+
     private fun hasNotificationAccess(): Boolean {
         val enabled = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: return false
         val component = ComponentName(this, CompanionNotificationListener::class.java).flattenToString()
@@ -424,6 +513,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         worker.shutdownNow()
+        remoteRelayClient?.close()
+        remoteRelayClient = null
         super.onDestroy()
     }
 }
