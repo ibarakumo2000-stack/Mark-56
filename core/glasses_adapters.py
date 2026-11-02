@@ -159,7 +159,7 @@ class GlassesAdapterRegistry:
         adapter.render_card(session.physical_device_id, card)
 
     def capture_frame(self, token: str) -> bytes:
-        identity, adapter, _ = self._authorized(token, GlassesCapability.CAMERA)
+        identity, adapter, session = self._authorized(token, GlassesCapability.CAMERA)
         frame = adapter.capture_frame(session.physical_device_id)
         if not isinstance(frame, bytes) or not frame or len(frame) > _MAX_FRAME_BYTES:
             raise GlassesAdapterError("Adapter returned an invalid camera frame")
@@ -168,7 +168,7 @@ class GlassesAdapterRegistry:
     def capture_audio(self, token: str, duration_ms: int = 5000) -> bytes:
         if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or not 100 <= duration_ms <= 15000:
             raise GlassesAdapterError("Audio capture must be between 100 and 15000 ms")
-        identity, adapter, _ = self._authorized(token, GlassesCapability.MICROPHONE)
+        identity, adapter, session = self._authorized(token, GlassesCapability.MICROPHONE)
         audio = adapter.capture_audio(session.physical_device_id, duration_ms)
         if not isinstance(audio, bytes) or not audio or len(audio) > _MAX_FRAME_BYTES:
             raise GlassesAdapterError("Adapter returned invalid audio data")
