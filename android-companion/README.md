@@ -70,17 +70,22 @@ least-privilege credentials in the same channel. Messages are not persisted.
 See [Secure Remote Relay](../docs/SECURE_REMOTE_RELAY.md).
 
 The Android remote-relay screen is opt-in and connects while the companion
-activity is active; a persistent background connection service is not yet
-claimed. Desktop application event-handler wiring and deployment to an
-owner-controlled host remain acceptance tasks.
+activity is active; a persistent background connection service is not claimed.
+The desktop Devices page can now save a separate desktop relay token in the
+operating-system keyring and start/stop an outbound relay connection. Incoming
+events are held as bounded, in-memory metadata and are not automatically
+executed. Deployment to an owner-controlled host and application-owned desktop
+event-handler wiring remain acceptance tasks.
 
 ## Phase 11 — production signing and release integration
 
-The app and watch modules have minified release build variants. The
-`Signed Android Companion Release` workflow builds both APKs from a
-`companion-v*` tag and publishes checksums. It requires four owner-managed
-GitHub Actions secrets. No signing key is stored in this repository and no
-production-signed APK is claimed until those secrets are configured.
+The app and watch modules have minified, resource-shrunk release build
+variants. The `Signed Android Companion Release` workflow tests both modules,
+builds both APKs from a `companion-v*` tag, verifies their signatures and
+shared certificate, and publishes SHA-256 checksums. It requires four
+owner-managed GitHub Actions secrets. No signing key is stored in this
+repository and no production-signed APK is claimed until those secrets are
+configured.
 
 See [Android Release Signing](../docs/ANDROID_RELEASE_SIGNING.md) and
 [Android Companion Polish](../docs/ANDROID_COMPANION_POLISH.md).
