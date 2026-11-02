@@ -464,7 +464,7 @@ def build_device_router(
                     except Exception:
                         pass
                 relay_config_path.unlink(missing_ok=True)
-        except (OSError, ValueError, TypeError):
+        except Exception:
             return JSONResponse({"error": "Could not clear saved relay configuration."}, status_code=503)
         return JSONResponse({"ok": True, "status": "stopped", "credentials_cleared": True})
 
