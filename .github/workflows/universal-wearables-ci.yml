@@ -6,6 +6,11 @@ on:
     paths:
       - "core/device_*.py"
       - "core/device_protocols.py"
+      - "core/glasses_adapters.py"
+      - "relay/**"
+      - "tests/test_glasses_adapters.py"
+      - "tests/test_relay_registry.py"
+      - "tests/test_desktop_relay_bridge.py"
       - "core/transports/**"
       - "tests/test_bleak_transport.py"
       - "android-companion/**"
@@ -34,9 +39,11 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Test optional BLE transport
-        run: python -m unittest discover -s tests -p test_bleak_transport.py -v
+        run: python -m unittest discover -s tests -p 'test_*device*.py' -v
+          python -m unittest discover -s tests -p 'test_*glasses*.py' -v
+          python -m unittest discover -s tests -p 'test_*relay*.py' -v
       - name: Compile device modules
-        run: python -m compileall -q core/transports core/device_protocols.py core/device_simulator.py
+        run: python -m compileall -q core/transports core/device_protocols.py core/device_simulator.py core/glasses_adapters.py relay
 
   android-companion:
     runs-on: ubuntu-latest
@@ -56,7 +63,7 @@ jobs:
           gradle-version: "8.9"
       - name: Assemble debug APK
         working-directory: android-companion
-        run: gradle --no-daemon :app:assembleDebug
+        run: gradle --no-daemon :app:assembleDebug :wear-app:assembleDebug :app:testDebugUnitTest
       - name: Run Android unit tests
         working-directory: android-companion
         run: gradle --no-daemon :app:testDebugUnitTest
@@ -64,5 +71,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mark56-companion-debug-apk
-          path: android-companion/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            android-companion/app/build/outputs/apk/debug/app-debug.apk
+            android-companion/wear-app/build/outputs/apk/debug/wear-app-debug.apk
           if-no-files-found: error
