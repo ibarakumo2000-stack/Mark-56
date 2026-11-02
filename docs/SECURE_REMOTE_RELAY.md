@@ -52,8 +52,7 @@ bounded exponential backoff and sends only to a target device in its channel.
 - Keep the relay database volume private and back it up with host-level access
   controls.
 - Provision separate, least-privilege credentials for every device.
-- Revoke lost credentials by calling `RelayRegistry.revoke` from an
-  authenticated administrative operation or a trusted maintenance script.
+- Revoke lost credentials with the trusted CLI: `docker compose -f relay/compose.yml exec relay python -m relay.revoke --channel "$CHANNEL" --principal-id "$PRINCIPAL_ID"`.
 - Never place relay tokens in QR codes, URLs, app logs or source control.
 - Messages are ephemeral; disconnected peers receive no stored backlog.
 - Add monitoring, firewall restrictions, backups and an operator-controlled
