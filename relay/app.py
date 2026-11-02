@@ -120,10 +120,11 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
                         await websocket.send_json({"type": "error", "error": "device_cannot_select_recipient"})
                         continue
                     recipient = desktop_peers.get(channel_id)
-                    recipient_identity = peer_identities.get((channel_id, next(
-                        (pid for (cid, pid), peer in peers.items()
-                         if cid == channel_id and peer is recipient), ""
-                    ))) if recipient is not None else None
+                    recipient_identity = next(
+                        (peer_identity for (cid, _), peer_identity in peer_identities.items()
+                         if cid == channel_id and peer_identity["role"] == "desktop"),
+                        None,
+                    )
                     outbound = {"type": message_type, "device_id": principal_id, "payload": envelope["payload"]}
                 else:
                     target = envelope["target_device_id"]
