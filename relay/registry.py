@@ -48,8 +48,12 @@ class RelayRegistry:
         if (not principal_id or len(principal_id) > 80
                 or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for ch in principal_id)):
             raise ValueError("Invalid principal ID")
+        if not isinstance(scopes, (list, tuple, set)):
+            raise ValueError("Scopes must be a list of permission names")
+        if any(not isinstance(scope, str) for scope in scopes):
+            raise ValueError("Every relay scope must be a string")
         clean = sorted(set(scopes))
-        if any(not isinstance(s, str) or s not in {
+        if len(clean) > 16 or any(s not in {
             "command.send", "notification.receive", "media.control",
             "battery.read", "display.render", "voice.capture", "camera.capture"
         } for s in clean):
