@@ -20,6 +20,7 @@ class FakeGlasses:
 
     def disconnect(self, device_id):
         self.disconnected = True
+        self.disconnected_device_id = device_id
 
     def render_card(self, device_id, card):
         self.last_card = card
@@ -77,6 +78,7 @@ class GlassesAdapterTests(unittest.TestCase):
     def test_disconnect_closes_adapter_session(self):
         self.assertTrue(self.registry.disconnect(self.device.token))
         self.assertTrue(self.adapter.disconnected)
+        self.assertEqual(self.adapter.disconnected_device_id, "physical-device")
 
 
 if __name__ == "__main__":
