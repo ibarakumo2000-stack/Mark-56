@@ -33,7 +33,7 @@ jobs:
           gradle-version: "8.9"
       - name: Build debug APK
         working-directory: android-companion
-        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :wear-app:assembleDebug :wear-app:assembleDebug
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :wear-app:assembleDebug
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
