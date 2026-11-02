@@ -67,7 +67,7 @@ class DesktopRelayBridge:
             try:
                 async with websockets.connect(
                     self.url, extra_headers={"Authorization": f"Bearer {self.token}"},
-                    open_timeout=10, close_timeout=5, max_size=32768,
+                    open_timeout=5, close_timeout=3, max_size=32768,
                     ping_interval=20, ping_timeout=20,
                 ) as socket:
                     self._socket = socket
