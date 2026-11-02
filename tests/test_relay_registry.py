@@ -35,9 +35,12 @@ class RelayRegistryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.registry.provision(channel_id=self.channel, role="device", scopes=["admin"])
 
-    def test_desktop_identity_is_single_named_principal(self):
-        with self.assertRaises(ValueError):
-            self.registry.provision(channel_id=self.channel, role="desktop", principal_id="other", scopes=[])
+    def test_desktop_identity_is_unique_per_channel(self):
+        first = self.registry.provision(channel_id=self.channel, role="desktop", scopes=[])
+        second_channel = str(uuid.uuid4())
+        second = self.registry.provision(channel_id=second_channel, role="desktop", scopes=[])
+        self.assertEqual(first["principal_id"], "desktop-" + self.channel)
+        self.assertNotEqual(first["principal_id"], second["principal_id"])
 
 
 if __name__ == "__main__":
