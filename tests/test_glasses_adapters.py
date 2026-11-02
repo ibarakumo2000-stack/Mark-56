@@ -1,6 +1,6 @@
 import unittest
 
-from core.device_gateway import DeviceRegistry
+from core.device_gateway import AuthorizationError, DeviceRegistry
 from core.glasses_adapters import (
     GlassesAdapterError, GlassesAdapterRegistry, GlassesCapability, GlassesDescriptor,
 )
@@ -86,7 +86,7 @@ class GlassesAdapterTests(unittest.TestCase):
     def test_revoking_device_disconnects_physical_adapter_session(self):
         self.registry.grant_session_consent(self.device.token, {GlassesCapability.CAMERA})
         self.assertTrue(self.devices.revoke_device(self.device.device_id))
-        with self.assertRaises(Exception):
+        with self.assertRaises(AuthorizationError):
             self.registry.capture_frame(self.device.token)
         self.assertTrue(self.adapter.disconnected)
 
