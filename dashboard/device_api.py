@@ -437,6 +437,37 @@ def build_device_router(
             relay_runtime = None
         return JSONResponse({"ok": True, "status": "stopped"})
 
+    @router.delete("/api/devices/relay/configuration")
+    async def forget_relay_configuration(request: Request):
+        nonlocal relay_runtime
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        if relay_runtime is not None:
+            try:
+                relay_runtime.stop()
+            except Exception as exc:
+                return JSONResponse({"error": "Could not stop desktop relay: " + exc.__class__.__name__}, status_code=503)
+            relay_runtime = None
+        try:
+            if relay_config_path.is_file():
+                config = json.loads(relay_config_path.read_text(encoding="utf-8"))
+                import keyring
+                if config.get("channel_id") and config.get("principal_id"):
+                    try:
+                        keyring.delete_password(
+                            "mark56-relay",
+                            f"{config['channel_id']}:{config['principal_id']}",
+                        )
+                    except Exception:
+                        pass
+                relay_config_path.unlink(missing_ok=True)
+        except (OSError, ValueError, TypeError):
+            return JSONResponse({"error": "Could not clear saved relay configuration."}, status_code=503)
+        return JSONResponse({"ok": True, "status": "stopped", "credentials_cleared": True})
+
     @router.get("/api/devices/relay/events")
     async def relay_events(request: Request):
         insecure = _secure(request)
