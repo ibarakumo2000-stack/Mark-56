@@ -107,6 +107,30 @@ class DeviceRegistryTests(unittest.TestCase):
             self.registry.authenticate(device.token)
         self.assertFalse(self.registry.revoke_device(device.device_id))
 
+    def test_owner_can_reduce_or_replace_device_scopes(self):
+        offer = self.registry.create_pairing_offer(("command.send", "media.control"))
+        device = self.registry.redeem_pairing_code(
+            offer.code, device_name="Phone", device_type="android",
+            platform="android", capabilities=("media",),
+            requested_scopes=("command.send", "media.control"),
+        )
+        self.assertTrue(self.registry.update_device_scopes(
+            device.device_id, ("command.send",)
+        ))
+        identity = self.registry.authenticate(device.token)
+        self.assertEqual(identity["scopes"], ["command.send"])
+        with self.assertRaises(AuthorizationError):
+            self.registry.authenticate(device.token, required_scope="media.control")
+
+    def test_scope_update_rejects_unknown_scope_and_revoked_device(self):
+        device = self.enroll()
+        with self.assertRaises(ValueError):
+            self.registry.update_device_scopes(device.device_id, ("admin",))
+        self.registry.revoke_device(device.device_id)
+        self.assertFalse(self.registry.update_device_scopes(
+            device.device_id, ("command.send",)
+        ))
+
     def test_unknown_permission_scope_is_rejected(self):
         with self.assertRaises(ValueError):
             self.registry.create_pairing_offer(("admin",))
