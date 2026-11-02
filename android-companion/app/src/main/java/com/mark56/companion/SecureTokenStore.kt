@@ -36,5 +36,25 @@ class SecureTokenStore(private val prefs: android.content.SharedPreferences) {
             String(cipher.doFinal(Base64.decode(encoded, Base64.NO_WRAP)), Charsets.UTF_8)
         } catch (_: Exception) { clear(); null }
     }
-    fun clear() { prefs.edit().remove("token").remove("iv").apply() }
+    fun saveRelayToken(token: String) {
+        require(token.startsWith("rly_") && token.length <= 160)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key())
+        val encrypted = cipher.doFinal(token.toByteArray(Charsets.UTF_8))
+        prefs.edit().putString("relay_token", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .putString("relay_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP)).apply()
+    }
+    fun readRelayToken(): String? {
+        return try {
+            val encoded = prefs.getString("relay_token", null) ?: return null
+            val iv = Base64.decode(prefs.getString("relay_iv", null) ?: return null, Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
+            String(cipher.doFinal(Base64.decode(encoded, Base64.NO_WRAP)), Charsets.UTF_8)
+        } catch (_: Exception) { clearRelayToken(); null }
+    }
+    fun clearRelayToken() { prefs.edit().remove("relay_token").remove("relay_iv").apply() }
+    fun clear() {
+        prefs.edit().remove("token").remove("iv").remove("relay_token").remove("relay_iv").apply()
+    }
 }

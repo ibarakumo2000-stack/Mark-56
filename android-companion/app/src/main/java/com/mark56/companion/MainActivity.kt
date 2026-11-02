@@ -12,6 +12,11 @@ import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.EditText
+import android.text.InputType
+import androidx.appcompat.app.AlertDialog
+import android.content.res.ColorStateList
+import com.google.android.material.button.MaterialButton
 import androidx.appcompat.app.AppCompatActivity
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -24,6 +29,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var batterySyncButton: Button
     private lateinit var notificationRelayButton: Button
     private lateinit var mediaControlButton: Button
+    private lateinit var wearBridgeButton: Button
+    private lateinit var remoteRelayButton: Button
+    private lateinit var remotePingButton: Button
+    private var remoteRelayClient: RemoteRelayClient? = null
     private lateinit var tokenStore: SecureTokenStore
     private lateinit var settings: CompanionSettings
 
@@ -121,6 +130,17 @@ class MainActivity : AppCompatActivity() {
         mediaControlButton = actionButton("REQUEST MEDIA CONTROL SCOPE", false).apply {
             setOnClickListener { toggleMediaControl() }
         }
+        wearBridgeButton = actionButton("REQUEST WEAR OS BRIDGE", false).apply {
+            setOnClickListener { toggleWearBridge() }
+        }
+        remoteRelayButton = actionButton("CONFIGURE SECURE REMOTE RELAY", false).apply {
+            setOnClickListener { configureOrToggleRemoteRelay() }
+        }
+        remotePingButton = actionButton("SEND REMOTE JARVIS PING", false).apply {
+            isEnabled = false
+            alpha = 0.5f
+            setOnClickListener { sendRemotePing() }
+        }
         val disconnect = actionButton("DISCONNECT DEVICE", false).apply {
             setOnClickListener {
                 BatterySync.disable(this@MainActivity)
@@ -139,6 +159,9 @@ class MainActivity : AppCompatActivity() {
         root.addView(batterySyncButton, matchWidth())
         root.addView(notificationRelayButton, matchWidth())
         root.addView(mediaControlButton, matchWidth())
+        root.addView(wearBridgeButton, matchWidth())
+        root.addView(remoteRelayButton, matchWidth())
+        root.addView(remotePingButton, matchWidth())
         root.addView(disconnect, matchWidth())
         root.addView(TextView(this).apply {
             text = "MARK 56  /  COMPANION"
@@ -148,7 +171,15 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, dp(14), 0, 0)
         })
-        setContentView(root)
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            setPadding(0, 0, 0, dp(12))
+            addView(root)
+        }
+        window.statusBarColor = Color.rgb(5, 12, 28)
+        window.navigationBarColor = Color.rgb(5, 12, 28)
+        setContentView(scroll)
         refreshBatteryButton()
     }
 
@@ -162,20 +193,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun actionButton(label: String, primary: Boolean): Button = Button(this).apply {
+    private fun actionButton(label: String, primary: Boolean): Button = MaterialButton(this).apply {
         text = label
         textSize = 12f
-        letterSpacing = 0.04f
+        letterSpacing = 0.035f
         typeface = Typeface.DEFAULT_BOLD
         isAllCaps = false
-        setTextColor(if (primary) Color.rgb(4, 18, 32) else Color.WHITE)
-        background = GradientDrawable(
-            GradientDrawable.Orientation.LEFT_RIGHT,
-            if (primary) intArrayOf(Color.rgb(86, 225, 255), Color.rgb(104, 170, 255))
-            else intArrayOf(Color.rgb(29, 48, 75), Color.rgb(23, 37, 60))
-        ).apply {
-            cornerRadius = dp(15).toFloat()
-            if (!primary) setStroke(dp(1), Color.rgb(45, 71, 102))
+        setTextColor(if (primary) Color.rgb(4, 18, 32) else Color.rgb(235, 243, 255))
+        backgroundTintList = ColorStateList.valueOf(
+            if (primary) Color.rgb(88, 225, 255) else Color.rgb(25, 43, 69)
+        )
+        rippleColor = ColorStateList.valueOf(Color.argb(65, 115, 215, 255))
+        cornerRadius = dp(15)
+        insetTop = 0
+        insetBottom = 0
+        if (!primary) {
+            strokeWidth = dp(1)
+            strokeColor = ColorStateList.valueOf(Color.rgb(48, 76, 110))
         }
         minimumHeight = dp(54)
         stateListAnimator = null
@@ -226,6 +260,7 @@ class MainActivity : AppCompatActivity() {
         batterySyncButton.alpha = if (batterySyncButton.isEnabled) 1f else 0.55f
         refreshNotificationRelayButton()
         refreshMediaControlButton()
+        refreshWearBridgeButton()
     }
 
     private fun refreshNotificationRelayButton() {
@@ -252,6 +287,137 @@ class MainActivity : AppCompatActivity() {
         }
         mediaControlButton.isEnabled = true
         mediaControlButton.alpha = 1f
+    }
+
+    private fun refreshWearBridgeButton() {
+        val paired = tokenStore.read() != null && settings.deviceId() != null
+        val approved = paired && settings.hasCommandScope()
+        wearBridgeButton.text = when {
+            approved && settings.wearBridgeEnabled() -> "DISABLE WEAR OS BRIDGE"
+            approved -> "ENABLE WEAR OS BRIDGE  ·  PHONE RELAY"
+            settings.wearBridgeRequested() -> "WEAR OS SCOPE REQUESTED  ·  TAP TO CANCEL"
+            else -> "REQUEST WEAR OS BRIDGE  ·  PAIR AGAIN"
+        }
+        wearBridgeButton.isEnabled = true
+        wearBridgeButton.alpha = 1f
+    }
+
+    private fun toggleWearBridge() {
+        val paired = tokenStore.read() != null && settings.deviceId() != null
+        if (paired && settings.hasCommandScope()) {
+            val enabled = !settings.wearBridgeEnabled()
+            settings.setWearBridgeEnabled(enabled)
+            status.text = if (enabled)
+                "Wear OS bridge enabled. Watch actions are limited to the approved quick-action list."
+            else "Wear OS bridge disabled. Watch actions will be ignored."
+        } else {
+            val requested = !settings.wearBridgeRequested()
+            settings.setWearBridgeRequested(requested)
+            status.text = if (requested)
+                "Wear OS command scope requested. Disconnect and pair again after the desktop owner approves command.send."
+            else "Wear OS bridge request cancelled."
+        }
+        refreshWearBridgeButton()
+    }
+
+    private fun configureOrToggleRemoteRelay() {
+        if (remoteRelayClient != null) {
+            remoteRelayClient?.close()
+            remoteRelayClient = null
+            remoteRelayButton.text = "CONNECT SECURE REMOTE RELAY"
+            remotePingButton.isEnabled = false
+            remotePingButton.alpha = 0.5f
+            status.text = "Remote relay disconnected."
+            return
+        }
+        val endpoint = settings.relayEndpoint()
+        val channel = settings.relayChannel()
+        val principal = settings.relayPrincipal()
+        val token = tokenStore.readRelayToken()
+        if (!endpoint.isNullOrBlank() && !channel.isNullOrBlank() &&
+            !principal.isNullOrBlank() && !token.isNullOrBlank()) {
+            connectRemoteRelay(endpoint, channel, principal, token)
+            return
+        }
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+        }
+        fun field(hint: String, inputType: Int = InputType.TYPE_CLASS_TEXT): EditText =
+            EditText(this).apply {
+                this.hint = hint
+                this.inputType = inputType
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.rgb(145, 165, 190))
+                setSingleLine(true)
+            }
+        val urlField = field("Relay HTTPS URL (https://relay.example.com)", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
+        val channelField = field("Channel UUID")
+        val principalField = field("Device principal ID")
+        val tokenField = field("One-time relay token")
+        tokenField.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        listOf(urlField, channelField, principalField, tokenField).forEach { form.addView(it) }
+        AlertDialog.Builder(this)
+            .setTitle("Connect a remote JARVIS relay")
+            .setMessage("Create a device credential with relay/provision.py on your trusted relay host. The token is encrypted with Android Keystore on this phone.")
+            .setView(form)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save & connect") { _, _ ->
+                val url = urlField.text.toString().trim()
+                val channelId = channelField.text.toString().trim()
+                val principalId = principalField.text.toString().trim()
+                val relayToken = tokenField.text.toString().trim()
+                try {
+                    settings.saveRelayConfig(url, channelId, principalId)
+                    tokenStore.saveRelayToken(relayToken)
+                    connectRemoteRelay(url, channelId, principalId, relayToken)
+                } catch (error: Exception) {
+                    status.text = "Relay configuration invalid: " + (error.message ?: "check the values")
+                }
+            }.show()
+    }
+
+    private fun sendRemotePing() {
+        val client = remoteRelayClient ?: return
+        try {
+            val sent = client.send("command", JSONObject().put("action", "assistant.ping"))
+            status.text = if (sent) "Remote JARVIS ping sent to the desktop relay."
+                else "Remote relay is not ready to send."
+        } catch (error: Exception) {
+            status.text = "Remote ping failed: " + (error.message ?: "relay unavailable")
+        }
+    }
+
+    private fun connectRemoteRelay(endpoint: String, channel: String, principal: String, token: String) {
+        try {
+            remoteRelayButton.text = "CONNECTING TO REMOTE RELAY…"
+            remoteRelayClient = RemoteRelayClient(
+                endpoint, channel, principal, token,
+                onState = { message ->
+                    runOnUiThread {
+                        status.text = message
+                        val connected = message.startsWith("Connected")
+                        remoteRelayButton.text = if (connected) "DISCONNECT REMOTE RELAY"
+                            else "REMOTE RELAY · TAP TO RECONNECT"
+                        remotePingButton.isEnabled = connected
+                        remotePingButton.alpha = if (connected) 1f else 0.5f
+                    }
+                },
+                onMessage = { message ->
+                    runOnUiThread {
+                        status.text = "Remote JARVIS message received · " + message.optString("type", "message")
+                    }
+                }
+            )
+        } catch (error: Exception) {
+            remoteRelayClient = null
+            settings.clearRelayConfig()
+            tokenStore.clearRelayToken()
+            remoteRelayButton.text = "REMOTE RELAY · CONFIGURE AGAIN"
+            remotePingButton.isEnabled = false
+            remotePingButton.alpha = 0.5f
+            status.text = "Could not connect to relay: " + (error.message ?: "invalid configuration")
+        }
     }
 
     private fun hasNotificationAccess(): Boolean {
@@ -330,6 +496,7 @@ class MainActivity : AppCompatActivity() {
                     val requestedScopes = mutableListOf("battery.read")
                     if (settings.notificationRelayRequested()) requestedScopes.add("notification.receive")
                     if (settings.mediaControlRequested()) requestedScopes.add("media.control")
+                    if (settings.wearBridgeRequested()) requestedScopes.add("command.send")
                     val response = PinnedCompanionClient(endpoint, fingerprint).pair(
                         code, android.os.Build.MODEL ?: "Android device", requestedScopes
                     )
@@ -345,14 +512,19 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         tokenStore.save(token)
                         settings.saveConnection(endpoint, fingerprint, deviceId,
-                            hasBatteryScope, hasNotificationScope, hasMediaScope)
+                            hasBatteryScope, hasNotificationScope, hasMediaScope,
+                            hasScope("command.send"))
                         BatterySync.disable(this)
                         settings.setMediaControlEnabled(false)
+                        settings.setWearBridgeEnabled(false)
                         refreshBatteryButton()
                         status.text = "Paired with " + response.optString("device_name", "JARVIS desktop") +
                             ". Battery sharing is off. Notification relay and media controls remain off until separately enabled."
                         if (settings.mediaControlRequested() && !hasMediaScope) {
                             status.text = status.text.toString() + " Desktop did not approve media.control; pair again after approval."
+                        }
+                        if (settings.wearBridgeRequested() && !hasScope("command.send")) {
+                            status.text = status.text.toString() + " Desktop did not approve command.send; Wear OS bridge is unavailable."
                         }
                         if (!hasBatteryScope) status.text =
                             "Paired, but battery.read was not approved on desktop. Battery sync is unavailable."
@@ -368,6 +540,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         worker.shutdownNow()
+        remoteRelayClient?.close()
+        remoteRelayClient = null
         super.onDestroy()
     }
 }

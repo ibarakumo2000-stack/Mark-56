@@ -46,6 +46,7 @@ class DeviceApiTests(unittest.TestCase):
             ("/api/devices/{device_id}/scopes", ("PUT",)),
             ("/api/devices/{device_id}", ("DELETE",)),
             ("/api/devices/{device_id}/media", ("POST",)),
+            ("/api/devices/wearable-commands", ("GET",)),
             ("/api/device/me", ("GET",)),
         }
         self.assertTrue(expected.issubset(routes))

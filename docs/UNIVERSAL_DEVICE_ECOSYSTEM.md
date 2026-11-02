@@ -127,6 +127,9 @@ being simulated.
       listing, per-device revocation, and device identity endpoints.
 - [x] Add owner-only per-device permission editing and authenticated Android companion routes.
 - [x] Add a desktop Devices panel with QR and manual pairing code, bridge lifecycle, status, media queue controls, and revocation.
-- [ ] Build the Android companion app and its secure local/remote transports.
-- [ ] Add Wear OS and supported vendor-glasses adapters.
-- [ ] Add remote relay deployment, monitoring, and end-to-end security tests.
+- [x] Build phone and Wear OS debug APKs, add Material 3 companion UI, and add the opt-in Android remote relay client.
+- [ ] Configure production signing secrets and publish a signed release.
+- [x] Add a Wear OS companion module, phone Data Layer bridge and bounded desktop action queue.
+- [x] Add a vendor-neutral smart-glasses adapter contract with per-device scopes and session consent; vendor SDK integrations remain model-dependent.
+- [x] Add an ephemeral TLS WebSocket relay, hashed credential registry, provisioning CLI, Docker/Caddy deployment, and desktop/Android client transports.
+- [ ] Deploy relay to an owner-controlled host and complete cross-network end-to-end security tests.

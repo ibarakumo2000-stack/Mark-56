@@ -42,6 +42,13 @@ class CompanionEventClient(
         return postEvent("/v1/notifications", body)
     }
 
+    /** Forwards a narrowly allowlisted Wear OS action after desktop scope approval. */
+    fun postWearableAction(action: String): Int {
+        require(action in setOf("assistant.ping", "media.play_pause", "media.next", "media.previous"))
+        val body = JSONObject().put("action", action).put("source", "wear_os")
+        return postEvent("/v1/wearable/action", body)
+    }
+
     /** Fetches at most one desktop-authorized media action; no arbitrary command data is accepted. */
     fun pollMediaCommand(): String? {
         val connection = signedConnection("/v1/media/next", JSONObject())
