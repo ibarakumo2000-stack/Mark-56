@@ -26,6 +26,21 @@ In GitHub → Mark-56 → Settings → Secrets and variables → Actions, create
 
 Never paste these secrets into issues, source files, workflow logs, or chat.
 
+## Moving from the old debug preview to the first signed release
+
+Older public preview APKs used the production package ID but were signed with
+the Android debug certificate. Android does not permit an APK signed with a
+different certificate to replace an installed package in place.
+
+Before installing the first owner-signed release, uninstall the old
+`JARVIS Companion` debug preview from the phone. This removes that old
+installation's local app data and pairing credential; pair the phone again
+after installing the signed build. Future signed releases use the same
+owner-managed keystore and can update in place without this uninstall step.
+
+New CI debug APKs now use a separate `.debug` application ID and are not
+published as public downloads.
+
 ## Publish
 
 After the signing secrets are configured and a release candidate has passed CI,
