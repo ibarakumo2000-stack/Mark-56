@@ -1,7 +1,5 @@
 package com.mark56.wear
 
-import org.json.JSONObject
-
 /** Only actions with an explicit phone-side permission gate can leave the watch. */
 object WearActionPolicy {
     const val MESSAGE_PATH = "/jarvis/v1/action"
@@ -14,6 +12,9 @@ object WearActionPolicy {
 
     fun encode(action: String): ByteArray? {
         if (action !in allowed) return null
-        return JSONObject().put("action", action).toString().toByteArray(Charsets.UTF_8)
+        // The action is drawn from a fixed allowlist containing no JSON-special
+        // characters, so a tiny deterministic envelope avoids Android JSON APIs
+        // in local JVM tests.
+        return """{"action":"$action"}""".toByteArray(Charsets.UTF_8)
     }
 }
