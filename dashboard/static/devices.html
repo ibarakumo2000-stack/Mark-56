@@ -54,7 +54,7 @@ dialog{width:min(520px,calc(100vw - 32px));border:1px solid var(--line);border-r
 <div style="display:flex;align-items:center;gap:12px;margin-top:22px"><div style="flex:1"><h2>Paired glasses</h2><p class="hint" style="margin:4px 0 0">Display permission is separately granted and can be revoked from the device list.</p></div><button class="btn" id="glasses-refresh">Refresh</button></div>
 <div id="glasses-paired" class="device-list" style="margin-top:14px"><div class="empty">No smart glasses paired.</div></div>
 </section>
-<section class="panel">
+<section class="panel" id="pair-device">
 <h2>Pair a new device</h2><p class="hint">Choose the exact permissions to approve. The code expires after five minutes and can be redeemed once.</p>
 <div class="scopes" id="scopes">
 <label class="scope"><input type="checkbox" value="notification.receive" checked> Notifications</label>
