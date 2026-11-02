@@ -1,36 +1,48 @@
 # Phase 9 — Smart-glasses adapter framework
 
-The glasses integration is implemented as a vendor-neutral capability adapter
-contract in `core/glasses_adapters.py`. No manufacturer SDK is imported into
-the JARVIS core.
+The glasses integration uses a vendor-neutral, permission-enforcing adapter
+contract in `core/glasses_adapters.py`. Manufacturer SDKs stay in optional
+transport modules; the JARVIS core does not import or assume a specific brand.
 
 ## Capability model
 
-Adapters declare actual hardware support for display, camera, microphone,
-touch, IMU, battery and audio output. The registry will not invent capabilities.
-Every operation is checked against:
+Adapters report only observed hardware support. Every operation is checked
+against the enrolled glasses identity, its approved permission scope, the
+adapter's declared hardware capability, and a revocable session-consent grant.
+Camera frames are bounded to 2 MB; audio capture is limited to 15 seconds.
+Captured media is not persisted by the adapter registry.
 
-1. The enrolled identity being a glasses device.
-2. The device's approved permission scope (`display.render`,
-   `camera.capture`, `voice.capture`, and so on).
-3. The installed adapter's hardware capability declaration.
-4. A separate, revocable per-session consent grant for camera, microphone,
-   display, or other sensitive operations.
+Revoking an enrolled glasses identity is reconciled with active adapter
+sessions. The registry attempts to disconnect the physical adapter before
+rejecting subsequent operations.
 
-Frame/audio payloads are bounded. Audio capture duration is limited to 15
-seconds per call. The core does not persist captured audio or camera frames.
+## Generic BLE reference profile
+
+`core/transports/glasses_ble.py` implements the JARVIS BLE display profile:
+
+- Service UUID: `a7e10000-56a1-4a56-9a56-000000000001`
+- Display-card write characteristic: `a7e10000-56a1-4a56-9a56-000000000002`
+- Display-card payload: UTF-8 JSON, maximum 4 KB.
+- The adapter advertises only `display` capability when the service and write
+  characteristic are observed.
+- It deliberately does not claim camera or microphone support.
+
+This profile is for glasses firmware or a bridge that implements the documented
+JARVIS GATT service. It does not make arbitrary retail glasses compatible by
+magic, and BLE is not a suitable general-purpose high-bandwidth video/audio
+transport.
 
 ## Adding a manufacturer adapter
 
 Create an optional module under `core/transports/glasses/` or a separately
-packaged plugin. Implement `SmartGlassesAdapter` and register it at runtime.
-Keep vendor SDK calls behind that module, report exact model/platform support,
-and expose only features available on the connected hardware.
+packaged plugin. Implement `SmartGlassesAdapter`, report exact model/platform
+support, and expose only capabilities the SDK and connected hardware actually
+provide. Request camera and microphone session consent separately.
 
 ## Hardware support status
 
-The framework and authorization tests are in place. No specific Meta, XREAL,
-Vuzix, Ray-Ban or other vendor SDK is bundled in this change. A real adapter
-requires the target model, developer SDK access/licensing, and a physical
-device for camera/display/audio acceptance testing. Unsupported hardware is
-reported as unavailable rather than simulated.
+The generic BLE display profile and adapter authorization tests are included.
+No Meta, XREAL, Vuzix, Ray-Ban or other manufacturer SDK is bundled. A real
+vendor adapter requires the exact target model, developer SDK access/licensing,
+and a physical device for display/camera/audio acceptance testing. Unsupported
+features are reported as unavailable rather than simulated.
