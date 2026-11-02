@@ -40,6 +40,25 @@ class DesktopRelayRuntime:
         with self._events_lock:
             self._events.append(event)
 
+        # The only automatic response is a harmless reachability pong. The
+        # transport never executes remote actions or forwards arbitrary commands.
+        payload = message.get("payload")
+        if (
+            message.get("type") == "command"
+            and isinstance(payload, dict)
+            and payload.get("action") == "assistant.ping"
+        ):
+            bridge = self._bridge
+            device_id = message.get("device_id")
+            if bridge is not None and isinstance(device_id, str) and device_id:
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(bridge.send_to_device(
+                        device_id, "command", {"action": "assistant.pong"}
+                    ))
+                except RuntimeError:
+                    pass
+
     def _run(self, *, base_url: str, channel_id: str, principal_id: str, token: str) -> None:
         loop = asyncio.new_event_loop()
         self._loop = loop
@@ -106,6 +125,16 @@ class DesktopRelayRuntime:
         self._thread = None
         self._set_state("stopped")
         return self.status()
+
+    def send_to_device(self, device_id: str, message_type: str, payload: dict[str, Any]) -> None:
+        """Send one explicit owner-requested message over the active relay."""
+        bridge, loop = self._bridge, self._loop
+        if bridge is None or loop is None or not loop.is_running():
+            raise ConnectionError("Desktop relay is not connected")
+        future = asyncio.run_coroutine_threadsafe(
+            bridge.send_to_device(device_id, message_type, payload), loop
+        )
+        future.result(timeout=10.0)
 
     def drain_events(self, limit: int = 50) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit), 100))
