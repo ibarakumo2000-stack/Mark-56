@@ -2,9 +2,8 @@ package com.mark56.wear
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertTrue\nimport org.junit.Assert.assertArrayEquals
 import org.junit.Test
-import org.json.JSONObject
 
 class WearActionPolicyTest {
     @Test fun onlyAllowlistedActionsAreEncoded() {
@@ -18,8 +17,9 @@ class WearActionPolicyTest {
 
     @Test fun payloadContainsOnlyTheAction() {
         val payload = WearActionPolicy.encode("assistant.ping")!!
-        val decoded = JSONObject(String(payload, Charsets.UTF_8))
-        assertTrue(decoded.keys().asSequence().toList() == listOf("action"))
-        assertTrue(decoded.getString("action") == "assistant.ping")
+        assertArrayEquals(
+            """{"action":"assistant.ping"}""".toByteArray(Charsets.UTF_8),
+            payload,
+        )
     }
 }
