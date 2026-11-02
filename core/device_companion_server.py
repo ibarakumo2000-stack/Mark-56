@@ -56,6 +56,10 @@ def create_companion_app(registry: DeviceRegistry):
     try:
         from fastapi import FastAPI, Request
         from fastapi.responses import JSONResponse
+        # FastAPI resolves postponed annotations against module globals.
+        # Keep FastAPI optional at import time, but expose Request when the
+        # runtime app is constructed so request parameters are injected properly.
+        globals()["Request"] = Request
     except ImportError as exc:
         raise RuntimeError("Install FastAPI to enable the Android companion bridge") from exc
 
