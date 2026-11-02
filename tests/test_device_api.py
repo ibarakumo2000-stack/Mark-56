@@ -50,6 +50,7 @@ class DeviceApiTests(unittest.TestCase):
             ("/api/devices/relay", ("GET",)),
             ("/api/devices/relay/configure", ("POST",)),
             ("/api/devices/relay/start", ("POST",)),
+            ("/api/devices/relay/configuration", ("DELETE",)),
             ("/api/devices/relay/stop", ("POST",)),
             ("/api/devices/relay/events", ("GET",)),
             ("/api/device/me", ("GET",)),
