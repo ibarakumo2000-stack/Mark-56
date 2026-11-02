@@ -1,0 +1,30 @@
+name: Desktop release completeness preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Draft desktop release tag to verify (example: v56.0.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the exact release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify all desktop packages use the tagged source commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/verify_desktop_release.py --tag "${{ inputs.tag }}"
