@@ -112,4 +112,4 @@ jobs:
             The app requires Android 8.0 or later. First-run pairing, notification relay, media controls, Wear OS forwarding and remote relay remain opt-in.
           files: release-apks/*
           fail_on_unmatched_files: true
-          make_latest: true
+          make_latest: false
