@@ -32,7 +32,7 @@ class RemoteRelayClient(
         require(channelId.matches(Regex("[0-9a-fA-F-]{36}")))
         require(java.util.UUID.fromString(channelId).toString().equals(channelId, ignoreCase = true))
         require(principalId.matches(Regex("[A-Za-z0-9._-]{1,80}")))
-        require(token.startsWith("rly_") && token.length <= 160)
+        require(token.startsWith("rly_") && token.length in 32..160)
         val url = base.newBuilder().scheme("https")
             .addPathSegments("v1/connect/$channelId/$principalId").build()
         val request = Request.Builder().url(url)
