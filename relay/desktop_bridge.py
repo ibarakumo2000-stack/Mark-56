@@ -19,14 +19,20 @@ def relay_websocket_url(base_url: str, channel_id: str, principal_id: str) -> st
         raise ValueError("Relay URL must be an HTTPS origin without embedded credentials")
     if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
         raise ValueError("Relay URL must be an origin only")
-    if not channel_id or not principal_id or "/" in principal_id:
+    import uuid
+    try:
+        channel_id = str(uuid.UUID(channel_id))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValueError("Channel ID must be a UUID") from exc
+    if not principal_id or len(principal_id) > 80 or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for ch in principal_id):
         raise ValueError("Invalid relay identity")
     return f"wss://{parsed.netloc}/v1/connect/{channel_id}/{principal_id}"
 
 
 class DesktopRelayBridge:
     def __init__(self, *, base_url: str, channel_id: str, token: str,
-                 on_message: MessageHandler, principal_id: str = "desktop"):
+                 on_message: MessageHandler, principal_id: str | None = None):
+        principal_id = principal_id or f"desktop-{channel_id}"
         self.url = relay_websocket_url(base_url, channel_id, principal_id)
         if not token.startswith("rly_"):
             raise ValueError("Invalid relay token")
