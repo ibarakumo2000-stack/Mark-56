@@ -46,7 +46,7 @@ class DesktopRelayApiTests(unittest.TestCase):
             router = build_device_router(self.registry, owner_auth=lambda _request: True)
         app = FastAPI()
         app.include_router(router)
-        self.client = TestClient(app)
+        self.client = TestClient(app, base_url="https://localhost")
 
     def tearDown(self):
         self.client.close()
@@ -60,7 +60,6 @@ class DesktopRelayApiTests(unittest.TestCase):
         with patch.dict(sys.modules, {"keyring": self.keyring_module}):
             response = self.client.post(
                 "/api/devices/relay/configure",
-                base_url="https://localhost",
                 json={
                     "endpoint": "https://relay.example.com",
                     "channel_id": channel,
@@ -74,7 +73,7 @@ class DesktopRelayApiTests(unittest.TestCase):
                 self.keyring.get_password("mark56-relay", f"{channel}:{principal}"),
                 token,
             )
-            saved = self.client.get("/api/devices/relay", base_url="https://localhost")
+            saved = self.client.get("/api/devices/relay")
             self.assertTrue(saved.json()["configured"])
             self.assertNotIn("token", saved.json())
             config_path = self.home / ".jarvis" / "relay.json"
@@ -86,7 +85,6 @@ class DesktopRelayApiTests(unittest.TestCase):
             for endpoint in ("http://relay.example.com", "https://relay.example.com/path"):
                 response = self.client.post(
                     "/api/devices/relay/configure",
-                    base_url="https://localhost",
                     json={
                         "endpoint": endpoint,
                         "channel_id": "1b2d2d52-8d75-4b56-8b8a-8f0c0d7e4f11",
@@ -103,7 +101,6 @@ class DesktopRelayApiTests(unittest.TestCase):
         with patch.dict(sys.modules, {"keyring": module}):
             response = self.client.post(
                 "/api/devices/relay/configure",
-                base_url="https://localhost",
                 json={
                     "endpoint": "https://relay.example.com",
                     "channel_id": "1b2d2d52-8d75-4b56-8b8a-8f0c0d7e4f11",
@@ -126,7 +123,7 @@ class DesktopRelayApiTests(unittest.TestCase):
         self.keyring.set_password("mark56-relay", f"{channel}:{principal}", "rly_" + "d" * 56)
         with patch.dict(sys.modules, {"keyring": self.keyring_module}):
             response = self.client.delete(
-                "/api/devices/relay/configuration", base_url="https://localhost"
+                "/api/devices/relay/configuration"
             )
         self.assertEqual(response.status_code, 200)
         self.assertFalse((config_dir / "relay.json").exists())
