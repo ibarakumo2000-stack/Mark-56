@@ -35,7 +35,9 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
     peers: dict[tuple[str, str], WebSocket] = {}
     desktop_peers: dict[str, WebSocket] = {}
     desktop_peer_identities: dict[str, dict[str, Any]] = {}
+    desktop_peer_tokens: dict[str, str] = {}
     peer_identities: dict[tuple[str, str], dict[str, Any]] = {}
+    peer_tokens: dict[tuple[str, str], str] = {}
     rate: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
     @app.get("/health")
@@ -69,9 +71,11 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
                 pass
         peers[key] = websocket
         peer_identities[key] = identity
+        peer_tokens[key] = auth[7:]
         if identity["role"] == "desktop":
             desktop_peers[channel_id] = websocket
             desktop_peer_identities[channel_id] = identity
+            desktop_peer_tokens[channel_id] = auth[7:]
         try:
             while True:
                 try:
@@ -122,15 +126,24 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
                         await websocket.send_json({"type": "error", "error": "device_cannot_select_recipient"})
                         continue
                     recipient = desktop_peers.get(channel_id)
-                    recipient_identity = desktop_peer_identities.get(channel_id)
+                    recipient_token = desktop_peer_tokens.get(channel_id)
+                    try:
+                        recipient_identity = db.authenticate(recipient_token) if recipient_token else None
+                    except RelayAuthError:
+                        recipient_identity = None
                     outbound = {"type": message_type, "device_id": principal_id, "payload": envelope["payload"]}
                 else:
                     target = envelope["target_device_id"]
                     if not isinstance(target, str) or not target or len(target) > 80:
                         await websocket.send_json({"type": "error", "error": "target_device_required"})
                         continue
-                    recipient = peers.get((channel_id, target))
-                    recipient_identity = peer_identities.get((channel_id, target))
+                    recipient_key = (channel_id, target)
+                    recipient = peers.get(recipient_key)
+                    recipient_token = peer_tokens.get(recipient_key)
+                    try:
+                        recipient_identity = db.authenticate(recipient_token) if recipient_token else None
+                    except RelayAuthError:
+                        recipient_identity = None
                     outbound = {"type": message_type, "payload": envelope["payload"]}
                 if recipient is None or recipient_identity is None:
                     await websocket.send_json({"type": "error", "error": "peer_offline"})
@@ -154,15 +167,18 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
             if peers.get(key) is websocket:
                 peers.pop(key, None)
                 peer_identities.pop(key, None)
+                peer_tokens.pop(key, None)
             if identity["role"] == "desktop" and desktop_peers.get(channel_id) is websocket:
                 desktop_peers.pop(channel_id, None)
                 desktop_peer_identities.pop(channel_id, None)
+                desktop_peer_tokens.pop(channel_id, None)
 
     app.state.relay_registry = db
     app.state.relay_peers = peers
     app.state.relay_desktop_peers = desktop_peers
     app.state.relay_desktop_peer_identities = desktop_peer_identities
     app.state.relay_peer_identities = peer_identities
+    app.state.relay_peer_tokens = peer_tokens
     return app
 
 
