@@ -12,8 +12,12 @@ from urllib.parse import quote_plus
 try:
     import pyautogui
     _PYAUTOGUI = True
-except ImportError:
+except Exception as exc:
+    # PyAutoGUI can fail during import when X11/Wayland authorization is missing.
+    # Keep this action discoverable; report the unavailable backend at call time.
+    pyautogui = None
     _PYAUTOGUI = False
+    _PYAUTOGUI_ERROR = f"{type(exc).__name__}: {exc}"
 
 try:
     import numpy as np
