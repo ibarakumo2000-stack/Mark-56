@@ -475,22 +475,49 @@ def call(contents, tier: str = FAST, config=None,
     stayed hidden.
     """
     # An explicitly enabled local model is authoritative: route to Ollama
-    # before reading cloud-provider settings or requiring any API key. If the
-    # local request fails, do not silently fall back to a cloud provider.
+    # before reading cloud-provider settings or requiring any API key. Preserve
+    # text and inline images from Gemini SDK Part objects for local vision.
     try:
         from core import local_model
         if local_model.enabled():
-            try:
-                prompt = contents if isinstance(contents, str) else str(contents)
-                return _Reply(local_model.generate(
-                    prompt, images=None, timeout_ms=timeout_ms
-                ))
-            except Exception as e:
-                print(f"[Local model] one-shot request failed ({type(e).__name__}).")
-                return None
+            items = contents if isinstance(contents, (list, tuple)) else [contents]
+            prompt_parts = []
+            images = []
+            for item in items:
+                if isinstance(item, str):
+                    if item.strip():
+                        prompt_parts.append(item)
+                    continue
+                item_text = getattr(item, "text", None)
+                if isinstance(item_text, str) and item_text.strip():
+                    prompt_parts.append(item_text)
+                blob = getattr(item, "inline_data", None)
+                if blob is not None:
+                    data = getattr(blob, "data", None)
+                    if isinstance(data, bytes):
+                        images.append(data)
+                    elif isinstance(data, str):
+                        import base64
+                        try:
+                            images.append(base64.b64decode(data))
+                        except Exception:
+                            pass
+            if isinstance(config, dict):
+                instruction = str(config.get("system_instruction") or "")
+            else:
+                instruction = str(getattr(config, "system_instruction", "") or "")
+            prompt = "\n\n".join(([instruction] if instruction else []) + prompt_parts)
+            return _Reply(local_model.generate(
+                prompt, images=images or None, timeout_ms=timeout_ms
+            ))
     except Exception as e:
-        print(f"[Local model] routing unavailable ({type(e).__name__}).")
-        return None
+        # Explicit offline mode must not silently route private data to the cloud.
+        try:
+            if local_model.enabled():
+                print(f"[Local model] one-shot request failed ({type(e).__name__}); cloud fallback is disabled.")
+                return None
+        except Exception:
+            pass
 
     # Mark 56: allow one-shot side tasks to use OpenAI without changing the
     # Gemini Live voice conversation. Gemini remains the default unless the
