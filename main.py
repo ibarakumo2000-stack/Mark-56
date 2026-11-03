@@ -567,6 +567,10 @@ class JarvisLive:
         self._ptt                  = None    # core.hotkey.PushToTalk
         self._out_level            = 0.0     # level of the audio being played right now
         self._echo                 = EchoGuard()
+        self._barge_in_lock        = threading.Lock()
+        self._barge_in_blocks      = 0
+        self._barge_in_pending     = False
+        self._barge_in_audio       = []
         # `stream.write()` returns when the buffer accepts the audio, not when the
         # speaker has finished with it, so sound is still in the room after the
         # speaking flag drops. Streaming the microphone during that gap is how an
@@ -1351,15 +1355,70 @@ class JarvisLive:
             # the echo of what we are playing right now", sustained long enough
             # that a cough or a keystroke cannot trigger it.
             if jarvis_speaking:
-                # Nothing is streamed while JARVIS talks.
-                #
-                # Interrupting by voice used to live here: `EchoGuard` can pick a
-                # user out from under our own echo, and `core/echo.py` still does
-                # that for the tail below. Re-enabling is small — classify each
-                # block here and call interrupt() after `required_blocks` of
-                # agreement — but it depends on the listener's room, so it stays
-                # out until it can be tried on real hardware.
+                # Classify microphone blocks locally while JARVIS is speaking.
+                # EchoGuard rejects the assistant's own output; sustained positive
+                # blocks are required before speech can interrupt playback.
+                try:
+                    is_user_voice = self._echo.is_user_speech(
+                        indata, SEND_SAMPLE_RATE, _pcm_level(indata)
+                    )
+                    should_interrupt = False
+                    voice_chunks = ()
+                    with self._barge_in_lock:
+                        if is_user_voice:
+                            self._barge_in_blocks += 1
+                            self._barge_in_audio.append(indata.tobytes())
+                            # Keep a short lead-in so the first word is not lost.
+                            max_chunks = max(12, self._echo.required_blocks * 2)
+                            if len(self._barge_in_audio) > max_chunks:
+                                del self._barge_in_audio[:-max_chunks]
+                        else:
+                            self._barge_in_blocks = 0
+                            self._barge_in_audio.clear()
+
+                        if (
+                            self._barge_in_blocks >= self._echo.required_blocks
+                            and not self._barge_in_pending
+                        ):
+                            self._barge_in_pending = True
+                            voice_chunks = tuple(self._barge_in_audio)
+                            should_interrupt = True
+
+                    if should_interrupt:
+                        def _trigger_voice_interrupt():
+                            try:
+                                self.interrupt()
+                                # This callback runs on the asyncio event-loop thread.
+                                if (
+                                    not self.ui.muted
+                                    and not self._phone_active
+                                    and self.out_queue is not None
+                                ):
+                                    for voice_chunk in voice_chunks:
+                                        self.out_queue.put_nowait({
+                                            "data": voice_chunk,
+                                            "mime_type": "audio/pcm",
+                                        })
+                            except Exception as exc:
+                                print(f"[JARVIS] Voice interrupt failed: {exc}")
+                            finally:
+                                with self._barge_in_lock:
+                                    self._barge_in_blocks = 0
+                                    self._barge_in_pending = False
+                                    self._barge_in_audio.clear()
+
+                        loop.call_soon_threadsafe(_trigger_voice_interrupt)
+                except Exception as exc:
+                    with self._barge_in_lock:
+                        self._barge_in_blocks = 0
+                        self._barge_in_audio.clear()
+                    print(f"[JARVIS] Voice detection unavailable: {exc}")
                 return
+
+            with self._barge_in_lock:
+                if not self._barge_in_pending:
+                    self._barge_in_blocks = 0
+                    self._barge_in_audio.clear()
 
             # ── Echo tail ────────────────────────────────────────────────────
             # The speaking flag has dropped but the speakers have not finished.
