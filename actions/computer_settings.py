@@ -791,8 +791,9 @@ def computer_settings(
     player=None,
     session_memory=None,
 ) -> str:
-    if not _PYAUTOGUI:
-        return "pyautogui is not installed. Run: pip install pyautogui"
+    if not _PYAUTOGUI and _OS == "Windows":
+        detail = f" ({_PYAUTOGUI_ERROR})" if _PYAUTOGUI_ERROR else ""
+        return "Windows desktop input is unavailable. Repair PyAutoGUI/display access" + detail + "."
 
     params      = parameters or {}
     raw_action  = params.get("action", "").strip()
