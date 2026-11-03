@@ -63,6 +63,31 @@ class LocalModelTests(unittest.TestCase):
         self.assertEqual(response.text, "offline answer")
         generate.assert_called_once_with("hello", images=None, timeout_ms=5000)
 
+    def test_one_shot_gemini_router_preserves_inline_image_parts(self):
+        from types import SimpleNamespace
+        from core import gemini
+
+        text_part = SimpleNamespace(text="Describe this screen", inline_data=None)
+        image_part = SimpleNamespace(
+            text=None,
+            inline_data=SimpleNamespace(data=b"png-bytes"),
+        )
+        config = SimpleNamespace(system_instruction="Be concise.")
+
+        with patch.object(local_model, "enabled", return_value=True), patch.object(
+            local_model, "generate", return_value="offline vision result"
+        ) as generate:
+            response = gemini.call(
+                [text_part, image_part], config=config, timeout_ms=5000
+            )
+
+        self.assertEqual(response.text, "offline vision result")
+        generate.assert_called_once_with(
+            "Be concise.\\n\\nDescribe this screen",
+            images=[b"png-bytes"],
+            timeout_ms=5000,
+        )
+
     def test_image_uses_vision_model_and_base64(self):
         response = MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps(
