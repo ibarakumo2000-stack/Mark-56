@@ -63,6 +63,17 @@ class LocalModelTests(unittest.TestCase):
         self.assertEqual(response.text, "offline answer")
         generate.assert_called_once_with("hello", images=None, timeout_ms=5000)
 
+    def test_one_shot_local_model_failure_never_falls_back_to_cloud(self):
+        from core import gemini
+
+        with patch.object(local_model, "enabled", return_value=True), patch.object(
+            local_model, "generate", side_effect=RuntimeError("local model unavailable")
+        ), patch.object(gemini, "client") as cloud_client:
+            response = gemini.call("private offline request", timeout_ms=5000)
+
+        self.assertIsNone(response)
+        cloud_client.assert_not_called()
+
     def test_one_shot_gemini_router_preserves_inline_image_parts(self):
         from types import SimpleNamespace
         from core import gemini
