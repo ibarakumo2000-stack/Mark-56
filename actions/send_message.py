@@ -9,8 +9,12 @@ try:
     pyautogui.FAILSAFE = True
     pyautogui.PAUSE    = 0.06
     _PYAUTOGUI = True
-except ImportError:
+except Exception as exc:
+    # PyAutoGUI can fail during import when X11/Wayland authorization is missing.
+    # Keep this action discoverable; report the unavailable backend at call time.
+    pyautogui = None
     _PYAUTOGUI = False
+    _PYAUTOGUI_ERROR = f"{type(exc).__name__}: {exc}"
 
 try:
     import pyperclip
@@ -35,7 +39,8 @@ def _get_os() -> str:
 
 def _require_pyautogui():
     if not _PYAUTOGUI:
-        raise RuntimeError("PyAutoGUI not installed. Run: pip install pyautogui")
+        detail = f" ({_PYAUTOGUI_ERROR})" if _PYAUTOGUI_ERROR else ""
+        raise RuntimeError("Desktop input backend is unavailable. Start JARVIS in an authorized graphical desktop session" + detail + ".")
 
 
 def _paste_text(text: str) -> None:
@@ -288,7 +293,8 @@ def send_message(
     if not message_text:
         return "Please specify the message content."
     if not _PYAUTOGUI:
-        return "PyAutoGUI is not installed — cannot control the desktop."
+        detail = f" ({_PYAUTOGUI_ERROR})" if _PYAUTOGUI_ERROR else ""
+        return "Desktop input is unavailable in this session; the message was not sent" + detail + "."
 
     preview = message_text[:50] + ("…" if len(message_text) > 50 else "")
     print(f"[SendMessage] 📨 {platform} → {receiver}: {preview}")
