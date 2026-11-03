@@ -6,7 +6,7 @@ parameter, the same pattern plane_radar.py uses for scan/set_home.
 Requires _mail_core.py (shared library, not a plugin itself) alongside this
 file, and a connected account — see README.md / _mail_oauth_setup.py.
 """
-import _mail_core as core
+from plugins import _mail_core as core
 
 PLUGIN = {
     "name": "mail_manager",
