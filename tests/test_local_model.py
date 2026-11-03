@@ -83,7 +83,7 @@ class LocalModelTests(unittest.TestCase):
 
         self.assertEqual(response.text, "offline vision result")
         generate.assert_called_once_with(
-            "Be concise.\\n\\nDescribe this screen",
+            "Be concise.\n\nDescribe this screen",
             images=[b"png-bytes"],
             timeout_ms=5000,
         )
