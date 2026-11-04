@@ -16,7 +16,7 @@ from relay.desktop_bridge import DesktopRelayBridge
 
 
 class DesktopRelayRuntime:
-    def __init__(self, *, event_limit: int = 100):
+    def __init__(self, *, event_limit: int = 100, on_event=None):
         self._event_limit = max(1, min(int(event_limit), 500))
         self._events: deque[dict[str, Any]] = deque(maxlen=self._event_limit)
         self._events_lock = threading.Lock()
@@ -39,6 +39,17 @@ class DesktopRelayRuntime:
         }
         with self._events_lock:
             self._events.append(event)
+
+        # Forward only the safe metadata projection to the application. The
+        # remote payload (which may contain private text/media or commands) is
+        # deliberately not passed to the UI callback or persisted here.
+        callback = self._on_event
+        if callback is not None:
+            try:
+                callback(dict(event))
+            except Exception:
+                # A UI/host callback must never terminate the relay receive loop.
+                pass
 
         # The only automatic response is a harmless reachability pong. The
         # transport never executes remote actions or forwards arbitrary commands.
