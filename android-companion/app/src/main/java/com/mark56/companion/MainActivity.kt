@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.rgb(89, 224, 255))
         }
         status = TextView(this).apply {
-            text = if (tokenStore.read() == null) "Not paired yet\nConnect securely to your JARVIS desktop."
+            text = if (tokenStore.read() == null) "Not paired yet\nConnect your phone and JARVIS computer to the same Wi-Fi, then scan the desktop QR code."
             else "Credential stored securely\nYour phone is paired with JARVIS."
             textSize = 15f
             setTextColor(Color.WHITE)
@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 scanner.launch(
                     ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                        .setPrompt("Scan the secure pairing QR displayed by JARVIS")
+                        .setPrompt("On the same Wi-Fi as your JARVIS computer, scan its one-time pairing QR")
                         .setBeepEnabled(false).setOrientationLocked(false)
                 )
             }
@@ -162,9 +162,9 @@ class MainActivity : AppCompatActivity() {
             addView(wearBridgeButton, matchWidth())
         }
         val remoteCard = card().apply {
-            addView(sectionHeader("REMOTE CONNECTION"))
+            addView(sectionHeader("OPTIONAL REMOTE CONNECTION"))
             addView(TextView(this@MainActivity).apply {
-                text = "Connect to an owner-managed JARVIS relay when your phone is away from the desktop's trusted network."
+                text = "Not needed for normal same-Wi-Fi pairing. Configure an owner-managed relay only if you want to connect while away from your JARVIS computer; a hosted relay may have a cost."
                 textSize = 12f
                 setTextColor(Color.rgb(155, 176, 203))
                 setPadding(0, dp(5), 0, dp(12))
