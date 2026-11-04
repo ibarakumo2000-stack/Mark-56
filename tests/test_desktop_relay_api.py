@@ -53,6 +53,31 @@ class DesktopRelayApiTests(unittest.TestCase):
         self.registry.close()
         self.temp.cleanup()
 
+    def test_dashboard_dispatches_safe_relay_metadata_to_bound_handler(self):
+        from dashboard.server import DashboardServer
+
+        server = DashboardServer.__new__(DashboardServer)
+        received = []
+        server.set_relay_event_callback(received.append)
+        event = {
+            "received_at": 123,
+            "type": "notification",
+            "device_id": "phone-1",
+        }
+        server._dispatch_relay_event(event)
+        self.assertEqual(received, [event])
+
+    def test_dashboard_callback_failure_does_not_escape_dispatcher(self):
+        from dashboard.server import DashboardServer
+
+        server = DashboardServer.__new__(DashboardServer)
+
+        def broken(_event):
+            raise RuntimeError("simulated UI failure")
+
+        server.set_relay_event_callback(broken)
+        server._dispatch_relay_event({"type": "notification", "device_id": "phone-1"})
+
     def test_configuration_stores_token_in_keyring_and_never_returns_it(self):
         channel = "1b2d2d52-8d75-4b56-8b8a-8f0c0d7e4f11"
         principal = "desktop-owner"
