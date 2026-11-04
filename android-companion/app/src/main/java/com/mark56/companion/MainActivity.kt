@@ -161,17 +161,6 @@ class MainActivity : AppCompatActivity() {
             addView(mediaControlButton, matchWidth())
             addView(wearBridgeButton, matchWidth())
         }
-        val remoteCard = card().apply {
-            addView(sectionHeader("OPTIONAL REMOTE CONNECTION"))
-            addView(TextView(this@MainActivity).apply {
-                text = "Not needed for normal same-Wi-Fi pairing. Configure an owner-managed relay only if you want to connect while away from your JARVIS computer; a hosted relay may have a cost."
-                textSize = 12f
-                setTextColor(Color.rgb(155, 176, 203))
-                setPadding(0, dp(5), 0, dp(12))
-            })
-            addView(remoteRelayButton, matchWidth())
-            addView(remotePingButton, matchWidth())
-        }
         val disconnect = actionButton("DISCONNECT THIS DEVICE", false).apply {
             setOnClickListener {
                 BatterySync.disable(this@MainActivity)
@@ -195,7 +184,6 @@ class MainActivity : AppCompatActivity() {
         root.addView(pair, matchWidth())
         root.addView(featuresCard, matchWidth())
         root.addView(capabilitiesCard, matchWidth())
-        root.addView(remoteCard, matchWidth())
         root.addView(disconnect, matchWidth())
         root.addView(TextView(this).apply {
             text = "MARK 56  /  COMPANION"
