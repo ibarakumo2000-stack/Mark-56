@@ -75,3 +75,31 @@ Other historical phase branches (Android phases 2–7, wearable adapters, websit
 ## Acceptance status — not inferred from CI
 
 Automated workflows can prove build/test steps passed on their runners. They cannot prove the user's physical Android phone can scan and pair with the desktop, that a real Wear OS watch reconnects, or that a smart-glasses adapter works with a specific vendor device. Keep these as explicit manual acceptance checks and report them separately from CI status.
+
+## Update — 2026-11-04
+
+**Current main:** `74baa39563b08f38494011e31ad2d1373d72c215`  
+**Merged:** PR #64 — unified desktop device-pairing callback, resilient PyAutoGUI action discovery, and mail helper package import.
+
+The missing desktop **PAIR PHONE / DEVICE** callback is now wired in the canonical
+`main.py` to the existing authenticated dashboard's `/devices` route. The
+dashboard already mounted the device gateway, companion HTTPS listener,
+one-time pairing offers, scoped device registry, Wear OS bridge, glasses
+adapter contract, and relay configuration endpoints; those components remain
+in the same canonical repository. CI for PR #64 passed Python 3.12/3.13
+tests, the Android debug build, package preflight, and four platform recovery
+checks before merge.
+
+The next dependency-ordered gap is relay event delivery into the running
+desktop application. The relay connector previously buffered event metadata
+for the dashboard API but had no callback into JARVIS's desktop UI. This is
+being completed as a focused follow-up: metadata-only event delivery, visible
+desktop review, no automatic execution of remote command events. Physical
+relay deployment and cross-network device acceptance remain operator tests.
+
+The historical PR #30 remains overlapping with device gateway routes already
+on `main`; do not merge it wholesale. PR #21 remains a divergent screen-vision
+snapshot; extract only verified, missing behavior after current screen capture
+and Wayland portal behavior are separately tested. PR #1/#2 remain unsuitable
+for wholesale merge because of their old branch ancestry and overlap with the
+current canonical tree.
