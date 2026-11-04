@@ -134,5 +134,5 @@ being simulated.
 - [x] Add a tag-based signed phone/watch release workflow with secret validation, APK signature verification, shared-certificate check, and SHA-256 checksums.
 - [ ] Configure owner-managed Android signing secrets and publish a signed release.
 - [ ] Deploy relay to an owner-controlled host and complete cross-network end-to-end security tests.
-- [ ] Connect authenticated relay events to the desktop assistant's application-owned action/notification handlers; no remote command is auto-executed by the transport layer.
+- [x] Deliver authenticated relay event metadata to the desktop-owned notification UI; private payloads are excluded and remote command events require local owner review.
 - [ ] Add vendor-specific glasses SDKs after the target models and SDK access are selected; validate on physical glasses.

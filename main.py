@@ -2095,6 +2095,45 @@ class JarvisLive:
         self.ui.write_log("SYS: Phone connected via Remote Dashboard.")
         self.ui.notify_phone_connected()
 
+    def _on_relay_event(self, event: dict) -> None:
+        """Surface relay event metadata without executing remote commands.
+
+        The relay runtime deliberately strips message payloads before calling
+        this method. Remote command events are reported for owner review only.
+        """
+        if not isinstance(event, dict):
+            return
+        event_type = event.get("type")
+        labels = {
+            "command": "Remote command request",
+            "notification": "Remote notification",
+            "media": "Media event",
+            "battery": "Battery update",
+            "display": "Display event",
+            "voice": "Voice event",
+            "camera": "Camera event",
+        }
+        label = labels.get(event_type)
+        if label is None:
+            return
+        raw_device_id = event.get("device_id", "")
+        safe_device_id = "".join(
+            ch for ch in str(raw_device_id)
+            if ch.isalnum() or ch in "-_."
+        )[:80] or "unknown device"
+        if event_type == "command":
+            detail = (
+                f"{label} received from {safe_device_id}. "
+                "Nothing was executed; review and approve any action locally."
+            )
+        else:
+            detail = (
+                f"{label} received from {safe_device_id}. "
+                "Message content was not copied into the desktop log."
+            )
+        self.ui.write_log(f"SYS: Secure relay — {detail}")
+        self.ui.show_content("SECURE DEVICE EVENT", detail)
+
     # ── dashboard command relay ─────────────────────────────────────────────
 
     async def _process_dashboard_commands(self) -> None:
@@ -2159,6 +2198,7 @@ class JarvisLive:
             from dashboard.server import DashboardServer
             self._dashboard = DashboardServer()
             self._dashboard.set_connect_callback(self._on_phone_connected)
+            self._dashboard.set_relay_event_callback(self._on_relay_event)
             asyncio.create_task(self._dashboard.serve())
             # Runs for the whole lifetime, not just inside an active session
             asyncio.create_task(self._process_dashboard_commands())

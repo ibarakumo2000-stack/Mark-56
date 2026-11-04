@@ -68,7 +68,17 @@ stopped explicitly.
 
 The relay service, credential registry, provisioning CLI, Docker/Caddy
 deployment, desktop connector, and Android WebSocket client are implemented.
-Deployment to an owner-controlled host, desktop application callback wiring,
-and cross-network end-to-end testing still require operator configuration and
-acceptance testing. Do not call the relay production-live until those steps
-have been completed.
+Authenticated incoming events now reach the desktop application's
+metadata-only event callback and appear in the desktop event panel. The relay
+runtime sends only event type, device ID, and receive timestamp to that
+callback; payload contents, tokens, audio, and image data are not forwarded to
+the desktop UI through this path.
+
+Remote `command` events are surfaced as requests for owner review. They are
+not translated into assistant prompts or executed automatically. The only
+automatic command response remains the fixed `assistant.ping` → 
+`assistant.pong` reachability check.
+
+Deployment to an owner-controlled host and cross-network end-to-end testing
+still require operator configuration and physical-device acceptance. Do not
+call the relay production-live until those steps have been completed.

@@ -47,6 +47,28 @@ class UnifiedRuntimeWiringTests(unittest.TestCase):
             "plugins package so dynamic plugin discovery can resolve it.",
         )
 
+    def test_relay_events_reach_desktop_ui_without_auto_execution(self):
+        source = (ROOT / "main.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        jarvis = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "JarvisLive"
+        )
+        handler = next(
+            node for node in jarvis.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_on_relay_event"
+        )
+        handler_source = ast.get_source_segment(source, handler) or ""
+        self.assertIn(
+            "self._dashboard.set_relay_event_callback(self._on_relay_event)",
+            source,
+        )
+        self.assertIn("self.ui.show_content", handler_source)
+        self.assertIn("Nothing was executed", handler_source)
+        self.assertNotIn("send_client_content", handler_source)
+        self.assertNotIn("_execute_tool", handler_source)
+
     def test_gui_actions_remain_discoverable_without_x11_authorization(self):
         from core.action_loader import discover_actions
 

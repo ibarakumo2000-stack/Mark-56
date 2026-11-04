@@ -53,6 +53,31 @@ class DesktopRelayApiTests(unittest.TestCase):
         self.registry.close()
         self.temp.cleanup()
 
+    def test_dashboard_dispatches_safe_relay_metadata_to_bound_handler(self):
+        from dashboard.server import DashboardServer
+
+        server = DashboardServer.__new__(DashboardServer)
+        received = []
+        server.set_relay_event_callback(received.append)
+        event = {
+            "received_at": 123,
+            "type": "notification",
+            "device_id": "phone-1",
+        }
+        server._dispatch_relay_event(event)
+        self.assertEqual(received, [event])
+
+    def test_dashboard_callback_failure_does_not_escape_dispatcher(self):
+        from dashboard.server import DashboardServer
+
+        server = DashboardServer.__new__(DashboardServer)
+
+        def broken(_event):
+            raise RuntimeError("simulated UI failure")
+
+        server.set_relay_event_callback(broken)
+        server._dispatch_relay_event({"type": "notification", "device_id": "phone-1"})
+
     def test_configuration_stores_token_in_keyring_and_never_returns_it(self):
         channel = "1b2d2d52-8d75-4b56-8b8a-8f0c0d7e4f11"
         principal = "desktop-owner"
@@ -109,6 +134,68 @@ class DesktopRelayApiTests(unittest.TestCase):
                 },
             )
         self.assertEqual(response.status_code, 503)
+
+    def test_relay_runtime_forwards_metadata_to_application_callback(self):
+        channel = "1b2d2d52-8d75-4b56-8b8a-8f0c0d7e4f11"
+        principal = "desktop-owner"
+        token = "rly_" + "e" * 56
+        config_dir = self.home / ".jarvis"
+        config_dir.mkdir(exist_ok=True)
+        (config_dir / "relay.json").write_text(json.dumps({
+            "endpoint": "https://relay.example.com",
+            "channel_id": channel,
+            "principal_id": principal,
+        }), encoding="utf-8")
+        self.keyring.set_password("mark56-relay", f"{channel}:{principal}", token)
+
+        class FakeRelayRuntime:
+            instances = []
+
+            def __init__(self, *, on_event=None):
+                self.on_event = on_event
+                self.__class__.instances.append(self)
+
+            def start(self, **_kwargs):
+                return "connected"
+
+            def status(self):
+                return "connected"
+
+            def stop(self):
+                return "stopped"
+
+        received = []
+        from dashboard.device_api import build_device_router
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        with patch("dashboard.device_api.Path.home", return_value=self.home):
+            router = build_device_router(
+                self.registry, owner_auth=lambda _request: True,
+                on_relay_event=received.append,
+            )
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app, base_url="https://localhost")
+        try:
+            with (
+                patch.dict(sys.modules, {"keyring": self.keyring_module}),
+                patch("relay.desktop_runtime.DesktopRelayRuntime", FakeRelayRuntime),
+            ):
+                response = client.post("/api/devices/relay/start")
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertTrue(response.json()["ok"])
+            self.assertEqual(len(FakeRelayRuntime.instances), 1)
+            self.assertTrue(callable(FakeRelayRuntime.instances[0].on_event))
+            FakeRelayRuntime.instances[0].on_event({
+                "type": "notification", "device_id": "phone-1",
+                "received_at": 123,
+            })
+            self.assertEqual(received, [{
+                "type": "notification", "device_id": "phone-1",
+                "received_at": 123,
+            }])
+        finally:
+            client.close()
 
     def test_forget_removes_saved_configuration_and_keyring_credential(self):
         channel = "1b2d2d52-8d75-4b56-8b8a-8f0c0d7e4f11"
