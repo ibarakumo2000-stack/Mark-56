@@ -7,6 +7,8 @@ import ipaddress
 import io
 import json
 import socket
+import ssl
+import hashlib
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -42,7 +44,10 @@ def _usable_private_ipv4(value: str) -> bool:
 def _discover_private_lan_ipv4() -> str | None:
     """Find a private LAN IPv4 address without depending on internet access."""
     for probe in ("192.168.1.1", "10.0.0.1", "172.16.0.1"):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        except OSError:
+            continue
         try:
             sock.settimeout(0.5)
             sock.connect((probe, 9))
