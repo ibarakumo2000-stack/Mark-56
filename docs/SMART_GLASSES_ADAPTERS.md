@@ -46,3 +46,25 @@ No Meta, XREAL, Vuzix, Ray-Ban or other manufacturer SDK is bundled. A real
 vendor adapter requires the exact target model, developer SDK access/licensing,
 and a physical device for display/camera/audio acceptance testing. Unsupported
 features are reported as unavailable rather than simulated.
+
+
+## Installing the supported BLE transport
+
+The JARVIS GATT display adapter uses the `bleak` Python package. It is part of
+normal Mark 56 installs so the Devices page does not silently lack the BLE
+transport on a fresh setup. On Linux, Bluetooth must also be enabled in the OS
+and the BlueZ service must be running; the user account needs permission to use
+D-Bus Bluetooth. A missing adapter or unavailable BlueZ service is reported as
+an unavailable scan, not as a successful connection. The desktop's Bluetooth
+hardware must support BLE central mode.
+
+Install or repair the runtime dependencies with:
+
+```bash
+python -m pip install -r requirements.txt
+sudo systemctl enable --now bluetooth
+```
+
+The scan only discovers devices advertising the JARVIS service UUID above.
+Retail glasses that do not implement this profile still need their own vendor
+SDK adapter; installing Bleak does not add undocumented vendor compatibility.
