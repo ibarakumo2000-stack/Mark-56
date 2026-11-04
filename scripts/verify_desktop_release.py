@@ -108,7 +108,7 @@ def verify_checksum_manifest(text: str, *, package_name: str, actual_sha256: str
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) != 1:
         fail("platform checksum manifest must contain exactly one package entry")
-    match = re.fullmatch(r"([0-9a-fA-F]{64})\\s+\\*?(.+)", lines[0])
+    match = re.fullmatch(r"([0-9a-fA-F]{64})\s+\*?(.+)", lines[0])
     if not match:
         fail("platform checksum manifest has an invalid sha256sum entry")
     manifest_digest, manifest_name = match.groups()
