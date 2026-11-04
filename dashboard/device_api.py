@@ -39,6 +39,7 @@ def build_device_router(
     registry: DeviceRegistry,
     *,
     owner_auth: Callable[[Request], bool],
+    on_relay_event: Callable[[dict], None] | None = None,
 ) -> APIRouter:
     """Create owner-only device management routes.
 
@@ -658,7 +659,7 @@ def build_device_router(
                 return JSONResponse({"error": "Relay credential is missing from the operating-system keyring. Configure the relay again."}, status_code=409)
             if relay_runtime is None:
                 from relay.desktop_runtime import DesktopRelayRuntime
-                relay_runtime = DesktopRelayRuntime()
+                relay_runtime = DesktopRelayRuntime(on_event=on_relay_event)
             state = relay_runtime.start(
                 base_url=config["endpoint"], channel_id=config["channel_id"],
                 principal_id=config["principal_id"], token=token,
