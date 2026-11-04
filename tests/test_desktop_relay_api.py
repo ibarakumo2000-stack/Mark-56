@@ -124,8 +124,11 @@ class DesktopRelayApiTests(unittest.TestCase):
         self.keyring.set_password("mark56-relay", f"{channel}:{principal}", token)
 
         class FakeRelayRuntime:
+            instances = []
+
             def __init__(self, *, on_event=None):
                 self.on_event = on_event
+                self.__class__.instances.append(self)
 
             def start(self, **_kwargs):
                 return "connected"
@@ -137,8 +140,6 @@ class DesktopRelayApiTests(unittest.TestCase):
                 return "stopped"
 
         received = []
-        # Rebuild a router with the desktop application's callback, mirroring
-        # DashboardServer._dispatch_relay_event's stable callback contract.
         from dashboard.device_api import build_device_router
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
@@ -157,10 +158,16 @@ class DesktopRelayApiTests(unittest.TestCase):
                 response = client.post("/api/devices/relay/start")
             self.assertEqual(response.status_code, 200, response.text)
             self.assertTrue(response.json()["ok"])
-            # The callback is captured by the fake runtime instance created
-            # inside the authenticated start route.
-            runtime = router.routes  # ensure route dispatch completed
-            self.assertEqual(received, [])
+            self.assertEqual(len(FakeRelayRuntime.instances), 1)
+            self.assertTrue(callable(FakeRelayRuntime.instances[0].on_event))
+            FakeRelayRuntime.instances[0].on_event({
+                "type": "notification", "device_id": "phone-1",
+                "received_at": 123,
+            })
+            self.assertEqual(received, [{
+                "type": "notification", "device_id": "phone-1",
+                "received_at": 123,
+            }])
         finally:
             client.close()
 
