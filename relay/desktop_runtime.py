@@ -18,6 +18,7 @@ from relay.desktop_bridge import DesktopRelayBridge
 class DesktopRelayRuntime:
     def __init__(self, *, event_limit: int = 100, on_event=None):
         self._event_limit = max(1, min(int(event_limit), 500))
+        self._on_event = on_event if callable(on_event) else None
         self._events: deque[dict[str, Any]] = deque(maxlen=self._event_limit)
         self._events_lock = threading.Lock()
         self._state_lock = threading.Lock()
