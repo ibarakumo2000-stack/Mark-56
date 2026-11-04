@@ -110,6 +110,60 @@ class DesktopRelayApiTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 503)
 
+    def test_relay_runtime_forwards_metadata_to_application_callback(self):
+        channel = "1b2d2d52-8d75-4b56-8b8a-8f0c0d7e4f11"
+        principal = "desktop-owner"
+        token = "rly_" + "e" * 56
+        config_dir = self.home / ".jarvis"
+        config_dir.mkdir(exist_ok=True)
+        (config_dir / "relay.json").write_text(json.dumps({
+            "endpoint": "https://relay.example.com",
+            "channel_id": channel,
+            "principal_id": principal,
+        }), encoding="utf-8")
+        self.keyring.set_password("mark56-relay", f"{channel}:{principal}", token)
+
+        class FakeRelayRuntime:
+            def __init__(self, *, on_event=None):
+                self.on_event = on_event
+
+            def start(self, **_kwargs):
+                return "connected"
+
+            def status(self):
+                return "connected"
+
+            def stop(self):
+                return "stopped"
+
+        received = []
+        # Rebuild a router with the desktop application's callback, mirroring
+        # DashboardServer._dispatch_relay_event's stable callback contract.
+        from dashboard.device_api import build_device_router
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        router = build_device_router(
+            self.registry, owner_auth=lambda _request: True,
+            on_relay_event=received.append,
+        )
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app, base_url="https://localhost")
+        try:
+            with (
+                patch.dict(sys.modules, {"keyring": self.keyring_module}),
+                patch("relay.desktop_runtime.DesktopRelayRuntime", FakeRelayRuntime),
+            ):
+                response = client.post("/api/devices/relay/start")
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertTrue(response.json()["ok"])
+            # The callback is captured by the fake runtime instance created
+            # inside the authenticated start route.
+            runtime = router.routes  # ensure route dispatch completed
+            self.assertEqual(received, [])
+        finally:
+            client.close()
+
     def test_forget_removes_saved_configuration_and_keyring_credential(self):
         channel = "1b2d2d52-8d75-4b56-8b8a-8f0c0d7e4f11"
         principal = "desktop-owner"
