@@ -16,6 +16,23 @@ class DesktopRelayRuntimeTests(unittest.TestCase):
         self.assertEqual(events[0]["device_id"], "phone-1")
         self.assertNotIn("payload", events[0])
 
+    def test_application_callback_receives_only_safe_event_metadata(self):
+        received = []
+        runtime = DesktopRelayRuntime(on_event=received.append)
+        runtime._record_message({
+            "type": "notification",
+            "device_id": "phone-1",
+            "payload": {"title": "private title", "body": "private message body"},
+        })
+
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0]["type"], "notification")
+        self.assertEqual(received[0]["device_id"], "phone-1")
+        self.assertIn("received_at", received[0])
+        self.assertNotIn("payload", received[0])
+        self.assertNotIn("private title", repr(received[0]))
+        self.assertNotIn("private message body", repr(received[0]))
+
     def test_event_queue_is_bounded(self):
         runtime = DesktopRelayRuntime(event_limit=2)
         for index in range(4):
