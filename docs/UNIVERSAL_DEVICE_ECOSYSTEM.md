@@ -39,8 +39,8 @@ registry. It intentionally has no vendor SDK imports.
 3. The user opens the JARVIS Android app and scans the QR code or enters the
    code in **Devices → Add device**.
 4. The phone presents its device type, platform, and requested permissions.
-5. The desktop displays the device and permission request for explicit owner
-   approval. The code must represent only the approved scopes.
+5. The desktop owner selects the requested scopes before creating the QR. The
+   one-time pairing offer is constrained to those approved scopes.
 6. The gateway redeems the code once, issues a random device token, stores only
    its SHA-256 hash, and returns the token to the companion once.
 7. The owner can inspect or revoke each paired device.
@@ -126,7 +126,7 @@ being simulated.
 - [x] Add TLS-gated pairing offers, one-time enrollment, authenticated device
       listing, per-device revocation, and device identity endpoints.
 - [x] Add owner-only per-device permission editing and authenticated Android companion routes.
-- [x] Add a desktop Devices panel with QR and manual pairing code, bridge lifecycle, status, media queue controls, and revocation.
+- [x] Add a desktop Devices panel with QR and manual pairing code, bridge lifecycle, status, media queue controls, and revocation.\n- [x] Make same-Wi-Fi QR pairing the primary, no-VPS path; label remote relay as optional and required only for out-of-network access.
 - [x] Upgrade the phone companion UI with a branded splash screen, Material 3 feature cards, edge-to-edge layout, explicit permission recovery, and safe disconnect cleanup.
 - [x] Add a separate Wear OS app, reachable-phone discovery, strict action allowlist, phone Data Layer bridge, and rate-limited desktop forwarding.
 - [x] Add a vendor-neutral smart-glasses contract, revocation-aware session cleanup, and a reference BLE display adapter for the documented JARVIS GATT profile.

@@ -28,10 +28,10 @@ dialog{width:min(520px,calc(100vw - 32px));border:1px solid var(--line);border-r
 <body>
 <header><div class="brand"><span>J</span>ARVIS</div><a class="back" href="/">← Dashboard</a><div style="flex:1"></div><span class="status" id="service-status"><i class="dot"></i><span>Checking bridge…</span></span></header>
 <div class="wrap">
-<h1>Connected devices</h1><p class="sub">Pair phones, watches and glasses through scoped, revocable device identities. Only capabilities approved here are enabled.</p>
+<h1>Connected devices</h1><p class="sub">Local-first pairing is free: connect your phone, watch or supported glasses on the same Wi-Fi as this computer. Each device receives its own scoped identity and can be revoked.</p>
 <div class="grid">
 <section class="panel">
-<h2>Secure companion bridge</h2><p class="hint">The listener binds only to this computer’s private LAN address and requires the dashboard TLS certificate. It stays off until you start it.</p>
+<h2>Local companion bridge · Same Wi-Fi</h2><p class="hint">Start this private-LAN bridge, create a one-time QR code below, then scan it in the JARVIS Android app while your phone is on the same Wi-Fi. The bridge binds to this computer’s private address, uses TLS, and does not require a VPS or remote relay.</p>
 <div class="actions"><button class="btn primary" id="start">Start secure bridge</button><button class="btn danger" id="stop" disabled>Stop bridge</button></div>
 <p class="hint" id="endpoint" style="margin:14px 0 0">Bridge is stopped.</p>
 </section>
@@ -55,7 +55,7 @@ dialog{width:min(520px,calc(100vw - 32px));border:1px solid var(--line);border-r
 <div id="glasses-paired" class="device-list" style="margin-top:14px"><div class="empty">No smart glasses paired.</div></div>
 </section>
 <section class="panel" id="pair-device">
-<h2>Pair a new device</h2><p class="hint">Choose the exact permissions to approve. The code expires after five minutes and can be redeemed once.</p>
+<h2>Pair a new device · QR scan</h2><p class="hint">On your Android phone, open JARVIS Companion and scan this QR while both devices share the same Wi-Fi. Choose only the permissions this device needs. The one-time code expires in five minutes and can be redeemed once.</p>
 <div class="scopes" id="scopes">
 <label class="scope"><input type="checkbox" value="notification.receive" checked> Notifications</label>
 <label class="scope"><input type="checkbox" value="battery.read" checked disabled> Battery status (required by Android companion)</label>
