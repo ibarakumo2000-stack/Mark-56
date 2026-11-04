@@ -33,6 +33,13 @@ class PinnedCompanionClient(endpoint: String, fingerprint: String) {
         context.init(null, arrayOf(trust), java.security.SecureRandom())
         return (url.openConnection() as HttpsURLConnection).apply {
             sslSocketFactory = context.socketFactory
+            // The desktop may receive a new private LAN IP after DHCP changes.
+            // Trust is anchored to the SHA-256 certificate pin above, so use
+            // the exact URL host here instead of requiring the self-signed
+            // certificate's original IP SAN to remain unchanged.
+            hostnameVerifier = javax.net.ssl.HostnameVerifier { host, _ ->
+                host.equals(URL(base).host, ignoreCase = true)
+            }
             connectTimeout = 7000; readTimeout = 7000
             requestMethod = "POST"; doOutput = true
             setRequestProperty("Content-Type", "application/json")
