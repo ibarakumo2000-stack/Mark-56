@@ -20,8 +20,12 @@ try:
     pyautogui.FAILSAFE = True
     pyautogui.PAUSE    = 0.05
     _PYAUTOGUI = True
-except ImportError:
+except Exception as exc:
+    # PyAutoGUI can fail during import when X11/Wayland authorization is missing.
+    # Keep this action discoverable; report the unavailable backend at call time.
+    pyautogui = None
     _PYAUTOGUI = False
+    _PYAUTOGUI_ERROR = f"{type(exc).__name__}: {exc}"
 
 try:
     import pyperclip
@@ -77,7 +81,8 @@ def _safe_screenshot_path(requested: str | None) -> Path:
 
 def _require_pyautogui():
     if not _PYAUTOGUI:
-        raise RuntimeError("PyAutoGUI not installed. Run: pip install pyautogui")
+        detail = f" ({_PYAUTOGUI_ERROR})" if _PYAUTOGUI_ERROR else ""
+        raise RuntimeError("Desktop input backend is unavailable. Start JARVIS in an authorized graphical desktop session or repair its input permissions" + detail + ".")
 
 _FIRST_NAMES = [
     "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Drew", "Quinn",

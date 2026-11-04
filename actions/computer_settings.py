@@ -12,8 +12,12 @@ try:
     pyautogui.FAILSAFE = True
     pyautogui.PAUSE    = 0.05
     _PYAUTOGUI = True
-except ImportError:
+except Exception as exc:
+    # PyAutoGUI can fail during import when X11/Wayland authorization is missing.
+    # Keep this action discoverable; report the unavailable backend at call time.
+    pyautogui = None
     _PYAUTOGUI = False
+    _PYAUTOGUI_ERROR = f"{type(exc).__name__}: {exc}"
 
 try:
     import pyperclip
@@ -787,8 +791,9 @@ def computer_settings(
     player=None,
     session_memory=None,
 ) -> str:
-    if not _PYAUTOGUI:
-        return "pyautogui is not installed. Run: pip install pyautogui"
+    if not _PYAUTOGUI and _OS == "Windows":
+        detail = f" ({_PYAUTOGUI_ERROR})" if _PYAUTOGUI_ERROR else ""
+        return "Windows desktop input is unavailable. Repair PyAutoGUI/display access" + detail + "."
 
     params      = parameters or {}
     raw_action  = params.get("action", "").strip()
