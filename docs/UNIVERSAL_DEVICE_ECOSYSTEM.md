@@ -23,8 +23,9 @@ device's own permissions support it.
    supported watches and glasses.
 4. **Adapters** — Android companion transport, Wear OS, watchOS companion
    bridge, Bluetooth LE, and manufacturer-specific glasses SDKs.
-5. **Transport** — local Wi-Fi/Bluetooth when nearby; authenticated TLS
-   connections through a relay when remote.
+5. **Transport** — authenticated TLS over the private local Wi-Fi network for
+   nearby phone pairing; Bluetooth LE for supported nearby glasses. Remote
+   relay transport is disabled in the user-facing setup and is not required.
 
 The first implementation lives in `core/device_gateway.py`. It contains a
 SQLite device registry, short-lived one-use pairing codes, hashed device-token
@@ -88,9 +89,12 @@ being simulated.
 ## Remote connectivity and offline behavior
 
 - Nearby devices may use Bluetooth LE or the same trusted local network.
-- Remote devices connect outward to an authenticated relay over TLS. Do not
-  expose the desktop's control port directly to the public internet.
-- The relay routes only authenticated, scope-authorized messages.
+- The current supported enrollment path is same-Wi-Fi local pairing. The
+  desktop bridge binds to a specific private LAN address and uses TLS with
+  certificate pinning in the Android companion.
+- No VPN, VPS, hosted relay, public desktop port, relay URL, or relay token is
+  required for local pairing. Remote relay support is outside the current
+  local-first release path.
 - If the internet is unavailable but devices share a LAN, local communication
   may continue when the local gateway is running.
 - If the desktop is asleep or offline, desktop-only actions cannot execute.
@@ -120,13 +124,13 @@ being simulated.
 - [x] Add a platform-neutral device registry and adapter contract.
 - [x] Add tests for one-time pairing, permission scopes, token hashing,
       authentication, revocation, and adapter resolution.
-- [ ] Run tests in the user's local Mark 56 development environment.
+- [ ] Run tests in the user's local Mark 56 development environment and complete a physical Android-to-Ubuntu pairing acceptance test.
 - [x] Mount the registry in the existing dashboard using a private per-user
       SQLite database, without replacing legacy remote-control routes.
 - [x] Add TLS-gated pairing offers, one-time enrollment, authenticated device
       listing, per-device revocation, and device identity endpoints.
 - [x] Add owner-only per-device permission editing and authenticated Android companion routes.
-- [x] Add a desktop Devices panel with QR and manual pairing code, bridge lifecycle, status, media queue controls, and revocation.\n- [x] Make same-Wi-Fi QR pairing the primary, no-VPS path; label remote relay as optional and required only for out-of-network access.
+- [x] Add a desktop Devices panel with QR and manual pairing code, bridge lifecycle, status, media queue controls, and revocation.\n- [x] Make same-Wi-Fi QR pairing the supported path; remove remote-relay setup from the desktop and Android pairing screens.
 - [x] Upgrade the phone companion UI with a branded splash screen, Material 3 feature cards, edge-to-edge layout, explicit permission recovery, and safe disconnect cleanup.
 - [x] Add a separate Wear OS app, reachable-phone discovery, strict action allowlist, phone Data Layer bridge, and rate-limited desktop forwarding.
 - [x] Add a vendor-neutral smart-glasses contract, revocation-aware session cleanup, and a reference BLE display adapter for the documented JARVIS GATT profile.
