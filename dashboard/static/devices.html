@@ -12,9 +12,6 @@ header{display:flex;align-items:center;gap:14px;padding:20px max(20px,calc((100v
 h1{font-size:clamp(26px,4vw,38px);margin:0 0 8px;letter-spacing:-.04em}.sub{color:var(--muted);margin:0 0 26px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.panel{background:linear-gradient(145deg,#141d2d,#0e1522);border:1px solid var(--line);border-radius:18px;padding:22px;min-width:0}.wide{grid-column:1/-1}.panel h2{font-size:17px;margin:0 0 7px}.hint{color:var(--muted);font-size:13px;margin:0 0 18px}
 .actions{display:flex;gap:9px;flex-wrap:wrap}
-.relay-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}
-.relay-field{width:100%;min-width:0;border:1px solid #35435c;border-radius:10px;padding:11px 12px;background:#09111f;color:var(--text);font:inherit}
-.relay-field::placeholder{color:#71819a}.relay-events{display:grid;gap:7px;margin-top:12px}.relay-event{padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#0b1220;color:#b8c7dc;font-size:12px}
 .btn{border:1px solid #394761;border-radius:10px;padding:10px 14px;background:#1b2740;color:var(--text);font-weight:650;cursor:pointer}.btn.primary{background:#555bd4;border-color:#6b72ed}.btn.danger{background:#351b27;border-color:#713244;color:#fecdd3}.btn:disabled{opacity:.45;cursor:not-allowed}
 .status{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:99px;padding:5px 10px;color:var(--muted);font-size:12px}.dot{width:7px;height:7px;border-radius:50%;background:#64748b}.status.on{color:var(--green);border-color:#1d594b}.status.on .dot{background:var(--green)}
 .scopes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}.scope{display:flex;gap:8px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:13px}.scope input{margin-top:3px;accent-color:var(--accent)}
@@ -34,19 +31,6 @@ dialog{width:min(520px,calc(100vw - 32px));border:1px solid var(--line);border-r
 <h2>Local companion bridge · Same Wi-Fi</h2><p class="hint">Start this private-LAN bridge, create a one-time QR code below, then scan it in the JARVIS Android app while your phone is on the same Wi-Fi. The bridge binds to this computer’s private address, uses TLS, and does not require a VPS or remote relay.</p>
 <div class="actions"><button class="btn primary" id="start">Start secure bridge</button><button class="btn danger" id="stop" disabled>Stop bridge</button></div>
 <p class="hint" id="endpoint" style="margin:14px 0 0">Bridge is stopped.</p>
-</section>
-<section class="panel wide">
-<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1"><h2>Secure remote relay</h2><p class="hint" style="margin:4px 0 0">Connect this desktop outward to your owner-managed TLS relay. No inbound public desktop control port is opened.</p></div><span class="status" id="relay-status"><i class="dot"></i><span>Not configured</span></span></div>
-<div class="relay-fields">
-<input class="relay-field" id="relay-endpoint" placeholder="Relay HTTPS origin · https://relay.example.com" autocomplete="url">
-<input class="relay-field" id="relay-channel" placeholder="Channel UUID" autocomplete="off">
-<input class="relay-field" id="relay-principal" placeholder="Desktop principal ID" autocomplete="off">
-<input class="relay-field" id="relay-token" type="password" placeholder="Desktop relay token · rly_…" autocomplete="new-password">
-<input class="relay-field" id="relay-target-principal" placeholder="Remote phone principal ID for ping" autocomplete="off">
-</div>
-<div class="actions"><button class="btn" id="relay-save">Save encrypted credentials</button><button class="btn primary" id="relay-start" disabled>Start remote connection</button><button class="btn danger" id="relay-stop" disabled>Stop remote connection</button><button class="btn" id="relay-refresh">Refresh events</button><button class="btn" id="relay-send-ping" disabled>Send ping to phone</button><button class="btn danger" id="relay-forget">Forget credentials</button></div>
-<p class="hint" id="relay-description" style="margin:12px 0 0">Provision a separate desktop principal with least-privilege scopes. The token is stored in the operating-system credential store and is never returned to this page.</p>
-<div class="relay-events" id="relay-events"><div class="empty">No remote events received.</div></div>
 </section>
 <section class="panel wide">
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1"><h2>Smart glasses · BLE</h2><p class="hint" style="margin:4px 0 0">Scan for the documented JARVIS GATT display profile. Generic BLE does not expose camera or microphone access; vendor SDKs remain model-specific.</p></div><button class="btn primary" id="glasses-scan">Scan nearby glasses</button></div>
@@ -96,40 +80,6 @@ function notice(message){$("notice").textContent=message;$("notice").classList.a
 async function api(url,options={}){const response=await fetch(url,{...options,headers:{...headers,...options.headers}});let data={};try{data=await response.json()}catch{}if(!response.ok)throw new Error(data.error||data.detail||("Request failed ("+response.status+")"));return data}
 function setBridge(running,endpoint){bridgeRunning=running;$("service-status").className="status"+(running?" on":"");$("service-status").innerHTML='<i class="dot"></i><span>'+(running?"Bridge running":"Bridge stopped")+'</span>';$("start").disabled=running;$("stop").disabled=!running;$("create").disabled=!running;$("endpoint").textContent=running?"Secure endpoint: "+endpoint:"Bridge is stopped. Start it to enable pairing."}
 async function loadStatus(){try{const s=await api("/api/devices/companion");setBridge(s.running,s.endpoint)}catch(e){notice(e.message)}}
-let relayConfigured=false,relayEventHistory=[];
-function setRelayStatus(state,configured){
- relayConfigured=!!configured;
- $("relay-status").className="status"+(state==="connected"?" on":"");
- $("relay-status").innerHTML='<i class="dot"></i><span>'+String(state||"stopped").replaceAll("_"," ")+'</span>';
- $("relay-start").disabled=!relayConfigured||state==="connected"||state==="connecting";
- $("relay-stop").disabled=state==="stopped";
- $("relay-send-ping").disabled=state!=="connected";
- $("relay-description").textContent=relayConfigured
-  ?"Desktop relay status: "+state+". Credentials are stored in the operating-system keyring; event payloads are not displayed here."
-  :"Provision a separate desktop principal with least-privilege scopes. The token is stored in the operating-system credential store and is never returned to this page.";
-}
-async function loadRelayStatus(){
- try{
-  const r=await api("/api/devices/relay");setRelayStatus(r.status,r.configured);
-  if(r.endpoint&&!$("relay-endpoint").value)$("relay-endpoint").value=r.endpoint;
-  if(r.channel_id&&!$("relay-channel").value)$("relay-channel").value=r.channel_id;
-  if(r.principal_id&&!$("relay-principal").value)$("relay-principal").value=r.principal_id;
- }catch(e){notice(e.message)}
-}
-async function loadRelayEvents(){
- try{
-  const r=await api("/api/devices/relay/events");
-  relayEventHistory=relayEventHistory.concat(r.events||[]).slice(-30);
-  const root=$("relay-events");root.replaceChildren();
-  if(!relayEventHistory.length){const empty=document.createElement("div");empty.className="empty";empty.textContent="No remote events received.";root.append(empty);return}
-  for(const event of relayEventHistory.slice().reverse()){
-   const item=document.createElement("div");item.className="relay-event";
-   item.textContent=new Date(event.received_at*1000).toLocaleTimeString()+" · "+event.type+" · "+event.device_id;
-   root.append(item);
-  }
-}
-catch(e){notice(e.message)}
-}
 async function loadGlasses(){
  const root=$("glasses-paired");
  try{
@@ -184,23 +134,9 @@ $("copy-payload").addEventListener("click",async()=>{try{await navigator.clipboa
 $("refresh").addEventListener("click",loadDevices);
 $("glasses-scan").addEventListener("click",scanGlasses);
 $("glasses-refresh").addEventListener("click",loadGlasses);
-$("relay-save").addEventListener("click",async()=>{
- const endpoint=$("relay-endpoint").value.trim(),channel_id=$("relay-channel").value.trim(),principal_id=$("relay-principal").value.trim(),token=$("relay-token").value.trim();
- if(!token){notice("Enter the one-time desktop relay token");return}
- try{await api("/api/devices/relay/configure",{method:"POST",body:JSON.stringify({endpoint,channel_id,principal_id,token})});$("relay-token").value="";notice("Relay token saved in the operating-system keyring");await loadRelayStatus()}catch(e){notice(e.message)}
-});
-$("relay-start").addEventListener("click",async()=>{try{const r=await api("/api/devices/relay/start",{method:"POST",body:"{}"});notice("Desktop relay: "+r.status);await loadRelayStatus()}catch(e){notice(e.message);await loadRelayStatus()}});
-$("relay-stop").addEventListener("click",async()=>{try{await api("/api/devices/relay/stop",{method:"POST",body:"{}"});notice("Desktop relay stopped");await loadRelayStatus()}catch(e){notice(e.message)}});
-$("relay-refresh").addEventListener("click",loadRelayEvents);
-$("relay-send-ping").addEventListener("click",async()=>{
- const principal_id=$("relay-target-principal").value.trim();
- if(!principal_id){notice("Enter the remote phone principal ID");return}
- try{await api("/api/devices/relay/ping",{method:"POST",body:JSON.stringify({principal_id})});notice("Remote ping sent")}catch(e){notice(e.message)}
-});
-$("relay-forget").addEventListener("click",async()=>{if(!confirm("Stop the relay and delete its saved desktop credential from the operating-system keyring?"))return;try{await api("/api/devices/relay/configuration",{method:"DELETE"});$("relay-token").value="";$("relay-endpoint").value="";$("relay-channel").value="";$("relay-principal").value="";relayEventHistory=[];notice("Relay credentials cleared");await loadRelayStatus();await loadRelayEvents()}catch(e){notice(e.message)}});
 $("refresh-watch").addEventListener("click",async()=>{try{const data=await api("/api/devices/wearable-commands");const root=$("watch-activity");root.replaceChildren();if(!data.commands.length){root.className="empty";root.textContent="No pending watch actions.";return}root.className="device-list";for(const item of data.commands){const row=document.createElement("div");row.className="device";const label=document.createElement("strong");label.textContent=item.action;const meta=document.createElement("div");meta.className="meta";meta.textContent="Source: "+item.source+" · Device: "+item.device_id+" · "+new Date(item.received_at*1000).toLocaleString();row.append(label,meta);root.append(row)}}catch(e){notice(e.message)}});
 $("cancel-permissions").addEventListener("click",()=>$("permission-dialog").close());
 $("save-permissions").addEventListener("click",async()=>{if(!editingDevice)return;const scopes=[...document.querySelectorAll("#permission-options input:checked")].map(x=>x.value);try{await api("/api/devices/"+encodeURIComponent(editingDevice.device_id)+"/scopes",{method:"PUT",body:JSON.stringify({scopes})});$("permission-dialog").close();notice("Device permissions updated");await loadDevices()}catch(e){notice(e.message)}});
-loadStatus();loadDevices();loadGlasses();loadRelayStatus();loadRelayEvents();setInterval(loadDevices,15000);setInterval(loadGlasses,15000);setInterval(loadRelayStatus,5000);setInterval(loadRelayEvents,5000);
+loadStatus();loadDevices();loadGlasses();setInterval(loadDevices,15000);setInterval(loadGlasses,15000);
 </script>
 </body></html>
