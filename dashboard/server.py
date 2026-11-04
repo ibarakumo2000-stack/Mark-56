@@ -486,6 +486,7 @@ class DashboardServer:
         self._command_queue               = asyncio.Queue()
         self._wake_callback               = None
         self._connect_callback            = None
+        self._relay_event_callback        = None
         self._pending_keys: dict[str, float] = {}
         self._device_sessions: dict[str, dict] = {}  # device_token → {session_key}
         self._phone_audio_queue: asyncio.Queue    = asyncio.Queue(maxsize=200)
@@ -541,6 +542,21 @@ class DashboardServer:
     def set_connect_callback(self, fn) -> None:
         self._connect_callback = fn
 
+    def set_relay_event_callback(self, fn) -> None:
+        """Bind safe, metadata-only relay events to the owning desktop runtime."""
+        self._relay_event_callback = fn
+
+    def _dispatch_relay_event(self, event: dict) -> None:
+        """Stable router callback; the application handler may be bound later."""
+        callback = self._relay_event_callback
+        if callback is None:
+            return
+        try:
+            callback(dict(event))
+        except Exception as exc:
+            print(f"[Dashboard] Relay event callback failed: {type(exc).__name__}")
+
+
     # ── broadcast ────────────────────────────────────────────────────────
 
     async def broadcast(self, msg: dict) -> None:
@@ -566,7 +582,11 @@ class DashboardServer:
 
         from dashboard.device_api import build_device_router
         app.include_router(
-            build_device_router(self._device_registry, owner_auth=_auth)
+            build_device_router(
+                self._device_registry,
+                owner_auth=_auth,
+                on_relay_event=self._dispatch_relay_event,
+            )
         )
 
         # serve CryptoJS from local cache, fallback to CDN redirect
