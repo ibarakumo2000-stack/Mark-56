@@ -45,9 +45,9 @@ class DeviceApiTests(unittest.TestCase):
     def test_private_lan_discovery_returns_none_when_no_interface_exists(self):
         # The function is intentionally safe when the computer is offline.
         from unittest.mock import patch
-        with patch("dashboard.device_api.socket.socket", side_effect=OSError("offline")), \\
-             patch("dashboard.device_api.socket.getaddrinfo", return_value=[]):
-            self.assertIsNone(_discover_private_lan_ipv4())
+        with patch("dashboard.device_api.socket.socket", side_effect=OSError("offline")):
+            with patch("dashboard.device_api.socket.getaddrinfo", return_value=[]):
+                self.assertIsNone(_discover_private_lan_ipv4())
 
     def test_router_exposes_scoped_device_management_routes(self):
         router = build_device_router(
