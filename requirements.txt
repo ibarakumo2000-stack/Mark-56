@@ -112,5 +112,9 @@ pynvml                       # system_monitor + the HUD's GPU meter (NVIDIA)
 # Website Studio stores its separate OpenAI key in the operating-system credential store.
 keyring>=25,<27
 
+# Local Bluetooth smart-glasses transport (JARVIS GATT display profile).
+# Linux additionally uses the dbus-next dependency above and system BlueZ.
+bleak>=0.22,<2
+
 # GNOME Wayland ScreenCast portal support (Linux only).
 dbus-next>=0.2.3,<1; sys_platform == "linux"
