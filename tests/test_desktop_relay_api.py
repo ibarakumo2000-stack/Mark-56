@@ -143,10 +143,11 @@ class DesktopRelayApiTests(unittest.TestCase):
         from dashboard.device_api import build_device_router
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
-        router = build_device_router(
-            self.registry, owner_auth=lambda _request: True,
-            on_relay_event=received.append,
-        )
+        with patch("dashboard.device_api.Path.home", return_value=self.home):
+            router = build_device_router(
+                self.registry, owner_auth=lambda _request: True,
+                on_relay_event=received.append,
+            )
         app = FastAPI()
         app.include_router(router)
         client = TestClient(app, base_url="https://localhost")
