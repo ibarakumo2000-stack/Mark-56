@@ -15,8 +15,8 @@ import urllib.request
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
-    QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QVBoxLayout,
+    QCheckBox, QDialog, QHBoxLayout, QLabel, QListWidget,
+    QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout,
     QWidget,
 )
 
@@ -256,6 +256,7 @@ class DevicePairingDialog(QDialog):
                 button.clicked.connect(lambda checked=False, identifier=device_id: self.revoke_device(identifier))
                 layout.addWidget(button)
                 self.devices.setItemWidget(item, row)
+                item.setSizeHint(row.sizeHint())
                 item.setData(Qt.ItemDataRole.UserRole, device_id)
             self.status.setText(f"Loaded {self.devices.count()} paired device(s).")
         except Exception as exc:
