@@ -1,4 +1,18 @@
 import unittest
+import socket
+import tempfile
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from urllib.request import urlopen
+import ssl
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
+
+from core.device_companion_server import CompanionServer
 from dataclasses import asdict
 from fastapi.testclient import TestClient
 from core.device_companion import sign_companion_message
@@ -93,6 +107,48 @@ class CompanionServerTests(unittest.TestCase):
             headers={"Authorization": "Bearer " + device.token},
         )
         self.assertEqual(response.status_code, 403)
+
+
+    def test_start_waits_until_https_listener_is_ready(self):
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COMMON_NAME, "127.0.0.1"),
+        ])
+        now = datetime.now(timezone.utc)
+        certificate = (
+            x509.CertificateBuilder()
+            .subject_name(subject).issuer_name(issuer).public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(minutes=1))
+            .not_valid_after(now + timedelta(days=1))
+            .add_extension(
+                x509.SubjectAlternativeName([x509.IPAddress(__import__("ipaddress").ip_address("127.0.0.1"))]),
+                critical=False,
+            )
+            .sign(key, hashes.SHA256())
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            cert_path = Path(directory) / "server.crt"
+            key_path = Path(directory) / "server.key"
+            cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+            key_path.write_bytes(key.private_bytes(
+                serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
+                serialization.NoEncryption(),
+            ))
+            with socket.socket() as probe:
+                probe.bind(("127.0.0.1", 0))
+                port = probe.getsockname()[1]
+            server = CompanionServer(
+                self.app, host="127.0.0.1", port=port,
+                certificate=cert_path, private_key=key_path,
+            )
+            try:
+                server.start(timeout=5)
+                context = ssl._create_unverified_context()
+                with urlopen(f"https://127.0.0.1:{port}/health", context=context, timeout=3) as response:
+                    self.assertEqual(response.status, 200)
+            finally:
+                server.stop()
 
     def test_pairing_code_is_one_time(self):
         offer = self.registry.create_pairing_offer(("battery.read",))

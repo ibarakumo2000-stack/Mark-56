@@ -242,23 +242,59 @@ class CompanionServer:
         context.load_cert_chain(self.certificate, self.private_key)
         self._server = None
         self._thread = None
+        self._startup_error: BaseException | None = None
+        self._startup_lock = threading.Lock()
 
-    def start(self) -> None:
-        if self._thread and self._thread.is_alive():
-            return
+    def _run_server(self) -> None:
+        """Run Uvicorn while retaining bind/startup exceptions from its thread."""
         try:
-            import uvicorn
-        except ImportError as exc:
-            raise RuntimeError("Install uvicorn to start the companion listener") from exc
-        config = uvicorn.Config(
-            self.app, host=self.host, port=self.port, log_level="warning",
-            access_log=False, ssl_certfile=self.certificate,
-            ssl_keyfile=self.private_key, ssl_version=ssl.TLSVersion.TLSv1_2,
-            timeout_keep_alive=5, limit_max_requests=10000,
+            self._server.run()
+        except BaseException as exc:
+            # Exceptions raised in a daemon thread otherwise disappear from the
+            # authenticated start endpoint, leaving only a misleading refused
+            # connection after its readiness probe times out.
+            self._startup_error = exc
+
+    def start(self, timeout: float = 8.0) -> None:
+        with self._startup_lock:
+            if self._thread and self._thread.is_alive():
+                if self._server is not None and self._server.started:
+                    return
+                raise RuntimeError("The companion listener thread is already running but has not completed startup.")
+            try:
+                import uvicorn
+            except ImportError as exc:
+                raise RuntimeError("Install uvicorn to start the companion listener") from exc
+            self._startup_error = None
+            config = uvicorn.Config(
+                self.app, host=self.host, port=self.port, log_level="warning",
+                access_log=False, ssl_certfile=self.certificate,
+                ssl_keyfile=self.private_key, ssl_version=ssl.TLSVersion.TLSv1_2,
+                timeout_keep_alive=5, limit_max_requests=10000,
+            )
+            self._server = uvicorn.Server(config)
+            self._thread = threading.Thread(
+                target=self._run_server, name="mark56-companion-https", daemon=True,
+            )
+            self._thread.start()
+
+        deadline = time.monotonic() + max(0.5, min(float(timeout), 20.0))
+        while time.monotonic() < deadline:
+            if self._server is not None and self._server.started:
+                return
+            if self._thread is not None and not self._thread.is_alive():
+                error = self._startup_error
+                detail = f"{type(error).__name__}: {error}" if error else "Uvicorn exited before opening its socket."
+                self.stop()
+                raise RuntimeError(f"Companion listener startup failed: {detail}") from error
+            time.sleep(0.05)
+
+        self.stop()
+        raise RuntimeError(
+            f"Companion listener did not finish binding to {self.host}:{self.port} "
+            f"within {max(0.5, min(float(timeout), 20.0)):g} seconds. "
+            "Check whether the address belongs to an active interface and whether the port is available."
         )
-        self._server = uvicorn.Server(config)
-        self._thread = threading.Thread(target=self._server.run, name="mark56-companion-https", daemon=True)
-        self._thread.start()
 
     def stop(self, timeout: float = 5.0) -> None:
         if self._server is not None:
