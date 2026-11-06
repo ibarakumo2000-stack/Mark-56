@@ -269,7 +269,9 @@ class CompanionServer:
             config = uvicorn.Config(
                 self.app, host=self.host, port=self.port, log_level="warning",
                 access_log=False, ssl_certfile=self.certificate,
-                ssl_keyfile=self.private_key, ssl_version=ssl.TLSVersion.TLSv1_2,
+                ssl_keyfile=self.private_key,
+                # Uvicorn expects an SSLContext protocol constant, not TLSVersion.TLSv1_2 (771).
+                # Its default is PROTOCOL_TLS_SERVER; TLS minimum is enforced above.
                 timeout_keep_alive=5, limit_max_requests=10000,
             )
             self._server = uvicorn.Server(config)
