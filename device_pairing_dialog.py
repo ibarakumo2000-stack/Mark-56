@@ -242,14 +242,21 @@ class DevicePairingDialog(QDialog):
                 platform = device.get("platform", "Unknown platform")
                 online = "ONLINE" if device.get("online") else "OFFLINE"
                 scopes = ", ".join(device.get("scopes", [])) or "no permissions"
-                item = QListWidgetItem(f"{name} · {platform} · {online}\nPermissions: {scopes}")
-                item.setData(Qt.ItemDataRole.UserRole, device.get("device_id"))
+                item = QListWidgetItem()
+                item.setSizeHint(item.sizeHint())
                 self.devices.addItem(item)
-            for index in range(self.devices.count()):
-                item = self.devices.item(index)
+                row = QWidget()
+                layout = QHBoxLayout(row)
+                layout.setContentsMargins(8, 4, 8, 4)
+                label = QLabel(f"{name} · {platform} · {online}\\nPermissions: {scopes}")
+                label.setWordWrap(True)
+                layout.addWidget(label, 1)
                 button = QPushButton("Revoke")
-                button.clicked.connect(lambda checked=False, device_id=item.data(Qt.ItemDataRole.UserRole): self.revoke_device(device_id))
-                self.devices.setItemWidget(item, button)
+                device_id = device.get("device_id")
+                button.clicked.connect(lambda checked=False, identifier=device_id: self.revoke_device(identifier))
+                layout.addWidget(button)
+                self.devices.setItemWidget(item, row)
+                item.setData(Qt.ItemDataRole.UserRole, device_id)
             self.status.setText(f"Loaded {self.devices.count()} paired device(s).")
         except Exception as exc:
             self.status.setText("Could not load paired devices: " + str(exc))
