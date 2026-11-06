@@ -167,23 +167,65 @@ class DevicePairingDialog(QDialog):
             raise RuntimeError(f"Dashboard request failed: {exc}") from exc
 
     def _authenticate(self):
-        try:
-            pin = self.dashboard.new_key(expiry_secs=60)
-            data = json.dumps({"pin": pin}).encode("utf-8")
-            req = urllib.request.Request(
-                self.base_url + "/login", data=data,
-                headers={"Content-Type": "application/json"}, method="POST",
-            )
-            with urllib.request.urlopen(req, context=ssl._create_unverified_context(), timeout=8) as response:
-                result = json.loads(response.read().decode("utf-8"))
-            if not result.get("ok") or not result.get("token"):
-                raise RuntimeError("JARVIS owner session could not be established.")
-            self.token = result["token"]
-            self.status.setText("Owner authenticated · Ready to start local pairing.")
-            self.qr_btn.setEnabled(True)
-        except Exception as exc:
-            self.status.setText("Could not authenticate to the dashboard: " + str(exc))
-            QMessageBox.warning(self, "JARVIS pairing", str(exc))
+        """Establish an owner session, retrying transient one-time-key failures.
+
+        The desktop generates the short-lived PIN locally while the dashboard
+        server consumes it over HTTPS. A stale/consumed PIN must never leave the
+        dialog holding an empty bearer token: request a fresh PIN and retry.
+        """
+        last_error = None
+        for attempt in range(3):
+            try:
+                pin = self.dashboard.new_key(expiry_secs=120)
+                data = json.dumps({"pin": pin}).encode("utf-8")
+                req = urllib.request.Request(
+                    self.base_url + "/login", data=data,
+                    headers={"Content-Type": "application/json"}, method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(
+                        req, context=ssl._create_unverified_context(), timeout=8
+                    ) as response:
+                        result = json.loads(response.read().decode("utf-8"))
+                except urllib.error.HTTPError as exc:
+                    # FastAPI returns a JSON body for an invalid or expired PIN.
+                    # Preserve that detail rather than showing a generic HTTP 401.
+                    try:
+                        detail = json.loads(exc.read().decode("utf-8"))
+                        message = detail.get("error") or detail.get("detail") or str(exc)
+                    except Exception:
+                        message = str(exc)
+                    if exc.code == 401:
+                        last_error = RuntimeError(
+                            "The dashboard rejected the one-time owner PIN "
+                            "(invalid, expired, or already consumed)."
+                        )
+                        continue
+                    raise RuntimeError(message) from exc
+
+                if not result.get("ok") or not result.get("token"):
+                    last_error = RuntimeError(
+                        result.get("error") or "Dashboard did not issue an owner session."
+                    )
+                    continue
+
+                self.token = result["token"]
+                self.status.setText("Owner authenticated · Ready to start local pairing.")
+                self.qr_btn.setEnabled(True)
+                return
+            except Exception as exc:
+                last_error = exc
+                # Network / TLS failures are not fixed by cycling a PIN.
+                break
+
+        self.token = ""
+        self.qr_btn.setEnabled(False)
+        message = str(last_error or "Owner authentication failed.")
+        self.status.setText("Could not authenticate to the dashboard: " + message)
+        QMessageBox.warning(
+            self, "JARVIS pairing",
+            message + "\\n\\nClose this dialog and retry if the dashboard has just started.",
+        )
 
     def start_bridge(self):
         try:
