@@ -5412,20 +5412,20 @@ class MainWindow(QMainWindow):
             self._remote_overlay.mark_connected()
 
     def _open_device_pairing(self):
-        """Open the dashboard's secure device-enrollment and management page."""
+        """Open the native JARVIS pairing and connected-device manager."""
         if not self.on_pair_device_clicked:
             self._log.append_log("SYS: Device pairing is not connected to the desktop runtime.")
             return
         try:
-            target = self.on_pair_device_clicked()
-            if not target:
+            dashboard = self.on_pair_device_clicked()
+            if dashboard is None:
                 return
-            if not QDesktopServices.openUrl(QUrl(str(target))):
-                self._log.append_log(f"SYS: Could not open device pairing page: {target}")
-                return
-            self._log.append_log("SYS: Opened secure device pairing. Sign in, start the companion bridge, then create a QR pairing offer.")
+            from device_pairing_dialog import DevicePairingDialog
+            dialog = DevicePairingDialog(dashboard, self)
+            dialog.exec()
         except Exception as exc:
-            self._log.append_log(f"SYS: Could not open device pairing: {type(exc).__name__}: {exc}")
+            self._log.append_log(f"SYS: Could not open native device pairing: {type(exc).__name__}: {exc}")
+            QMessageBox.warning(self, "JARVIS Connected Devices", str(exc))
 
     def _open_remote(self):
         if not self.on_remote_clicked:
