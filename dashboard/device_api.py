@@ -7,6 +7,8 @@ import ipaddress
 import io
 import json
 import socket
+import ssl
+import hashlib
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -23,6 +25,48 @@ from core.glasses_adapters import GlassesAdapterRegistry, GlassesCapability
 _MEDIA_ACTIONS = frozenset({"play", "pause", "play_pause", "next", "previous", "stop"})
 _COMPANION_PORT = 8765
 _ONLINE_WINDOW = 45
+
+
+def _usable_private_ipv4(value: str) -> bool:
+    """Return whether value is a routable private IPv4 interface address."""
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return bool(
+        address.version == 4 and address.is_private
+        and not address.is_loopback and not address.is_link_local
+        and not address.is_multicast and not address.is_unspecified
+        and not address.is_reserved
+    )
+
+
+def _discover_private_lan_ipv4() -> str | None:
+    """Find a private LAN IPv4 address without depending on internet access."""
+    for probe in ("192.168.1.1", "10.0.0.1", "172.16.0.1"):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        except OSError:
+            continue
+        try:
+            sock.settimeout(0.5)
+            sock.connect((probe, 9))
+            candidate = sock.getsockname()[0]
+            if _usable_private_ipv4(candidate):
+                return candidate
+        except OSError:
+            pass
+        finally:
+            sock.close()
+    try:
+        candidates = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
+    except OSError:
+        candidates = []
+    for item in candidates:
+        candidate = item[4][0]
+        if _usable_private_ipv4(candidate):
+            return candidate
+    return None
 
 
 def _is_secure_or_loopback(request: Request) -> bool:
@@ -115,19 +159,31 @@ def build_device_router(
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
         if companion_server is not None:
             return JSONResponse({"ok": True, "running": True, "endpoint": companion_endpoint})
-        host = request.url.hostname or ""
-        try:
-            address = ipaddress.ip_address(host)
-        except ValueError:
-            return JSONResponse({"error": "Open the dashboard using its numeric LAN IP before starting pairing."}, status_code=400)
-        if address.is_loopback or not address.is_private:
-            return JSONResponse({"error": "The companion listener can bind only to a private LAN IP."}, status_code=400)
+        # The dashboard commonly runs at localhost over its authenticated local
+        # session. Do not mistake that browser URL for the LAN interface the
+        # phone must reach; discover the computer's private Wi-Fi/Ethernet IPv4.
+        requested_host = request.url.hostname or ""
+        address_text = requested_host if _usable_private_ipv4(requested_host) else None
+        if address_text is None:
+            address_text = _discover_private_lan_ipv4()
+        if address_text is None:
+            return JSONResponse({
+                "error": "No usable private LAN IPv4 address was found. Connect this computer and your phone to the same Wi-Fi or Ethernet network, then try again."
+            }, status_code=503)
+        address = ipaddress.ip_address(address_text)
+
         root = Path(__file__).resolve().parent.parent
         certificate = root / "config" / "certs" / "jarvis.crt"
         private_key = root / "config" / "certs" / "jarvis.key"
-        if not certificate.is_file() or not private_key.is_file():
-            return JSONResponse({"error": "TLS certificate is unavailable. Start the HTTPS dashboard first."}, status_code=503)
         try:
+            # Generate a per-install TLS certificate automatically on first use.
+            # dashboard.server adds localhost and the current LAN address to SAN.
+            from dashboard.server import _ensure_certs
+            if not _ensure_certs() or not certificate.is_file() or not private_key.is_file():
+                return JSONResponse({
+                    "error": "Could not prepare the local TLS certificate. Install the 'cryptography' package and restart JARVIS."
+                }, status_code=503)
+
             from core.device_companion_server import (
                 CompanionServer, certificate_fingerprint, create_companion_app,
             )
@@ -137,23 +193,46 @@ def build_device_router(
                 certificate=certificate, private_key=private_key,
             )
             server.start()
+            expected_fingerprint = certificate_fingerprint(certificate)
             ready = False
-            for _ in range(30):
+            last_error = None
+            for _ in range(40):
                 try:
-                    with socket.create_connection((str(address), _COMPANION_PORT), timeout=0.2):
-                        ready = True
-                        break
-                except OSError:
-                    time.sleep(0.1)
+                    raw_socket = socket.create_connection((str(address), _COMPANION_PORT), timeout=0.35)
+                    with raw_socket:
+                        context = ssl._create_unverified_context()
+                        with context.wrap_socket(raw_socket, server_hostname=str(address)) as tls_socket:
+                            peer = tls_socket.getpeercert(binary_form=True)
+                            actual_fingerprint = ":".join(
+                                f"{byte:02x}" for byte in hashlib.sha256(peer).digest()
+                            )
+                            if actual_fingerprint != expected_fingerprint:
+                                raise RuntimeError("Port 8765 is serving a different TLS certificate; stop the conflicting service and retry.")
+                            ready = True
+                            break
+                except (OSError, ssl.SSLError) as exc:
+                    last_error = exc
+                    time.sleep(0.15)
             if not ready:
                 server.stop()
-                raise RuntimeError("Companion listener did not become ready; check port 8765 and the local firewall.")
+                raise RuntimeError(
+                    "The secure listener did not become ready on port 8765. "
+                    "Check the local firewall and whether another application is using that port."
+                    + (f" ({last_error})" if last_error else "")
+                )
             companion_app = app
             companion_server = server
             companion_endpoint = f"https://{address}:{_COMPANION_PORT}"
-            companion_fingerprint = certificate_fingerprint(certificate)
-        except (OSError, RuntimeError, ValueError) as exc:
-            return JSONResponse({"error": f"Could not start the secure companion listener: {exc}"}, status_code=503)
+            companion_fingerprint = expected_fingerprint
+        except Exception as exc:
+            try:
+                if "server" in locals():
+                    server.stop()
+            except Exception:
+                pass
+            return JSONResponse({
+                "error": f"Could not start the secure companion listener: {type(exc).__name__}: {exc}"
+            }, status_code=503)
         return JSONResponse({"ok": True, "running": True, "endpoint": companion_endpoint})
 
     @router.post("/api/devices/companion/stop")

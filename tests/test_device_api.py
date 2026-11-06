@@ -2,7 +2,10 @@ import unittest
 from types import SimpleNamespace
 
 from core.device_gateway import DeviceRegistry
-from dashboard.device_api import _is_secure_or_loopback, build_device_router
+from dashboard.device_api import (
+    _discover_private_lan_ipv4, _is_secure_or_loopback,
+    _usable_private_ipv4, build_device_router,
+)
 
 
 def request(*, scheme="http", client="127.0.0.1"):
@@ -29,6 +32,22 @@ class DeviceApiTests(unittest.TestCase):
         self.assertTrue(_is_secure_or_loopback(
             request(scheme="https", client="192.168.1.20")
         ))
+
+
+    def test_private_lan_address_validation_rejects_loopback_and_public(self):
+        self.assertTrue(_usable_private_ipv4("192.168.1.20"))
+        self.assertTrue(_usable_private_ipv4("10.0.0.8"))
+        self.assertFalse(_usable_private_ipv4("127.0.0.1"))
+        self.assertFalse(_usable_private_ipv4("169.254.1.2"))
+        self.assertFalse(_usable_private_ipv4("8.8.8.8"))
+        self.assertFalse(_usable_private_ipv4("not-an-ip"))
+
+    def test_private_lan_discovery_returns_none_when_no_interface_exists(self):
+        # The function is intentionally safe when the computer is offline.
+        from unittest.mock import patch
+        with patch("dashboard.device_api.socket.socket", side_effect=OSError("offline")):
+            with patch("dashboard.device_api.socket.getaddrinfo", return_value=[]):
+                self.assertIsNone(_discover_private_lan_ipv4())
 
     def test_router_exposes_scoped_device_management_routes(self):
         router = build_device_router(
