@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from plugins import screen_task_workflow as workflow
+from plugins import screen_agent as screen_agent_module
 
 
 class ScreenTaskWorkflowTests(unittest.TestCase):
@@ -25,8 +26,9 @@ class ScreenTaskWorkflowTests(unittest.TestCase):
     def test_enter_is_available_for_local_dialogs_but_shortcuts_are_blocked(self):
         pg = MagicMock()
         pg.size.return_value = (1280, 720)
-        fake_agent = MagicMock(_HAS_PYAUTOGUI=True, pyautogui=pg)
-        with patch.dict("sys.modules", {"plugins.screen_agent": fake_agent}):
+        with patch.object(screen_agent_module, "_HAS_PYAUTOGUI", True), patch.object(
+            screen_agent_module, "pyautogui", pg
+        ):
             self.assertIn("enter", workflow._execute(
                 {"type": "press", "key": "enter"}, 1280, 720
             ))
