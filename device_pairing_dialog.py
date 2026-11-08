@@ -77,11 +77,23 @@ class DevicePairingDialog(QDialog):
         outer.setContentsMargins(16, 16, 16, 16)
         outer.setSpacing(0)
 
+        # Keep the dialog frame stable while the content grows or shrinks.
+        # The scroll area prevents QR activation from pushing controls off-screen
+        # on smaller displays or when the device list contains several entries.
+        scroll = QScrollArea(self)
+        scroll.setObjectName("pairingScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
         shell = self._card("drawerShell")
+        shell.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         shell_layout = QVBoxLayout(shell)
         shell_layout.setContentsMargins(20, 18, 20, 16)
         shell_layout.setSpacing(14)
-        outer.addWidget(shell)
+        scroll.setWidget(shell)
+        outer.addWidget(scroll)
 
         # Header
         header = self._card("heroHeader")
@@ -198,7 +210,13 @@ class DevicePairingDialog(QDialog):
         pair_head.addWidget(self.qr_btn)
         pairing_layout.addLayout(pair_head)
 
-        qr_content = QHBoxLayout()
+        # QR results live in their own collapsible panel. Generating a code
+        # reveals this panel without rebuilding or reflowing the surrounding
+        # permissions, bridge controls, or connected-device sections.
+        self.qr_panel = QWidget()
+        self.qr_panel.setObjectName("qrResultPanel")
+        qr_content = QHBoxLayout(self.qr_panel)
+        qr_content.setContentsMargins(0, 4, 0, 0)
         qr_content.setSpacing(16)
         self.qr = QLabel("Start the secure bridge, then generate a QR code.")
         self.qr.setObjectName("qrCanvas")
@@ -228,7 +246,8 @@ class DevicePairingDialog(QDialog):
         qr_details.addWidget(instructions)
         qr_details.addStretch(1)
         qr_content.addLayout(qr_details, 1)
-        pairing_layout.addLayout(qr_content)
+        self.qr_panel.setVisible(False)
+        pairing_layout.addWidget(self.qr_panel)
         shell_layout.addWidget(pairing_card)
 
         # Paired devices and Bluetooth glasses
@@ -283,6 +302,16 @@ class DevicePairingDialog(QDialog):
                 font-family: Inter, "Segoe UI", sans-serif;
                 font-size: 13px;
             }
+            QScrollArea#pairingScroll { background: transparent; border: 0; }
+            QScrollArea#pairingScroll > QWidget > QWidget { background: transparent; }
+            QScrollBar:vertical {
+                background: #081224; width: 9px; margin: 3px; border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: #315b91; min-height: 32px; border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover { background: #438ed8; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
             QFrame#drawerShell {
                 background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
                     stop:0 #0c1425, stop:0.55 #080f1e, stop:1 #10112b);
@@ -478,6 +507,8 @@ class DevicePairingDialog(QDialog):
             self.qr.setPixmap(QPixmap())
             self.qr.setText("Bridge stopped. Start it to generate a new pairing QR.")
             self.code.clear()
+            self.qr_panel.setVisible(False)
+            self.qr_btn.setText("Generate one-time QR code")
             self.code_label.setText("QR offer expires after 5 minutes")
             self.status.setText("Secure companion bridge stopped.")
         except Exception as exc:
@@ -497,6 +528,8 @@ class DevicePairingDialog(QDialog):
                 {"scopes": scopes, "expires_in": 300},
             )
             self.code.setText(result.get("code", ""))
+            self.qr_panel.setVisible(True)
+            self.qr_btn.setText("Generate a new QR code")
             self._offer_expires_at = int(result.get("expires_at", time.time() + 300))
             self._update_offer_countdown()
             self._offer_timer.start()
@@ -532,6 +565,7 @@ class DevicePairingDialog(QDialog):
             self.code.clear()
             self.qr.setPixmap(QPixmap())
             self.qr.setText("This pairing code has expired. Generate a new one to continue.")
+            self.qr_btn.setText("Generate a new QR code")
             return
         minutes, seconds = divmod(remaining, 60)
         self.code_label.setText(f"QR offer expires in {minutes}:{seconds:02d}")
