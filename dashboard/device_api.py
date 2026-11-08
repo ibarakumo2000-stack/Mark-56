@@ -325,6 +325,46 @@ def build_device_router(
             "device_token": device.token,
         })
 
+    @router.get("/api/devices/notifications")
+    async def recent_device_notifications(request: Request):
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        if companion_app is None:
+            return JSONResponse({"notifications": []})
+        try:
+            events = companion_app.state.device_features.recent_notifications(limit=50)
+            names = {item["device_id"]: item["device_name"] for item in registry.list_devices()}
+            notifications = []
+            for event in events:
+                item = dict(event)
+                item["device_name"] = names.get(item.get("device_id"), "Paired device")
+                notifications.append(item)
+            return JSONResponse({"notifications": notifications})
+        except (AttributeError, ValueError):
+            return JSONResponse({"error": "Notification history is unavailable."}, status_code=503)
+
+    @router.patch("/api/devices/{device_id}/name")
+    async def rename_device(device_id: str, request: Request):
+        insecure = _secure(request)
+        if insecure:
+            return insecure
+        if not _owner(request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            body = await request.json()
+            name = body.get("device_name") if isinstance(body, dict) else None
+            if not isinstance(name, str):
+                raise ValueError("Device name must be text")
+            updated = registry.rename_device(device_id, name)
+        except (ValueError, TypeError, AttributeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        if not updated:
+            return JSONResponse({"error": "Device not found or already revoked."}, status_code=404)
+        return JSONResponse({"ok": True, "device_id": device_id, "device_name": name.strip()})
+
     @router.get("/api/devices")
     async def list_devices(request: Request):
         insecure = _secure(request)
@@ -337,6 +377,7 @@ def build_device_router(
         for device in devices:
             seen = device.get("last_seen")
             device["online"] = bool(seen and now - seen <= _ONLINE_WINDOW)
+            device["last_seen_age_seconds"] = max(0, int(now - seen)) if seen else None
             # Battery telemetry is exposed only through this owner-authenticated
             # dashboard route and only for devices granted battery.read.
             device["battery"] = None
@@ -347,6 +388,14 @@ def build_device_router(
                     )
                 except (AttributeError, ValueError):
                     device["battery"] = None
+            device["media"] = None
+            if companion_app is not None and "media.control" in device.get("scopes", []):
+                try:
+                    device["media"] = companion_app.state.device_features.media_status_for_device(
+                        device["device_id"]
+                    )
+                except (AttributeError, ValueError):
+                    device["media"] = None
         return JSONResponse({"devices": devices})
 
     @router.put("/api/devices/{device_id}/scopes")
