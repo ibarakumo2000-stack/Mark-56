@@ -84,6 +84,7 @@ def build_device_router(
     *,
     owner_auth: Callable[[Request], bool],
     on_relay_event: Callable[[dict], None] | None = None,
+    on_companion_app: Callable[[object | None], None] | None = None,
 ) -> APIRouter:
     """Create owner-only device management routes.
 
@@ -222,6 +223,8 @@ def build_device_router(
                 )
             companion_app = app
             companion_server = server
+            if on_companion_app is not None:
+                on_companion_app(companion_app)
             companion_endpoint = f"https://{address}:{_COMPANION_PORT}"
             companion_fingerprint = expected_fingerprint
         except Exception as exc:
@@ -246,6 +249,8 @@ def build_device_router(
         if companion_server is not None:
             companion_server.stop()
         companion_server = companion_app = companion_endpoint = companion_fingerprint = None
+        if on_companion_app is not None:
+            on_companion_app(None)
         return JSONResponse({"ok": True, "running": False})
 
     @router.post("/api/devices/pairing-offers")
