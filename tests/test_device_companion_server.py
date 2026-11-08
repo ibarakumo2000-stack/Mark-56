@@ -109,6 +109,33 @@ class CompanionServerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
 
 
+
+    def test_chat_send_is_authenticated_scoped_and_drained_by_desktop(self):
+        offer = self.registry.create_pairing_offer(("command.send",))
+        device = self.registry.redeem_pairing_code(offer.code, device_name="Phone", device_type="android", platform="android", capabilities=("chat",), requested_scopes=("command.send",))
+        signed = sign_companion_message(device.token, device_id=device.device_id, method="POST", path="/v1/chat/send", body={"message_id": "chat-msg-123456", "message": "Hello JARVIS"})
+        response = TestClient(self.app).post("/v1/chat/send", json=asdict(signed), headers={"Authorization": "Bearer " + device.token})
+        self.assertEqual(response.status_code, 200)
+        queued = self.app.state.drain_chat_messages()
+        self.assertEqual(queued[0]["device_id"], device.device_id)
+        self.assertEqual(queued[0]["message"], "Hello JARVIS")
+
+    def test_chat_rejects_device_without_command_scope(self):
+        offer = self.registry.create_pairing_offer(("battery.read",))
+        device = self.registry.redeem_pairing_code(offer.code, device_name="Phone", device_type="android", platform="android", capabilities=(), requested_scopes=("battery.read",))
+        signed = sign_companion_message(device.token, device_id=device.device_id, method="POST", path="/v1/chat/send", body={"message_id": "chat-msg-123456", "message": "Hi"})
+        response = TestClient(self.app).post("/v1/chat/send", json=asdict(signed), headers={"Authorization": "Bearer " + device.token})
+        self.assertEqual(response.status_code, 403)
+
+    def test_desktop_can_queue_reply_for_authenticated_phone_poll(self):
+        offer = self.registry.create_pairing_offer(("command.send",))
+        device = self.registry.redeem_pairing_code(offer.code, device_name="Phone", device_type="android", platform="android", capabilities=("chat",), requested_scopes=("command.send",))
+        self.app.state.queue_chat_reply(device.device_id, "chat-msg-123456", "Hello from JARVIS")
+        signed = sign_companion_message(device.token, device_id=device.device_id, method="POST", path="/v1/chat/poll", body={})
+        response = TestClient(self.app).post("/v1/chat/poll", json=asdict(signed), headers={"Authorization": "Bearer " + device.token})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["reply"]["reply"], "Hello from JARVIS")
+
     def test_start_waits_until_https_listener_is_ready(self):
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         subject = issuer = x509.Name([
