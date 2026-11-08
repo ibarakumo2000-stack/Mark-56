@@ -213,10 +213,10 @@ def screen_agent(parameters: dict, response=None, player=None, session_memory=No
     mode = str(params.get("mode") or "analyze").strip().lower()
     try:
         if mode == "task":
-            from plugins.screen_task_workflow import run_task
+            from plugins._screen_task_workflow import run_task
             return run_task(params.get("task", ""))
         if mode == "task_cancel":
-            from plugins.screen_task_workflow import cancel_task
+            from plugins._screen_task_workflow import cancel_task
             return cancel_task()
         if mode == "diagnose":
             return _diagnose()
