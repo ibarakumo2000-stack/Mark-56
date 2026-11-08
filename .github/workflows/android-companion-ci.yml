@@ -5,6 +5,7 @@ on:
     paths:
       - "android-companion/**"
       - ".github/workflows/android-companion-ci.yml"
+      - ".github/workflows/release-android-companion.yml"
   pull_request:
     paths:
       - "android-companion/**"
@@ -28,6 +29,8 @@ jobs:
           packages: "platform-tools"
       - name: Install Android SDK platform
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Validate GitHub Actions release workflow
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/release-android-companion.yml
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
