@@ -263,5 +263,95 @@ class CompanionServerTests(unittest.TestCase):
             )
 
 
+class CompanionEndToEndTests(unittest.TestCase):
+    """Exercise the complete enrolled-phone chat request/reply lifecycle."""
+
+    def setUp(self):
+        self.registry = DeviceRegistry()
+        self.app = create_companion_app(self.registry)
+        self.client = TestClient(self.app)
+
+    def tearDown(self):
+        self.registry.close()
+
+    def _pair(self, approved=("command.send",), requested=("command.send",)):
+        offer = self.registry.create_pairing_offer(approved)
+        response = self.client.post("/v1/pair", json={
+            "pairing_code": offer.code,
+            "device_name": "JARVIS Android",
+            "platform": "android",
+            "capabilities": ["chat", "voice"],
+            "requested_scopes": list(requested),
+        })
+        return response
+
+    def _signed(self, token, device_id, path, body):
+        return sign_companion_message(
+            token, device_id=device_id, method="POST", path=path, body=body
+        )
+
+    def test_pair_send_desktop_reply_and_phone_poll_end_to_end(self):
+        paired = self._pair()
+        self.assertEqual(paired.status_code, 200)
+        credentials = paired.json()
+        self.assertEqual(credentials["scopes"], ["command.send"])
+        token, device_id = credentials["token"], credentials["device_id"]
+
+        message_id = "e2e-chat-message-0001"
+        send = self._signed(token, device_id, "/v1/chat/send", {
+            "message_id": message_id, "message": "What is my desktop status?"
+        })
+        sent = self.client.post(
+            "/v1/chat/send", json=asdict(send),
+            headers={"Authorization": "Bearer " + token},
+        )
+        self.assertEqual(sent.status_code, 200)
+        self.assertTrue(sent.json()["accepted"])
+
+        inbound = self.app.state.drain_chat_messages(limit=1)
+        self.assertEqual(len(inbound), 1)
+        self.assertEqual(inbound[0]["device_id"], device_id)
+        self.assertEqual(inbound[0]["message_id"], message_id)
+        self.assertEqual(inbound[0]["message"], "What is my desktop status?")
+
+        self.app.state.queue_chat_reply(
+            device_id, message_id, "Your desktop assistant is connected."
+        )
+        poll = self._signed(token, device_id, "/v1/chat/poll", {})
+        received = self.client.post(
+            "/v1/chat/poll", json=asdict(poll),
+            headers={"Authorization": "Bearer " + token},
+        )
+        self.assertEqual(received.status_code, 200)
+        self.assertEqual(received.json()["reply"]["message_id"], message_id)
+        self.assertEqual(
+            received.json()["reply"]["reply"],
+            "Your desktop assistant is connected.",
+        )
+
+    def test_pairing_cannot_grant_unapproved_voice_or_chat_scope(self):
+        response = self._pair(
+            approved=("battery.read",), requested=("command.send", "voice.capture")
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.registry.list_devices(), [])
+
+    def test_revoking_paired_phone_blocks_future_chat_and_poll(self):
+        paired = self._pair()
+        self.assertEqual(paired.status_code, 200)
+        credentials = paired.json()
+        self.assertTrue(self.registry.revoke_device(credentials["device_id"]))
+
+        send = self._signed(
+            credentials["token"], credentials["device_id"], "/v1/chat/send",
+            {"message_id": "e2e-chat-revoked-01", "message": "Still connected?"},
+        )
+        response = self.client.post(
+            "/v1/chat/send", json=asdict(send),
+            headers={"Authorization": "Bearer " + credentials["token"]},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.app.state.drain_chat_messages(), [])
+
 if __name__ == "__main__":
     unittest.main()
