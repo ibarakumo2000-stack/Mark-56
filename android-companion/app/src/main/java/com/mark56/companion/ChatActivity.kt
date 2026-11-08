@@ -44,6 +44,7 @@ class ChatActivity : AppCompatActivity() {
     private var speechRecognizer: SpeechRecognizer? = null
     private var textToSpeech: TextToSpeech? = null
     private var voiceOutputEnabled = true
+    private var voiceInitializationAttempted = false
     private var listening = false
     private var client: CompanionEventClient? = null
     private val seenReplyIds = mutableSetOf<String>()
@@ -193,7 +194,8 @@ class ChatActivity : AppCompatActivity() {
             addBubble(state.text.toString(), false)
         } else {
             addBubble("Hello. Your phone is securely connected to the JARVIS companion bridge. Send a message to your desktop assistant.", false)
-            initializeVoice()
+            // Keep startup independent from optional Android speech/TTS services.
+            // Voice components are initialized only after the user explicitly taps the mic.
         }
     }
 
@@ -297,6 +299,10 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun toggleListening() {
+        if (!voiceInitializationAttempted) {
+            voiceInitializationAttempted = true
+            initializeVoice()
+        }
         if (listening) {
             speechRecognizer?.cancel()
             listening = false
