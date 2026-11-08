@@ -30,6 +30,11 @@ class CompanionSettings(context: Context) {
     fun setNotificationRelayEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("notification_relay_enabled", enabled).apply()
     }
+    fun excludedNotificationPackages(): Set<String> =
+        prefs.getStringSet("notification_excluded_packages", emptySet())?.toSet() ?: emptySet()
+    fun setExcludedNotificationPackages(packages: Set<String>) {
+        prefs.edit().putStringSet("notification_excluded_packages", packages.toSet()).apply()
+    }
     fun notificationRelayRequested(): Boolean = prefs.getBoolean("notification_relay_requested", false)
     fun setNotificationRelayRequested(requested: Boolean) {
         prefs.edit().putBoolean("notification_relay_requested", requested).apply()
