@@ -303,6 +303,16 @@ class DeviceRegistry:
             )
             return cursor.rowcount == 1
 
+    def rename_device(self, device_id: str, device_name: str) -> bool:
+        """Update the owner-visible label for one active paired device."""
+        normalized = _clean_label(device_name, field="device name", maximum=_MAX_NAME)
+        with self._lock:
+            cursor = self._db.execute(
+                "UPDATE devices SET device_name = ? WHERE device_id = ? AND revoked_at IS NULL",
+                (normalized, device_id),
+            )
+            return cursor.rowcount == 1
+
     def update_device_scopes(self, device_id: str, scopes: Iterable[str]) -> bool:
         """Replace one active device's approved scopes; return False if absent."""
         normalized = _clean_items(scopes, field="approved scopes")
