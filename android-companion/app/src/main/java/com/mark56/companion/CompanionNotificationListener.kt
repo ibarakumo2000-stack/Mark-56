@@ -18,10 +18,11 @@ import java.util.concurrent.Executors
 class CompanionNotificationListener : NotificationListenerService() {
     private val worker = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
+    @Volatile private var listenerConnected = false
 
     private val mediaPoll = object : Runnable {
         private fun scheduleNext() {
-            handler.postDelayed(this, MediaCommandPolicy.POLL_INTERVAL_MS)
+            if (listenerConnected) handler.postDelayed(this, MediaCommandPolicy.POLL_INTERVAL_MS)
         }
 
         override fun run() {
@@ -102,11 +103,13 @@ class CompanionNotificationListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        listenerConnected = true
         handler.removeCallbacks(mediaPoll)
         handler.post(mediaPoll)
     }
 
     override fun onListenerDisconnected() {
+        listenerConnected = false
         handler.removeCallbacks(mediaPoll)
         super.onListenerDisconnected()
     }
@@ -176,6 +179,7 @@ class CompanionNotificationListener : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        listenerConnected = false
         handler.removeCallbacks(mediaPoll)
         worker.shutdownNow()
         super.onDestroy()
