@@ -200,17 +200,15 @@ def run_task(task: str, *, max_steps: int = _MAX_STEPS,
     if not _RUN_LOCK.acquire(blocking=False):
         return json.dumps({"ok": False, "status": "busy", "message": "A screen task is already running."})
 
-    started_stream = False
     history: list[dict] = []
     started_at = time.monotonic()
     terminal_status = "failed"
     message = "Task did not complete."
     try:
-        model = _ensure_vision_ready()
         _CANCEL.clear()
+        model = _ensure_vision_ready()
         if not wayland_screencast.monitoring_active():
             start_result = wayland_screencast.start_monitoring()
-            started_stream = True
             if not wayland_screencast.monitoring_active():
                 raise RuntimeError(str(start_result))
         for step in range(1, max(1, min(int(max_steps), _MAX_STEPS)) + 1):
@@ -225,6 +223,9 @@ def run_task(task: str, *, max_steps: int = _MAX_STEPS,
                 raise RuntimeError("The active GNOME ScreenCast stream stopped unexpectedly.")
             png, width, height = frame
             decision = _decision(png, width, height, task, history, step, model)
+            if _CANCEL.is_set():
+                terminal_status, message = "cancelled", "Screen task cancelled by the user."
+                break
             status = str(decision.get("status") or "").lower()
             note = str(decision.get("message") or "").strip()[:500]
             if status == "done":
