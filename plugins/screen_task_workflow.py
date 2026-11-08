@@ -180,8 +180,10 @@ def _execute(action: Any, width: int, height: int) -> str:
 
 
 def cancel_task() -> str:
-    """Request cancellation and close the active portal session immediately."""
+    """Request cancellation without blocking behind an in-flight model call."""
     _CANCEL.set()
+    if _RUN_LOCK.locked():
+        return "Cancellation requested. JARVIS will stop after the current vision step and close the screen stream."
     try:
         return wayland_screencast.stop_monitoring()
     except Exception as exc:
