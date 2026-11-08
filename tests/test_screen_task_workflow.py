@@ -39,8 +39,9 @@ class ScreenTaskWorkflowTests(unittest.TestCase):
     def test_action_rejects_out_of_bounds_coordinates(self):
         pg = MagicMock()
         pg.size.return_value = (1280, 720)
-        fake_agent = MagicMock(_HAS_PYAUTOGUI=True, pyautogui=pg)
-        with patch.dict("sys.modules", {"plugins.screen_agent": fake_agent}):
+        with patch.object(screen_agent_module, "_HAS_PYAUTOGUI", True), patch.object(
+            screen_agent_module, "pyautogui", pg
+        ):
             with self.assertRaisesRegex(ValueError, "outside"):
                 workflow._execute({"type": "click", "x": 1300, "y": 10}, 1280, 720)
             pg.click.assert_not_called()
