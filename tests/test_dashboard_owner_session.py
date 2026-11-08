@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from dashboard.server import DashboardServer
 
@@ -21,8 +22,8 @@ class DashboardOwnerSessionTests(unittest.TestCase):
 
     def test_local_dashboard_url_uses_loopback_and_active_transport(self):
         server = object.__new__(DashboardServer)
-        server._ssl_enabled = staticmethod(lambda: False)
-        self.assertEqual(server.get_local_url(), "http://127.0.0.1:8000")
+        with patch.object(DashboardServer, "_ssl_enabled", return_value=False):
+            self.assertEqual(server.get_local_url(), "http://127.0.0.1:8000")
 
     def test_device_page_clears_expired_browser_owner_session(self):
         from pathlib import Path
