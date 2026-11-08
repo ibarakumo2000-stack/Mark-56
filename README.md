@@ -50,6 +50,16 @@ python -m compileall -q main.py ui.py core actions plugins dashboard memory test
 Local OCR is optional and requires the Tesseract system package plus Python packages `pytesseract` and `Pillow`. Screen capture needs a logged-in graphical desktop session; it may not work in a headless terminal or restricted Wayland environment.
 
 
+### Install all Ubuntu dependencies
+
+From the repository root, run:
+
+```bash
+bash scripts/setup_ubuntu.sh
+```
+
+This installs Linux system libraries, the main Python requirements, packaged speech/runtime extras, provider and secure-relay dependencies, and Playwright Chromium/Firefox browsers. It then runs `pip check` and verifies core imports. Speech-model weights may still download the first time their feature is used. The setup creates `.venv` if missing and preserves your local API-key configuration.
+
 ### Launch the canonical desktop app and pair a phone
 
 Run the application from the repository root so the desktop UI, action registry, plugin registry, dashboard, and device gateway all use the same source tree:
