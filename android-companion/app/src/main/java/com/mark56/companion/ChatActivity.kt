@@ -210,7 +210,7 @@ class ChatActivity : AppCompatActivity() {
                 textToSpeech?.setSpeechRate(1.0f)
             } else runOnUiThread {
                 voiceOutputEnabled = false
-                voiceOutput.text = "VOICE REPLIES  ·  UNAVAILABLE"
+                if (::voiceOutput.isInitialized) voiceOutput.text = "VOICE REPLIES  ·  UNAVAILABLE"
             }
         }
     }
@@ -235,6 +235,7 @@ class ChatActivity : AppCompatActivity() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to JARVIS")
         }
