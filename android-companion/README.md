@@ -9,7 +9,7 @@ Buildable Android pairing client (Phase 7B). Open this directory in Android Stud
 4. The app verifies the QR-provided SHA-256 certificate fingerprint before sending the one-time code. The bearer token is stored using Android Keystore-backed AES-GCM.
 
 ## Current limits
-QR pairing, Keystore-backed credential storage, opt-in battery reporting, notification forwarding and scoped Android MediaSession polling/execution are implemented in the companion source. Physical-device validation is still required for each Android version and media app. Desktop UI controls for queueing media actions, reconnect UX, certificate rotation UX and production APK signing remain separate release tasks. Disconnect clears the local token; revoke the device in JARVIS to invalidate its server-side token. Do not expose the listener publicly.
+QR pairing, Keystore-backed credential storage, opt-in battery reporting, notification forwarding and scoped Android MediaSession polling/execution are implemented in the companion source. Physical-device validation is still required for each Android version and media app. Desktop UI controls for queueing media actions, reconnect UX and certificate rotation UX remain separate acceptance tasks. Production APK signing and publishing are automated by the protected `Signed Android Companion Release` workflow. Disconnect clears the local token; revoke the device in JARVIS to invalidate its server-side token. Do not expose the listener publicly.
 
 
 ## Phase 7C — opt-in battery reporting
@@ -81,11 +81,20 @@ event-handler wiring remain acceptance tasks.
 
 The app and watch modules have minified, resource-shrunk release build
 variants. The `Signed Android Companion Release` workflow tests both modules,
-builds both APKs from a `companion-v*` tag, verifies their signatures and
-shared certificate, and publishes SHA-256 checksums. It requires four
-owner-managed GitHub Actions secrets. No signing key is stored in this
-repository and no production-signed APK is claimed until those secrets are
-configured.
+builds both APKs and Play-ready AABs from a `companion-v*` tag, checks package
+IDs and version names, verifies APK alignment, and confirms that every APK/AAB
+is signed by the exact certificate exported from the owner-managed keystore.
+It publishes SHA-256 checksums and fails closed if any signing secret or
+verification step is missing or invalid. The workflow requires four
+owner-managed GitHub Actions secrets; no signing key is stored in this
+repository.
+
+A stable owner-signed release has been published as
+[`companion-v1.1.3`](https://github.com/ibarakumo2000-stack/Mark-56/releases/tag/companion-v1.1.3).
+The Jarvis website selects the latest stable versioned companion release and
+does not offer the rolling debug/testing preview as a public APK. To publish a
+new release after merging companion changes, push the next version tag (for
+example, `git tag companion-v1.1.4 && git push origin companion-v1.1.4`).
 
 See [Android Release Signing](../docs/ANDROID_RELEASE_SIGNING.md) and
 [Android Companion Polish](../docs/ANDROID_COMPANION_POLISH.md).
