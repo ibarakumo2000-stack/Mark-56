@@ -118,9 +118,13 @@ class MainActivity : AppCompatActivity() {
         val chatButton = actionButton("OPEN JARVIS CHAT  ·  SECURE DESKTOP", true).apply {
             setOnClickListener {
                 if (tokenStore.read() != null && settings.hasCommandScope()) {
-                    startActivity(Intent(this@MainActivity, ChatActivity::class.java))
+                    try {
+                        startActivity(Intent(this@MainActivity, ChatActivity::class.java))
+                    } catch (error: Exception) {
+                        status.text = "Could not open secure chat: " + (error.message ?: "please restart the companion app")
+                    }
                 } else {
-                    status.text = "JARVIS Chat requires command.send permission. Request the Wear OS bridge scope, then disconnect and pair again so the desktop owner can approve it."
+                    status.text = "JARVIS Chat needs command.send approval. On your JARVIS desktop, create a new phone pairing QR with command.send enabled, then disconnect and pair this phone again. Wear OS permission is not required for chat."
                 }
             }
         }
