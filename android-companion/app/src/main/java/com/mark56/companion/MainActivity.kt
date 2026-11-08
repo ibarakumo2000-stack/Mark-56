@@ -115,6 +115,15 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+        val chatButton = actionButton("OPEN JARVIS CHAT  ·  SECURE DESKTOP", true).apply {
+            setOnClickListener {
+                if (tokenStore.read() != null && settings.hasCommandScope()) {
+                    startActivity(Intent(this@MainActivity, ChatActivity::class.java))
+                } else {
+                    status.text = "JARVIS Chat requires command.send permission. Request the Wear OS bridge scope, then disconnect and pair again so the desktop owner can approve it."
+                }
+            }
+        }
         val featuresCard = card().apply {
             addView(TextView(this@MainActivity).apply {
                 text = "YOUR CONNECTED ECOSYSTEM"
@@ -181,7 +190,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(title)
         root.addView(subtitle)
         root.addView(connectionCard, matchWidth())
-        root.addView(pair, matchWidth())
+        root.addView(pair, matchWidth())\n        root.addView(chatButton, matchWidth())
         root.addView(featuresCard, matchWidth())
         root.addView(capabilitiesCard, matchWidth())
         root.addView(disconnect, matchWidth())
