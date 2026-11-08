@@ -198,12 +198,7 @@ def build_device_router(
             last_error = None
             for _ in range(40):
                 try:
-                    # Probe through loopback, not the LAN interface. UFW/firewalld
-                    # correctly filters inbound traffic on the Wi-Fi interface, and
-                    # that must not prevent the desktop from checking its own listener.
-                    # The Android phone still connects to the advertised LAN address;
-                    # its access is governed by the narrowly scoped firewall rule.
-                    raw_socket = socket.create_connection(("127.0.0.1", _COMPANION_PORT), timeout=0.35)
+                    raw_socket = socket.create_connection((str(address), _COMPANION_PORT), timeout=0.35)
                     with raw_socket:
                         context = ssl._create_unverified_context()
                         with context.wrap_socket(raw_socket, server_hostname=str(address)) as tls_socket:
