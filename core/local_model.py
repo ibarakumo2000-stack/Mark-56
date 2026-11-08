@@ -23,22 +23,23 @@ def _base_dir() -> Path:
 
 
 def _settings() -> dict:
-    """Read local model settings from config/api_keys.json."""
-    try:
-        base = _base_dir() / "config"
-        # The app's canonical settings file is api_keys.json. Older local-model
-        # experiments used local_model.json, so retain it as a compatibility fallback.
-        for config_path in (base / "api_keys.json", base / "local_model.json"):
-            try:
-                value = json.loads(config_path.read_text(encoding="utf-8"))
-                if isinstance(value, dict):
-                    return value
-            except (OSError, ValueError, TypeError):
-                continue
-        return {}
-    except (OSError, ValueError, TypeError):
-        return {}
+    """Merge local-model preferences with the canonical API/provider settings.
 
+    Local vision preferences may live in local_model.json while API credentials
+    live in api_keys.json. Reading only the first existing file silently hid the
+    vision model configuration whenever api_keys.json was present.
+    """
+    base = _base_dir() / "config"
+    settings: dict = {}
+    # Load local preferences first; explicit canonical settings override them.
+    for config_path in (base / "local_model.json", base / "api_keys.json"):
+        try:
+            value = json.loads(config_path.read_text(encoding="utf-8"))
+            if isinstance(value, dict):
+                settings.update(value)
+        except (OSError, ValueError, TypeError):
+            continue
+    return settings
 
 def enabled() -> bool:
     """Whether local-model mode is explicitly enabled in local settings."""
