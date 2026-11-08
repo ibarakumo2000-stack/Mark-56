@@ -2267,6 +2267,7 @@ class JarvisLive:
             self._dashboard = DashboardServer()
             self._dashboard.set_connect_callback(self._on_phone_connected)
             self._dashboard.set_relay_event_callback(self._on_relay_event)
+            self._dashboard.set_companion_app_callback(self._on_companion_app_changed)
             asyncio.create_task(self._dashboard.serve())
             # Runs for the whole lifetime, not just inside an active session
             asyncio.create_task(self._process_dashboard_commands())
@@ -2346,6 +2347,8 @@ class JarvisLive:
                     tg.create_task(self._run_background_monitor())
                     tg.create_task(self._run_proactive_mode())
                     tg.create_task(self._run_sleep_watch())
+                    # Keep authenticated phone chat messages flowing into the active Live session.
+                    tg.create_task(self._process_companion_chat_messages())
                     if self._dashboard:
                         tg.create_task(self._relay_phone_audio())
 

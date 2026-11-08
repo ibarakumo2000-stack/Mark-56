@@ -26,11 +26,14 @@ import org.json.JSONObject
 import java.util.UUID
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Secure phone-to-desktop JARVIS chat surface. Messages use the enrolled command.send scope. */
 class ChatActivity : AppCompatActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
+    private val pollInFlight = AtomicBoolean(false)
+    @Volatile private var activityResumed = false
     private lateinit var messages: LinearLayout
     private lateinit var scroll: ScrollView
     private lateinit var input: EditText
@@ -46,23 +49,42 @@ class ChatActivity : AppCompatActivity() {
     private val seenReplyIds = mutableSetOf<String>()
     private val poll = object : Runnable {
         override fun run() {
+            if (!activityResumed || isFinishing || isDestroyed) return
             val active = client
-            if (active != null) worker.execute {
+            if (active != null && pollInFlight.compareAndSet(false, true)) {
                 try {
-                    val reply = active.pollChatReply()
-                    if (reply != null) {
-                        val id = reply.optString("message_id")
-                        val text = reply.optString("reply")
-                        if (id.isNotBlank() && text.isNotBlank()) runOnUiThread {
-                            if (seenReplyIds.add(id)) addBubble(text, false, speak = true)
-                            state.text = "JARVIS connected · reply received"
+                    worker.execute {
+                        try {
+                            val reply = active.pollChatReply()
+                            if (reply != null) {
+                                val id = reply.optString("message_id")
+                                val replyText = reply.optString("reply")
+                                if (id.isNotBlank() && replyText.isNotBlank()) {
+                                    runOnUiThread {
+                                        if (!isFinishing && !isDestroyed && seenReplyIds.add(id)) {
+                                            addBubble(replyText, false, speak = true)
+                                            state.text = "JARVIS connected · reply received"
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {
+                            runOnUiThread {
+                                if (!isFinishing && !isDestroyed) {
+                                    state.text = "Secure bridge reconnecting…"
+                                }
+                            }
+                        } finally {
+                            pollInFlight.set(false)
                         }
                     }
                 } catch (_: Exception) {
-                    runOnUiThread { state.text = "Secure bridge reconnecting…" }
+                    pollInFlight.set(false)
                 }
             }
-            handler.postDelayed(this, 2500)
+            if (activityResumed && !isFinishing && !isDestroyed) {
+                handler.postDelayed(this, 2500)
+            }
         }
     }
 
@@ -74,13 +96,18 @@ class ChatActivity : AppCompatActivity() {
         val endpoint = settings.endpoint()
         val pin = settings.fingerprint()
         val deviceId = settings.deviceId()
+        var connectionError: String? = null
         if (token.isNullOrBlank() || endpoint.isNullOrBlank() || pin.isNullOrBlank() ||
             deviceId.isNullOrBlank() || !settings.hasCommandScope()) {
-            finish()
-            return
+            connectionError = "This phone is not fully paired for desktop chat. Return to the companion home screen and pair again with command.send approved on the desktop."
+        } else {
+            try {
+                client = CompanionEventClient(endpoint, pin, token, deviceId)
+            } catch (error: Exception) {
+                connectionError = "Saved desktop connection details are invalid: " +
+                    (error.message ?: "please pair this phone again")
+            }
         }
-        client = CompanionEventClient(endpoint, pin, token, deviceId)
-        initializeVoice()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -159,59 +186,113 @@ class ChatActivity : AppCompatActivity() {
         composer.addView(send)
         root.addView(composer)
         setContentView(root)
-        addBubble("Hello. Your phone is securely connected to the JARVIS companion bridge. Send a message to your desktop assistant.", false)
-        handler.post(poll)
+        if (client == null) {
+            state.text = connectionError ?: "Secure desktop connection is unavailable"
+            send.isEnabled = false
+            mic.isEnabled = false
+            addBubble(state.text.toString(), false)
+        } else {
+            addBubble("Hello. Your phone is securely connected to the JARVIS companion bridge. Send a message to your desktop assistant.", false)
+            initializeVoice()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        activityResumed = true
+        handler.removeCallbacks(poll)
+        if (client != null) handler.post(poll)
+    }
+
+    override fun onPause() {
+        activityResumed = false
+        handler.removeCallbacks(poll)
+        if (listening) {
+            speechRecognizer?.cancel()
+            listening = false
+            if (::mic.isInitialized) mic.text = "🎙"
+        }
+        super.onPause()
     }
 
     private fun initializeVoice() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            state.text = "Secure chat connected · speech recognition unavailable on this device"
-        } else {
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
-                setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) { runOnUiThread { state.text = "Listening… speak now" } }
-                    override fun onBeginningOfSpeech() { runOnUiThread { state.text = "Hearing you…" } }
-                    override fun onRmsChanged(rmsdB: Float) {}
-                    override fun onBufferReceived(buffer: ByteArray?) {}
-                    override fun onEndOfSpeech() { runOnUiThread { state.text = "Processing your speech…" } }
-                    override fun onError(error: Int) {
-                        listening = false
-                        runOnUiThread {
-                            mic.text = "🎙"
-                            state.text = "Voice input stopped · " + when (error) {
-                                SpeechRecognizer.ERROR_NO_MATCH -> "no speech recognized"
-                                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "no speech detected"
-                                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "speech service busy"
-                                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "microphone permission required"
-                                else -> "try again"
+        // Voice is optional: never let a missing recognizer or TTS engine prevent
+        // the text chat screen from opening.
+        try {
+            if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                state.text = "Secure chat connected · speech recognition unavailable; text chat is ready"
+                mic.isEnabled = false
+            } else {
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                    setRecognitionListener(object : RecognitionListener {
+                        override fun onReadyForSpeech(params: Bundle?) {
+                            runOnUiThread { if (!isFinishing && !isDestroyed) state.text = "Listening… speak now" }
+                        }
+                        override fun onBeginningOfSpeech() {
+                            runOnUiThread { if (!isFinishing && !isDestroyed) state.text = "Hearing you…" }
+                        }
+                        override fun onRmsChanged(rmsdB: Float) {}
+                        override fun onBufferReceived(buffer: ByteArray?) {}
+                        override fun onEndOfSpeech() {
+                            runOnUiThread { if (!isFinishing && !isDestroyed) state.text = "Processing your speech…" }
+                        }
+                        override fun onError(error: Int) {
+                            listening = false
+                            runOnUiThread {
+                                if (isFinishing || isDestroyed) return@runOnUiThread
+                                mic.text = "🎙"
+                                state.text = "Voice input stopped · " + when (error) {
+                                    SpeechRecognizer.ERROR_NO_MATCH -> "no speech recognized"
+                                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "no speech detected"
+                                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "speech service busy"
+                                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "microphone permission required"
+                                    else -> "try again"
+                                }
                             }
                         }
-                    }
-                    override fun onResults(results: Bundle?) {
-                        listening = false
-                        val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim()
-                        runOnUiThread {
-                            mic.text = "🎙"
-                            if (!spoken.isNullOrBlank()) {
-                                input.setText(spoken)
-                                state.text = "Speech recognized · sending to JARVIS"
-                                sendMessage()
-                            } else state.text = "No speech recognized · try again"
+                        override fun onResults(results: Bundle?) {
+                            listening = false
+                            val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim()
+                            runOnUiThread {
+                                if (isFinishing || isDestroyed) return@runOnUiThread
+                                mic.text = "🎙"
+                                if (!spoken.isNullOrBlank()) {
+                                    input.setText(spoken)
+                                    state.text = "Speech recognized · sending to JARVIS"
+                                    sendMessage()
+                                } else state.text = "No speech recognized · try again"
+                            }
                         }
-                    }
-                    override fun onPartialResults(partialResults: Bundle?) {}
-                    override fun onEvent(eventType: Int, params: Bundle?) {}
-                })
+                        override fun onPartialResults(partialResults: Bundle?) {}
+                        override fun onEvent(eventType: Int, params: Bundle?) {}
+                    })
+                }
             }
+        } catch (error: Exception) {
+            speechRecognizer?.destroy()
+            speechRecognizer = null
+            mic.isEnabled = false
+            state.text = "Text chat ready · voice input unavailable: " +
+                (error.message ?: "speech service could not start")
         }
-        textToSpeech = TextToSpeech(this) { result ->
-            if (result == TextToSpeech.SUCCESS) {
-                textToSpeech?.language = Locale.getDefault()
-                textToSpeech?.setSpeechRate(1.0f)
-            } else runOnUiThread {
-                voiceOutputEnabled = false
-                if (::voiceOutput.isInitialized) voiceOutput.text = "VOICE REPLIES  ·  UNAVAILABLE"
+
+        try {
+            textToSpeech = TextToSpeech(this) { result ->
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    if (result == TextToSpeech.SUCCESS) {
+                        textToSpeech?.language = Locale.getDefault()
+                        textToSpeech?.setSpeechRate(1.0f)
+                    } else {
+                        voiceOutputEnabled = false
+                        voiceOutput.text = "VOICE REPLIES  ·  UNAVAILABLE"
+                    }
+                }
             }
+        } catch (error: Exception) {
+            textToSpeech = null
+            voiceOutputEnabled = false
+            voiceOutput.text = "VOICE REPLIES  ·  UNAVAILABLE"
         }
     }
 
@@ -259,29 +340,41 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun sendMessage() {
+        if (isFinishing || isDestroyed) return
         val text = input.text.toString().trim()
         if (text.isEmpty()) return
-        val active = client ?: return
+        val active = client
+        if (active == null) {
+            state.text = "Secure desktop connection is unavailable. Re-pair this phone with command.send approved."
+            return
+        }
         val id = UUID.randomUUID().toString()
         input.setText("")
         addBubble(text, true)
         send.isEnabled = false
         state.text = "Sending securely to your desktop…"
-        worker.execute {
-            try {
-                val accepted = active.sendChat(id, text)
-                runOnUiThread {
-                    send.isEnabled = true
-                    state.text = if (accepted) "Delivered to companion bridge · waiting for JARVIS"
-                        else "Desktop bridge did not accept the message"
-                }
-            } catch (error: Exception) {
-                runOnUiThread {
-                    send.isEnabled = true
-                    state.text = "Send failed: " + (error.message ?: "bridge unavailable")
-                    addBubble("Message could not be delivered. Check that the desktop bridge is running and this device has command.send approval.", false)
+        try {
+            worker.execute {
+                try {
+                    val accepted = active.sendChat(id, text)
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        send.isEnabled = true
+                        state.text = if (accepted) "Delivered to companion bridge · waiting for JARVIS"
+                            else "Desktop bridge did not accept the message"
+                    }
+                } catch (error: Exception) {
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        send.isEnabled = true
+                        state.text = "Send failed: " + (error.message ?: "bridge unavailable")
+                        addBubble("Message could not be delivered. Check that the desktop bridge is running and this device has command.send approval.", false)
+                    }
                 }
             }
+        } catch (_: Exception) {
+            send.isEnabled = true
+            state.text = "Chat is closing. Reopen it and try again."
         }
     }
 
@@ -316,7 +409,8 @@ class ChatActivity : AppCompatActivity() {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
-        handler.removeCallbacks(poll)
+        activityResumed = false
+        handler.removeCallbacksAndMessages(null)
         worker.shutdownNow()
         speechRecognizer?.cancel()
         speechRecognizer?.destroy()
