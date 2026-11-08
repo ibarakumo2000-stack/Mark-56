@@ -21,7 +21,11 @@ class CompanionEventClient(
 ) {
     private val pin = fingerprint.replace(":", "").lowercase()
     init {
-        require(endpoint.startsWith("https://") && URL(endpoint).userInfo == null)
+        val parsedEndpoint = URL(endpoint)
+        require(parsedEndpoint.protocol.equals("https", ignoreCase = true))
+        require(parsedEndpoint.host.isNotBlank() && parsedEndpoint.userInfo == null)
+        require(parsedEndpoint.path.isNullOrEmpty() || parsedEndpoint.path == "/")
+        require(parsedEndpoint.query == null && parsedEndpoint.ref == null)
         require(pin.matches(Regex("[0-9a-f]{64}")))
         require(token.length >= 32 && deviceId.isNotBlank())
     }
@@ -161,6 +165,8 @@ class CompanionEventClient(
             sslSocketFactory = context.socketFactory
             connectTimeout = 7000
             readTimeout = 7000
+            instanceFollowRedirects = false
+            useCaches = false
             requestMethod = "POST"
             doOutput = true
             setRequestProperty("Content-Type", "application/json")
