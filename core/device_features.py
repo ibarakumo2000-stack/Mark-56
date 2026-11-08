@@ -83,6 +83,18 @@ class AndroidDeviceFeatures:
             status = self._battery.get(identity["device_id"])
             return dict(status) if status else None
 
+    def battery_status_for_device(self, device_id: str) -> dict[str, Any] | None:
+        """Return the latest battery snapshot for an owner-authorized dashboard lookup.
+
+        Callers must first enforce the device's battery.read scope and owner
+        authentication. The returned mapping is a copy, never the live cache.
+        """
+        if not isinstance(device_id, str) or not device_id.strip():
+            raise ValueError("A device ID is required")
+        with self._lock:
+            status = self._battery.get(device_id)
+            return dict(status) if status else None
+
     def create_media_command(self, token: str, action: str) -> dict[str, Any]:
         identity = self.verifier.devices.authenticate(token, required_scope="media.control")
         if action not in _MEDIA_ACTIONS:
