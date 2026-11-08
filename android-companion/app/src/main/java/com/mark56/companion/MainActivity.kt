@@ -59,38 +59,38 @@ class MainActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(30), dp(24), dp(24))
+            setPadding(dp(22), dp(26), dp(22), dp(28))
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(Color.rgb(5, 12, 28), Color.rgb(12, 24, 48), Color.rgb(7, 10, 22))
             )
         }
         val brand = TextView(this).apply {
-            text = "J A R V I S"
+            text = "✧  J A R V I S  /  DEVICE ECOSYSTEM"
             textSize = 13f
             letterSpacing = 0.22f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(Color.rgb(89, 224, 255))
+            setTextColor(Color.rgb(91, 205, 255))
             gravity = Gravity.CENTER
         }
         val title = TextView(this).apply {
             text = "Your AI.\nEverywhere."
-            textSize = 34f
+            textSize = 38f
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             setPadding(0, dp(12), 0, dp(8))
         }
         val subtitle = TextView(this).apply {
-            text = "A secure companion for your desktop, phone and connected wearables."
+            text = "Manage your phone, desktop and wearables through one secure JARVIS connection."
             textSize = 14f
-            setTextColor(Color.rgb(169, 187, 211))
+            setTextColor(Color.rgb(174, 195, 222))
             gravity = Gravity.CENTER
             setPadding(dp(8), 0, dp(8), dp(22))
         }
         val connectionCard = card()
         val sectionLabel = TextView(this).apply {
-            text = "CONNECTION STATUS"
+            text = "SECURE CONNECTION"
             textSize = 11f
             letterSpacing = 0.12f
             typeface = Typeface.DEFAULT_BOLD
@@ -117,7 +117,7 @@ class MainActivity : AppCompatActivity() {
         }
         val featuresCard = card().apply {
             addView(TextView(this@MainActivity).apply {
-                text = "CONNECTED ECOSYSTEM"
+                text = "YOUR CONNECTED ECOSYSTEM"
                 textSize = 11f
                 letterSpacing = 0.12f
                 typeface = Typeface.DEFAULT_BOLD
@@ -186,7 +186,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(capabilitiesCard, matchWidth())
         root.addView(disconnect, matchWidth())
         root.addView(TextView(this).apply {
-            text = "MARK 56  /  COMPANION"
+            text = "MARK 56  •  SECURE COMPANION  •  LOCAL-FIRST"
             textSize = 10f
             letterSpacing = 0.15f
             setTextColor(Color.rgb(91, 111, 143))
@@ -232,9 +232,10 @@ class MainActivity : AppCompatActivity() {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(18), dp(18), dp(18), dp(18))
         background = GradientDrawable().apply {
-            setColor(Color.argb(225, 17, 31, 54))
+            colors = intArrayOf(Color.rgb(18, 37, 67), Color.rgb(11, 24, 46))
+            orientation = GradientDrawable.Orientation.TL_BR
             cornerRadius = dp(20).toFloat()
-            setStroke(dp(1), Color.rgb(39, 67, 99))
+            setStroke(dp(1), Color.rgb(49, 91, 139))
         }
     }
 
@@ -244,19 +245,19 @@ class MainActivity : AppCompatActivity() {
         letterSpacing = 0.035f
         typeface = Typeface.DEFAULT_BOLD
         isAllCaps = false
-        setTextColor(if (primary) Color.rgb(4, 18, 32) else Color.rgb(235, 243, 255))
+        setTextColor(if (primary) Color.rgb(5, 18, 35) else Color.rgb(235, 243, 255))
         backgroundTintList = ColorStateList.valueOf(
-            if (primary) Color.rgb(88, 225, 255) else Color.rgb(25, 43, 69)
+            if (primary) Color.rgb(67, 190, 255) else Color.rgb(23, 42, 70)
         )
         rippleColor = ColorStateList.valueOf(Color.argb(65, 115, 215, 255))
-        cornerRadius = dp(15)
+        cornerRadius = dp(14)
         insetTop = 0
         insetBottom = 0
         if (!primary) {
             strokeWidth = dp(1)
-            strokeColor = ColorStateList.valueOf(Color.rgb(48, 76, 110))
+            strokeColor = ColorStateList.valueOf(Color.rgb(61, 111, 163))
         }
-        minimumHeight = dp(54)
+        minimumHeight = dp(56)
         stateListAnimator = null
     }
 
