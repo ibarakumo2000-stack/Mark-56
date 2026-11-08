@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
-from plugins import screen_task_workflow as workflow
+from plugins import _screen_task_workflow as workflow
 from plugins import screen_agent as screen_agent_module
 
 
