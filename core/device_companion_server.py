@@ -123,6 +123,7 @@ def create_companion_app(registry: DeviceRegistry):
 
     @app.post("/v1/notifications")
     @app.post("/v1/battery")
+    @app.post("/v1/media/state")
     async def ingest(request: Request):
         body = await json_body(request)
         try:
