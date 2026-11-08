@@ -116,46 +116,93 @@ class WaylandScreenCast:
         asyncio.run(create_session())
 
     async def _request(self, interface: str, member: str, signature: str, body: list):
+        """Issue a portal request without losing a fast Response signal.
+
+        Subscribe to the portal's Request.Response signal *before* invoking the
+        method. GNOME can answer quickly enough that subscribing after the method
+        reply loses the signal and leaves the client waiting until timeout.
+        """
         from dbus_next import Message, MessageType
+
         bus = self._bus
         loop = asyncio.get_running_loop()
         future = loop.create_future()
-        reply = await bus.call(Message(
-            destination="org.freedesktop.portal.Desktop",
-            path="/org/freedesktop/portal/desktop",
-            interface=interface, member=member, signature=signature, body=body))
-        if reply.message_type == MessageType.ERROR:
-            detail = reply.body[0] if reply.body else "unknown portal error"
-            raise RuntimeError(f"{member} failed ({reply.error_name}): {detail}")
-        handle = reply.body[0]
-        rule = ("type='signal',sender='org.freedesktop.portal.Desktop',"
-                f"path='{handle}',interface='org.freedesktop.portal.Request',member='Response'")
+        request_handle = None
+        early_responses = []
 
         def handler(message):
-            if (message.message_type == MessageType.SIGNAL and message.path == handle
+            if (
+                message.message_type == MessageType.SIGNAL
                 and message.interface == "org.freedesktop.portal.Request"
-                and message.member == "Response" and message.signature == "ua{sv}"):
-                if not future.done():
+                and message.member == "Response"
+                and message.signature == "ua{sv}"
+            ):
+                if request_handle is None:
+                    early_responses.append(message)
+                elif message.path == request_handle and not future.done():
                     future.set_result((message.body[0], message.body[1]))
             return False
 
+        # Match all portal Request.Response signals briefly; the unique handle
+        # returned by this method filters the one belonging to this request.
+        rule = (
+            "type='signal',sender='org.freedesktop.portal.Desktop',"
+            "interface='org.freedesktop.portal.Request',member='Response'"
+        )
         bus.add_message_handler(handler)
-        match = await bus.call(Message(
-            destination="org.freedesktop.DBus", path="/org/freedesktop/DBus",
-            interface="org.freedesktop.DBus", member="AddMatch", signature="s", body=[rule]))
-        if match.message_type == MessageType.ERROR:
-            bus.remove_message_handler(handler)
-            raise RuntimeError(f"Could not subscribe to portal response: {match.body}")
+        match_installed = False
         try:
+            match = await bus.call(Message(
+                destination="org.freedesktop.DBus",
+                path="/org/freedesktop/DBus",
+                interface="org.freedesktop.DBus",
+                member="AddMatch",
+                signature="s",
+                body=[rule],
+            ))
+            if match.message_type == MessageType.ERROR:
+                raise RuntimeError(f"Could not subscribe to portal response: {match.body}")
+            match_installed = True
+
+            reply = await bus.call(Message(
+                destination="org.freedesktop.portal.Desktop",
+                path="/org/freedesktop/portal/desktop",
+                interface=interface,
+                member=member,
+                signature=signature,
+                body=body,
+            ))
+            if reply.message_type == MessageType.ERROR:
+                detail = reply.body[0] if reply.body else "unknown portal error"
+                raise RuntimeError(f"{member} failed ({reply.error_name}): {detail}")
+            if not reply.body or not isinstance(reply.body[0], str):
+                raise RuntimeError(f"{member} returned no portal request handle.")
+            request_handle = reply.body[0]
+
+            for message in early_responses:
+                if message.path == request_handle and not future.done():
+                    future.set_result((message.body[0], message.body[1]))
+                    break
+
             code, results = await asyncio.wait_for(future, timeout=35)
         finally:
-            await bus.call(Message(
-                destination="org.freedesktop.DBus", path="/org/freedesktop/DBus",
-                interface="org.freedesktop.DBus", member="RemoveMatch", signature="s", body=[rule]))
+            if match_installed:
+                try:
+                    await bus.call(Message(
+                        destination="org.freedesktop.DBus",
+                        path="/org/freedesktop/DBus",
+                        interface="org.freedesktop.DBus",
+                        member="RemoveMatch",
+                        signature="s",
+                        body=[rule],
+                    ))
+                except Exception:
+                    pass
             bus.remove_message_handler(handler)
+
         if code != 0:
             raise RuntimeError("ScreenCast request was cancelled or denied by the desktop.")
-        return results, {}
+        return _unwrap_variants(results), {}
 
     def capture_png(self) -> tuple[bytes, int, int]:
         if self._closed or self._sink is None:

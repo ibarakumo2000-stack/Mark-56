@@ -83,7 +83,7 @@ def _diagnose() -> str:
         "pyautogui_imported": _HAS_PYAUTOGUI,
         "ocr_packages_imported": _HAS_OCR,
         "capture_tools": {name: shutil.which(name) for name in ("gnome-screenshot", "grim", "spectacle", "import", "scrot")},
-        "input_tools": {name: shutil.which(name) for name in ("ydotool", "wtype", "xdotool")},
+        "input_tools": {name: shutil.which(name) for name in ("ydotool", "ydotoold", "wtype", "xdotool")},
     }
     try:
         if _HAS_PYAUTOGUI:
@@ -100,7 +100,19 @@ def _diagnose() -> str:
         details["capture"] = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:1000]}"}
     try:
         from core import local_model
-        details["local_model"] = local_model.status()
+        local_status = local_model.status()
+        details["local_model"] = local_status
+        vision_name = str(local_model._settings().get("local_vision_model_name") or "").strip()
+        installed = vision_name in set(local_status.get("models") or [])
+        details["local_vision_model"] = {
+            "configured": vision_name or None,
+            "installed": installed,
+            "ready": bool(local_status.get("ok") and local_status.get("enabled") and installed),
+            "hint": None if installed else (
+                f"Run 'ollama pull {vision_name}'" if vision_name else
+                "Configure local_vision_model_name in config/local_model.json"
+            ),
+        }
     except Exception as exc:
         details["local_model"] = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:250]}"}
     return json.dumps(details, ensure_ascii=False, indent=2)
@@ -200,6 +212,12 @@ def screen_agent(parameters: dict, response=None, player=None, session_memory=No
     params = parameters or {}
     mode = str(params.get("mode") or "analyze").strip().lower()
     try:
+        if mode == "task":
+            from plugins._screen_task_workflow import run_task
+            return run_task(params.get("task", ""))
+        if mode == "task_cancel":
+            from plugins._screen_task_workflow import cancel_task
+            return cancel_task()
         if mode == "diagnose":
             return _diagnose()
         if mode == "monitor_start":
@@ -231,19 +249,22 @@ def screen_agent(parameters: dict, response=None, player=None, session_memory=No
 TOOL = {
     "name": "screen_agent",
     "description": (
-        "Mark 56 screen vision agent. When asked what is on screen, default to analyze the captured image and describe visible content; "
-        "observe only captures metadata. Diagnose desktop/model readiness, read visible text with local OCR, "
-        "propose one next step without acting, or execute a narrowly "
-        "allowlisted reversible action only after explicit confirmed=true. Never automatically "
-        "executes a proposal."
+        "Mark 56 screen vision agent. Use mode='task' when the user asks JARVIS to "
+        "complete a desktop task: it requests the GNOME ScreenCast permission, "
+        "uses the configured local image-capable Ollama model to repeatedly observe, "
+        "perform one bounded reversible UI action, and verify the result until done. "
+        "The stream is automatically stopped on completion, failure, timeout, or "
+        "cancellation. No screenshots are sent to cloud services. Use task_cancel "
+        "to stop an active task. Other modes diagnose, observe, read_text, analyze, "
+        "propose, and perform a separately confirmed allowlisted action."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "mode": {"type": "STRING", "description": "analyze (default: visually describe current desktop) | diagnose | observe (capture metadata only) | monitor_start | monitor_status | monitor_stop | read_text | propose | execute"},
+            "mode": {"type": "STRING", "description": "task (autonomous observe-act-verify workflow) | task_cancel | analyze | diagnose | observe | monitor_start | monitor_status | monitor_stop | read_text | propose | execute"},
             "path": {"type": "STRING", "description": "Optional PNG screenshot path inside home directory"},
             "prompt": {"type": "STRING", "description": "Question for screen analysis (max 1000 chars)"},
-            "task": {"type": "STRING", "description": "Goal to plan without taking action"},
+            "task": {"type": "STRING", "description": "Goal for mode=task (maximum 1000 characters), or proposal goal for mode=propose"},
             "action": {"type": "STRING", "description": "For execute: click | type_text | press"},
             "x": {"type": "INTEGER", "description": "Click x coordinate"},
             "y": {"type": "INTEGER", "description": "Click y coordinate"},

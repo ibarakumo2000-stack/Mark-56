@@ -13,14 +13,22 @@ class LocalModelTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "disabled"):
                 local_model.generate("hello")
 
-    def test_settings_reads_canonical_api_keys_config(self):
+    def test_settings_merges_local_vision_preferences_with_api_keys(self):
         from pathlib import Path
-        payload = json.dumps({"local_model_enabled": True, "local_model_name": "local-test"})
+        local = json.dumps({
+            "local_model_enabled": True,
+            "local_vision_model_name": "moondream",
+            "local_model_name": "local-test",
+        })
+        api = json.dumps({"gemini_api_key": "test-key"})
         with patch.object(local_model, "_base_dir", return_value=Path("/mark56")), patch.object(
-            Path, "read_text", return_value=payload
+            Path, "read_text", side_effect=[local, api]
         ) as read_text:
-            self.assertTrue(local_model.enabled())
-            read_text.assert_called_with(encoding="utf-8")
+            settings = local_model._settings()
+        self.assertTrue(settings["local_model_enabled"])
+        self.assertEqual(settings["local_vision_model_name"], "moondream")
+        self.assertEqual(settings["gemini_api_key"], "test-key")
+        self.assertEqual(read_text.call_count, 2)
 
     def test_rejects_remote_url(self):
         with patch.object(local_model, "_settings", return_value={
