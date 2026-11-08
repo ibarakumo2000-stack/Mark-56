@@ -62,6 +62,8 @@ class DeviceApiTests(unittest.TestCase):
             ("/api/devices/pairing-offers", ("POST",)),
             ("/api/devices/enroll", ("POST",)),
             ("/api/devices", ("GET",)),
+            ("/api/devices/notifications", ("GET",)),
+            ("/api/devices/{device_id}/name", ("PATCH",)),
             ("/api/devices/{device_id}/scopes", ("PUT",)),
             ("/api/devices/{device_id}", ("DELETE",)),
             ("/api/devices/{device_id}/media", ("POST",)),
@@ -82,6 +84,17 @@ class DeviceApiTests(unittest.TestCase):
             ("/api/device/me", ("GET",)),
         }
         self.assertTrue(expected.issubset(routes))
+
+    def test_device_registry_supports_safe_owner_rename(self):
+        offer = self.registry.create_pairing_offer(("battery.read",))
+        device = self.registry.redeem_pairing_code(
+            offer.code, device_name="Old name", device_type="android",
+            platform="android", capabilities=("battery",), requested_scopes=("battery.read",),
+        )
+        self.assertTrue(self.registry.rename_device(device.device_id, "Desk phone"))
+        self.assertEqual(self.registry.list_devices()[0]["device_name"], "Desk phone")
+        with self.assertRaises(ValueError):
+            self.registry.rename_device(device.device_id, " " * 81)
 
     def test_pairing_offer_scopes_remain_allowlisted(self):
         with self.assertRaises(ValueError):
