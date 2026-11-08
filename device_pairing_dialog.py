@@ -44,7 +44,10 @@ class DevicePairingDialog(QDialog):
     def __init__(self, dashboard, parent=None):
         super().__init__(parent)
         self.dashboard = dashboard
-        self.base_url = str(dashboard.get_url()).rstrip("/")
+        # Native desktop management must talk to this machine's dashboard,
+        # not a LAN address that could resolve to another/stale JARVIS process.
+        local_url = getattr(dashboard, "get_local_url", None)
+        self.base_url = str(local_url() if callable(local_url) else dashboard.get_url()).rstrip("/")
         self.token = ""
         self.bridge_running = False
         self._offer_expires_at = 0
@@ -419,73 +422,78 @@ class DevicePairingDialog(QDialog):
 
     def _request(self, path, method="GET", body=None):
         data = None if body is None else json.dumps(body).encode("utf-8")
-        headers = {"Authorization": "Bearer " + self.token, "Content-Type": "application/json"}
-        req = urllib.request.Request(self.base_url + path, data=data, headers=headers, method=method)
         context = ssl._create_unverified_context()
-        try:
-            with urllib.request.urlopen(req, context=context, timeout=8) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
+        for attempt in range(2):
+            headers = {
+                "Authorization": "Bearer " + self.token,
+                "Content-Type": "application/json",
+            }
+            req = urllib.request.Request(
+                self.base_url + path, data=data, headers=headers, method=method
+            )
             try:
-                detail = json.loads(exc.read().decode("utf-8"))
-                message = detail.get("error") or detail.get("detail") or str(exc)
-            except Exception:
-                message = str(exc)
-            raise RuntimeError(message) from exc
-        except Exception as exc:
-            raise RuntimeError(f"Dashboard request failed: {exc}") from exc
+                with urllib.request.urlopen(req, context=context, timeout=8) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                try:
+                    detail = json.loads(exc.read().decode("utf-8"))
+                    message = detail.get("error") or detail.get("detail") or str(exc)
+                except Exception:
+                    message = str(exc)
+                # Dashboard sessions are process-local. If JARVIS restarted
+                # between opening the drawer and an action, renew once using
+                # the same trusted in-process DashboardServer instance.
+                if exc.code == 401 and attempt == 0:
+                    renew = getattr(self.dashboard, "create_owner_session", None)
+                    if callable(renew):
+                        self.token = renew()
+                        continue
+                    message = "Dashboard owner session expired. Close and reopen the device drawer."
+                raise RuntimeError(message) from exc
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Dashboard request failed at {self.base_url}: {exc}"
+                ) from exc
+        raise RuntimeError("Dashboard rejected the renewed owner session.")
 
     def _authenticate(self):
-        """Establish an owner session, retrying transient one-time-key failures."""
-        last_error = None
-        for _attempt in range(3):
-            try:
+        """Create an owner session from the exact dashboard instance we own."""
+        try:
+            issue = getattr(self.dashboard, "create_owner_session", None)
+            if callable(issue):
+                self.token = issue()
+            else:
+                # Compatibility with older DashboardServer builds.
                 pin = self.dashboard.new_key(expiry_secs=120)
                 data = json.dumps({"pin": pin}).encode("utf-8")
                 req = urllib.request.Request(
                     self.base_url + "/login", data=data,
                     headers={"Content-Type": "application/json"}, method="POST",
                 )
-                try:
-                    with urllib.request.urlopen(
-                        req, context=ssl._create_unverified_context(), timeout=8
-                    ) as response:
-                        result = json.loads(response.read().decode("utf-8"))
-                except urllib.error.HTTPError as exc:
-                    try:
-                        detail = json.loads(exc.read().decode("utf-8"))
-                        message = detail.get("error") or detail.get("detail") or str(exc)
-                    except Exception:
-                        message = str(exc)
-                    if exc.code == 401:
-                        last_error = RuntimeError(
-                            "The dashboard rejected the one-time owner PIN "
-                            "(invalid, expired, or already consumed)."
-                        )
-                        continue
-                    raise RuntimeError(message) from exc
-
-                if not result.get("ok") or not result.get("token"):
-                    last_error = RuntimeError(
-                        result.get("error") or "Dashboard did not issue an owner session."
-                    )
-                    continue
-                self.token = result["token"]
-                self.status.setText("Owner authenticated · Ready to start local pairing.")
-                self.qr_btn.setEnabled(True)
-                return
-            except Exception as exc:
-                last_error = exc
-                break
-
-        self.token = ""
-        self.qr_btn.setEnabled(False)
-        message = str(last_error or "Owner authentication failed.")
-        self.status.setText("Could not authenticate to the dashboard: " + message)
-        QMessageBox.warning(
-            self, "JARVIS pairing",
-            message + "\n\nClose this dialog and retry if the dashboard has just started.",
-        )
+                with urllib.request.urlopen(
+                    req, context=ssl._create_unverified_context(), timeout=8
+                ) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+                self.token = result.get("token", "")
+            if not self.token:
+                raise RuntimeError("Dashboard did not issue an owner session.")
+            # Verify that the HTTP listener is serving the same live runtime
+            # before enabling any bridge or pairing action.
+            self._request("/api/devices/companion")
+            self.status.setText("Owner authenticated · Ready to start local pairing.")
+            self.qr_btn.setEnabled(True)
+        except Exception as exc:
+            self.token = ""
+            self.qr_btn.setEnabled(False)
+            message = str(exc)
+            if "401" in message or "Unauthorized" in message:
+                message = (
+                    "The local dashboard rejected its owner session. This usually means "
+                    "another or stale JARVIS process owns port 8000. Close duplicate JARVIS "
+                    "instances, then restart this app. Details: " + message
+                )
+            self.status.setText("Could not authenticate to the dashboard: " + message)
+            QMessageBox.warning(self, "JARVIS pairing", message)
 
     def start_bridge(self):
         try:
