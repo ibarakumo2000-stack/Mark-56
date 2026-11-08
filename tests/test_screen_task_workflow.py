@@ -17,7 +17,7 @@ class ScreenTaskWorkflowTests(unittest.TestCase):
             workflow._json_object("I think it is done.")
 
     def test_outward_or_destructive_tasks_require_approval(self):
-        for task in ("send email to the client", "delete the old project", "purchase this item"):
+        for task in ("send email to the client", "send a message to my friend", "delete the old project", "purchase this item"):
             self.assertFalse(workflow._policy_allows(task))
 
     def test_safe_local_ui_task_is_allowed(self):
