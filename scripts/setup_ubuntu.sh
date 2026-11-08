@@ -22,7 +22,7 @@ sudo apt-get install -y \
   libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 \
   libxcb-image0 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0 \
   libegl1 libgl1 ffmpeg tesseract-ocr xdg-utils \
-  pulseaudio-utils brightnessctl bluez
+  pulseaudio-utils brightnessctl bluez ydotool
 
 if [[ ! -x ".venv/bin/python" ]]; then
   echo
@@ -85,5 +85,13 @@ echo "  cd \"$ROOT\""
 echo "  source .venv/bin/activate"
 echo "  python3 main.py"
 echo
+if command -v ydotool >/dev/null 2>&1; then
+  echo "Wayland desktop input is available through ydotool once its daemon is enabled."
+  echo "If JARVIS reports that the ydotool socket is unavailable, run:"
+  echo "  sudo systemctl enable --now ydotoold"
+  echo "  sudo usermod -aG input \"\$USER\""
+  echo "Then log out of Ubuntu and log back in."
+  echo
+fi
 echo "Note: speech recognition models and optional AI models may still download"
 echo "the first time you enable/use those features; this script installs packages."
