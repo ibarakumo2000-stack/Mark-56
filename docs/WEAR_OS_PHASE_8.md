@@ -32,3 +32,37 @@
 ## Acceptance tests still required
 
 Install both APKs on a real Wear OS watch and Android phone. Test pairing after reboot, Bluetooth/Wi-Fi handoff, phone process death, battery optimization, denied scope, revoked scope, and offline desktop behavior. Emulator builds and CI do not prove hardware pairing or OEM background reliability.
+
+
+## Phase 8 readiness diagnostics
+
+The phone companion now includes a **Check Wear OS Connection** diagnostic in
+the Phone & Wearable Features card. It reports the three independent gates:
+desktop pairing, owner-approved `command.send`, and the phone-side Wear OS
+bridge toggle. It also queries Google Play Services for currently connected
+Wear OS Data Layer nodes when the screen opens, returns to the foreground, or
+the user taps the diagnostic button.
+
+The connected-node count is a transport diagnostic only: it does not claim
+that the JARVIS watch app is installed or that an action reached the desktop.
+The watch still reports its own reachable-phone state, and the desktop Devices
+panel remains the authority for received events. If the node lookup fails, the
+phone reports that separately instead of showing a false disconnected state.
+
+### Real-device acceptance matrix
+
+- [ ] Install the matching signed phone and watch APKs from the same release.
+- [ ] Confirm the phone diagnostic detects the connected Wear OS node.
+- [ ] Confirm the watch reports the phone companion reachable.
+- [ ] Confirm bridge disabled: watch action does not reach desktop.
+- [ ] Confirm bridge enabled but `command.send` denied: action is not forwarded.
+- [ ] Enable the owner-approved scope and phone bridge; send JARVIS ping.
+- [ ] Confirm the desktop Devices event feed receives the watch event.
+- [ ] Confirm play/pause, next and previous remain allowlisted.
+- [ ] Turn Bluetooth off/on and verify reconnection without re-pairing.
+- [ ] Force-stop/reopen the phone app and verify system-managed listener behavior.
+- [ ] Revoke the phone device on desktop and confirm further watch events are rejected.
+- [ ] Disconnect the desktop and verify no action is executed or queued for later replay.
+
+CI can validate compilation and unit policies, but these hardware checks must
+be performed on a physical Wear OS watch and Android phone.
