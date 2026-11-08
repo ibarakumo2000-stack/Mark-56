@@ -84,6 +84,48 @@ class CompanionBridgeTests(unittest.TestCase):
                 method="POST", path="/v1/data", body={"data": "x" * 17000},
             )
 
+    def test_route_validation_rejects_backslashes_and_encoded_delimiters(self):
+        invalid_paths = (
+            r"/v1\\chat/send",
+            "/v1/%2fchat/send",
+            "/v1/%5cchat/send",
+            "/v1/../chat/send",
+            "/v1/./chat/send",
+            "/v1//chat/send",
+        )
+        for path in invalid_paths:
+            with self.subTest(path=path):
+                with self.assertRaises(ValueError):
+                    sign_companion_message(
+                        self.device.token, device_id=self.device.device_id,
+                        method="POST", path=path, body={},
+                    )
+
+    def test_route_validation_rejects_non_ascii_and_control_characters(self):
+        for path in ("/v1/chat/é", "/v1/chat/\n", "/v1/chat/\x7f"):
+            with self.subTest(path=repr(path)):
+                with self.assertRaises(ValueError):
+                    sign_companion_message(
+                        self.device.token, device_id=self.device.device_id,
+                        method="POST", path=path, body={},
+                    )
+
+    def test_replay_cache_is_scoped_per_device(self):
+        second_offer = self.devices.create_pairing_offer(("command.send",))
+        second = self.devices.redeem_pairing_code(
+            second_offer.code, device_name="Second phone", device_type="android",
+            platform="android", capabilities=(), requested_scopes=("command.send",),
+        )
+        first_message = self.message()
+        self.verifier.verify(self.device.token, first_message, now=1000)
+        second_message = sign_companion_message(
+            second.token, device_id=second.device_id, method="POST",
+            path="/v1/notifications", body={"title": "Hello"},
+            timestamp=1000, nonce="abcdefghijklmnopqrstuvwx",
+        )
+        identity = self.verifier.verify(second.token, second_message, now=1000)
+        self.assertEqual(identity["device_id"], second.device_id)
+
     def test_pairing_qr_payload_requires_https_and_certificate_fingerprint(self):
         code = "ABCDEFGH"
         fingerprint = ":".join(["ab"] * 32)
