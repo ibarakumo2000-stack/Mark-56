@@ -4,6 +4,7 @@
 
 - Adds a responsive **Devices** panel to the authenticated JARVIS dashboard.
 - Shows enrolled device identity, platform, granted scopes, last-seen timestamp, and a best-effort online indicator.
+- Shows the latest Android battery percentage, charging state, and report time in the owner-authenticated Devices panel when `battery.read` is granted. Battery values are not returned for devices without that scope or while the companion listener is stopped.
 - Starts and stops the companion HTTPS listener only after an authenticated owner action.
 - Binds the companion listener to the private numeric LAN IP used to open the HTTPS dashboard. Wildcard and public addresses are rejected.
 - Reuses the dashboard's locally generated TLS certificate and requires the Android client to pin its SHA-256 fingerprint.

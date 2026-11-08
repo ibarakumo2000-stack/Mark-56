@@ -33,6 +33,30 @@ class AndroidDeviceFeatureTests(unittest.TestCase):
             "/v1/battery", {"level":73,"charging":False}, "battery_nonce_0000000001"), now=1000)
         self.assertEqual(self.features.battery_status(self.device.token)["level"], 73)
 
+    def test_battery_status_for_device_returns_latest_copy(self):
+        first = self.message(
+            "/v1/battery", {"level": 73, "charging": False},
+            "battery_nonce_0000000003")
+        self.features.ingest(self.device.token, first, now=1000)
+        second = self.message(
+            "/v1/battery", {"level": 61, "charging": True},
+            "battery_nonce_0000000004")
+        self.features.ingest(self.device.token, second, now=1000)
+
+        snapshot = self.features.battery_status_for_device(self.device.device_id)
+        self.assertEqual(snapshot["level"], 61)
+        self.assertTrue(snapshot["charging"])
+        self.assertEqual(snapshot["device_id"], self.device.device_id)
+        snapshot["level"] = 1
+        self.assertEqual(
+            self.features.battery_status_for_device(self.device.device_id)["level"], 61
+        )
+        self.assertIsNone(self.features.battery_status_for_device("unknown-device"))
+
+    def test_battery_status_for_device_requires_device_id(self):
+        with self.assertRaises(ValueError):
+            self.features.battery_status_for_device("")
+
     def test_media_command_allowlist(self):
         self.assertEqual(self.features.create_media_command(self.device.token,"next")["action"],"next")
         with self.assertRaises(DeviceFeatureError):
