@@ -202,10 +202,95 @@ def create_companion_app(registry: DeviceRegistry):
             queue.append(command)
         return {"queued": True, "action": command["action"]}
 
+
+    # Authenticated phone chat transport. The desktop runtime consumes the
+    # inbound queue and publishes assistant replies through queue_chat_reply.
+    chat_inbound: dict[str, deque[dict[str, Any]]] = defaultdict(lambda: deque(maxlen=_MAX_QUEUE))
+    chat_outbound: dict[str, deque[dict[str, Any]]] = defaultdict(lambda: deque(maxlen=_MAX_QUEUE))
+
+    @app.post("/v1/chat/send")
+    async def chat_send(request: Request):
+        body = await json_body(request)
+        try:
+            envelope = _message(body)
+            if envelope.method != "POST" or envelope.path != "/v1/chat/send":
+                raise ValueError("Invalid chat route")
+            token = request.headers.get("authorization", "")
+            if not token.startswith("Bearer "):
+                return JSONResponse({"detail": "Authentication required"}, status_code=401)
+            identity = verifier.verify(token[7:], envelope, required_scope="command.send")
+            payload = envelope.body
+            if not isinstance(payload, dict) or set(payload) != {"message", "message_id"}:
+                raise ValueError("Invalid chat payload")
+            message = payload.get("message")
+            message_id = payload.get("message_id")
+            if not isinstance(message, str) or not message.strip() or len(message) > 4000:
+                raise ValueError("Message must contain 1–4000 characters")
+            if not isinstance(message_id, str) or not 8 <= len(message_id) <= 80:
+                raise ValueError("Invalid message identifier")
+            device_id = identity["device_id"]
+            with command_lock:
+                if len(chat_inbound[device_id]) >= _MAX_QUEUE:
+                    return JSONResponse({"detail": "Chat queue is full"}, status_code=429)
+                chat_inbound[device_id].append({
+                    "message_id": message_id, "message": message.strip(),
+                    "device_id": device_id, "received_at": int(time.time()),
+                })
+            return {"accepted": True, "message_id": message_id}
+        except AuthorizationError:
+            return JSONResponse({"detail": "Device is not authorized"}, status_code=403)
+        except (InvalidCompanionMessage, ValueError, TypeError):
+            return JSONResponse({"detail": "Invalid or unauthenticated chat message"}, status_code=400)
+
+    @app.post("/v1/chat/poll")
+    async def chat_poll(request: Request):
+        body = await json_body(request)
+        try:
+            envelope = _message(body)
+            if envelope.method != "POST" or envelope.path != "/v1/chat/poll":
+                raise ValueError("Invalid chat route")
+            token = request.headers.get("authorization", "")
+            if not token.startswith("Bearer "):
+                return JSONResponse({"detail": "Authentication required"}, status_code=401)
+            identity = verifier.verify(token[7:], envelope, required_scope="command.send")
+            with command_lock:
+                reply = chat_outbound[identity["device_id"]].popleft() if chat_outbound[identity["device_id"]] else None
+            return {"reply": reply}
+        except AuthorizationError:
+            return JSONResponse({"detail": "Device is not authorized"}, status_code=403)
+        except (InvalidCompanionMessage, ValueError, TypeError):
+            return JSONResponse({"detail": "Invalid or unauthenticated chat poll"}, status_code=400)
+
+    def drain_chat_messages(limit: int = 20):
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= _MAX_QUEUE:
+            raise ValueError("Invalid chat message limit")
+        with command_lock:
+            batch = []
+            for device_id, queue in chat_inbound.items():
+                while queue and len(batch) < limit:
+                    batch.append(queue.popleft())
+                if len(batch) >= limit:
+                    break
+            return batch
+
+    def queue_chat_reply(device_id: str, message_id: str, reply: str):
+        if not isinstance(reply, str) or not reply.strip() or len(reply) > 8000:
+            raise ValueError("Reply must contain 1–8000 characters")
+        with command_lock:
+            queue = chat_outbound[device_id]
+            if len(queue) >= _MAX_QUEUE:
+                raise RuntimeError("Chat reply queue is full")
+            queue.append({"message_id": message_id, "reply": reply.strip(), "sent_at": int(time.time())})
+        return {"queued": True, "message_id": message_id}
+
     app.state.device_registry = registry
     app.state.device_verifier = verifier
     app.state.device_features = features
     app.state.media_commands = commands
+    app.state.chat_inbound = chat_inbound
+    app.state.chat_outbound = chat_outbound
+    app.state.drain_chat_messages = drain_chat_messages
+    app.state.queue_chat_reply = queue_chat_reply
     app.state.wearable_commands = wearable_commands
     def drain_wearable_commands(limit: int = 20):
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= _MAX_QUEUE:
