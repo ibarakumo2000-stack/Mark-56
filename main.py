@@ -2491,6 +2491,19 @@ class JarvisLive:
             await asyncio.sleep(delay)
 
 def main():
+    # Hold an OS-managed lock for the full desktop lifetime. This prevents a
+    # second launch from creating a separate in-memory dashboard/auth session
+    # and then colliding with the first instance on ports 8000/8001.
+    from core.single_instance import acquire_single_instance_lock
+
+    instance_lock = acquire_single_instance_lock()
+    if instance_lock is None:
+        print(
+            "[JARVIS] Another instance is already running. "
+            "Close the existing JARVIS window before launching another copy."
+        )
+        return
+
     ui = JarvisUI("face.png")
 
     def runner():
