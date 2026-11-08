@@ -492,6 +492,8 @@ class DashboardServer:
         self._phone_audio_queue: asyncio.Queue    = asyncio.Queue(maxsize=200)
         self._uploads_dir                 = UPLOADS_DIR
         self._device_registry = _make_device_registry()
+        self._companion_app = None
+        self._companion_app_callback = None
         self._login_html                  = _read("login.html")
         self._app_html                    = _read("app.html")
         self.app                          = self._build_app()
@@ -546,6 +548,21 @@ class DashboardServer:
         """Bind safe, metadata-only relay events to the owning desktop runtime."""
         self._relay_event_callback = fn
 
+    def set_companion_app_callback(self, fn) -> None:
+        """Bind the live secure companion app to the assistant runtime."""
+        self._companion_app_callback = fn
+        if fn is not None:
+            fn(self._companion_app)
+
+    def _dispatch_companion_app(self, app) -> None:
+        self._companion_app = app
+        callback = self._companion_app_callback
+        if callback is not None:
+            try:
+                callback(app)
+            except Exception as exc:
+                print(f"[Dashboard] Companion runtime callback failed: {type(exc).__name__}")
+
     def _dispatch_relay_event(self, event: dict) -> None:
         """Stable router callback; the application handler may be bound later."""
         callback = self._relay_event_callback
@@ -586,6 +603,7 @@ class DashboardServer:
                 self._device_registry,
                 owner_auth=_auth,
                 on_relay_event=self._dispatch_relay_event,
+                on_companion_app=self._dispatch_companion_app,
             )
         )
 
