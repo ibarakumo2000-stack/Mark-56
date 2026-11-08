@@ -20,6 +20,28 @@ class DashboardOwnerSessionTests(unittest.TestCase):
         self.assertTrue(server._token_keys[token])
         self.assertIn(server._token_keys[token], server._aes_cache)
 
+    def test_issued_owner_session_authorizes_real_device_management_route(self):
+        from fastapi.testclient import TestClient
+        from core.device_gateway import DeviceRegistry
+        from unittest.mock import patch
+
+        registry = DeviceRegistry()
+        try:
+            with patch("dashboard.server._make_device_registry", return_value=registry):
+                server = DashboardServer()
+            token = server.create_owner_session()
+            client = TestClient(server.app)
+            response = client.get(
+                "/api/devices/companion",
+                headers={"Authorization": "Bearer " + token},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(response.json()["running"])
+            denied = client.get("/api/devices/companion")
+            self.assertEqual(denied.status_code, 401)
+        finally:
+            registry.close()
+
     def test_local_dashboard_url_uses_loopback_and_active_transport(self):
         server = object.__new__(DashboardServer)
         with patch.object(DashboardServer, "_ssl_enabled", return_value=False):
