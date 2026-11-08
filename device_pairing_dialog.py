@@ -1,23 +1,24 @@
-"""Native JARVIS desktop companion pairing and device-management dialog.
+"""Premium native JARVIS desktop companion pairing and device-management dialog.
 
-All calls use the dashboard's owner-authenticated local API. TLS certificate
-verification is disabled only for this local self-signed dashboard connection;
-companion enrollment still uses the bridge's certificate fingerprint pin.
+The visual layer is intentionally separated from the pairing API methods so
+that the UI can evolve without changing the secure local enrollment flow.
 """
 from __future__ import annotations
 
 import base64
 import json
 import ssl
+import time
 import urllib.error
 import urllib.request
+from datetime import datetime
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
-    QCheckBox, QDialog, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout,
-    QWidget,
+    QCheckBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
+    QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea,
+    QSizePolicy, QVBoxLayout, QWidget,
 )
 
 
@@ -32,126 +33,365 @@ SCOPES = (
     ("haptics.send", "Haptic feedback"),
 )
 
+DEFAULT_SCOPES = {
+    "command.send", "notification.receive", "media.control", "battery.read"
+}
+
 
 class DevicePairingDialog(QDialog):
+    """Premium JARVIS pairing drawer backed by the existing local dashboard API."""
+
     def __init__(self, dashboard, parent=None):
         super().__init__(parent)
         self.dashboard = dashboard
         self.base_url = str(dashboard.get_url()).rstrip("/")
         self.token = ""
         self.bridge_running = False
+        self._offer_expires_at = 0
+        self._offer_timer = QTimer(self)
+        self._offer_timer.setInterval(1000)
+        self._offer_timer.timeout.connect(self._update_offer_countdown)
+
         self.setWindowTitle("JARVIS · Connected Devices")
-        self.setMinimumSize(760, 640)
-        self.resize(900, 760)
+        self.setMinimumSize(760, 650)
+        self.resize(980, 820)
         self.setModal(False)
+        self.setObjectName("pairingDialog")
         self._build()
         self._authenticate()
         self.refresh_devices()
 
+    def _card(self, object_name: str) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName(object_name)
+        frame.setFrameShape(QFrame.Shape.NoFrame)
+        return frame
+
+    def _section_title(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("sectionTitle")
+        return label
+
     def _build(self):
-        root = QVBoxLayout(self)
-        root.setContentsMargins(22, 20, 22, 20)
-        root.setSpacing(12)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(16, 16, 16, 16)
+        outer.setSpacing(0)
 
-        title = QLabel("CONNECTED DEVICES")
-        title.setStyleSheet("font-size:22px;font-weight:700;color:#65d9ff;")
-        subtitle = QLabel("Secure local pairing · Same Wi-Fi network · Owner approval required")
+        shell = self._card("drawerShell")
+        shell_layout = QVBoxLayout(shell)
+        shell_layout.setContentsMargins(20, 18, 20, 16)
+        shell_layout.setSpacing(14)
+        outer.addWidget(shell)
+
+        # Header
+        header = self._card("heroHeader")
+        header_row = QHBoxLayout(header)
+        header_row.setContentsMargins(18, 15, 18, 15)
+        header_row.setSpacing(14)
+
+        emblem = QLabel("⌁")
+        emblem.setObjectName("heroEmblem")
+        emblem.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        emblem.setFixedSize(58, 58)
+        header_row.addWidget(emblem)
+
+        title_stack = QVBoxLayout()
+        title_stack.setSpacing(3)
+        title = QLabel("Connected Devices")
+        title.setObjectName("heroTitle")
+        subtitle = QLabel(
+            "Secure local pairing  ·  Same Wi-Fi network  ·  Owner approval required"
+        )
+        subtitle.setObjectName("heroSubtitle")
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet("color:#a8b8ca;")
-        root.addWidget(title)
-        root.addWidget(subtitle)
+        title_stack.addWidget(title)
+        title_stack.addWidget(subtitle)
+        header_row.addLayout(title_stack, 1)
 
+        privacy = QLabel("◆  YOUR PRIVACY, OUR PRIORITY")
+        privacy.setObjectName("privacyBadge")
+        privacy.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_row.addWidget(privacy, 0, Qt.AlignmentFlag.AlignVCenter)
+        shell_layout.addWidget(header)
+
+        # Connection status
+        status_card = self._card("statusCard")
+        status_row = QHBoxLayout(status_card)
+        status_row.setContentsMargins(15, 11, 15, 11)
+        status_row.setSpacing(10)
+        status_icon = QLabel("▣")
+        status_icon.setObjectName("statusIcon")
+        status_row.addWidget(status_icon)
         self.status = QLabel("Connecting to JARVIS dashboard…")
+        self.status.setObjectName("statusText")
         self.status.setWordWrap(True)
-        self.status.setStyleSheet("padding:10px;border:1px solid #35465a;border-radius:8px;color:#d7e6f5;")
-        root.addWidget(self.status)
+        status_row.addWidget(self.status, 1)
+        shell_layout.addWidget(status_card)
 
+        # Bridge controls
         bridge_row = QHBoxLayout()
-        self.start_btn = QPushButton("▶  Start secure bridge")
+        bridge_row.setSpacing(12)
+        self.start_btn = QPushButton("▶   Start secure bridge")
+        self.start_btn.setObjectName("primaryButton")
+        self.start_btn.setMinimumHeight(48)
         self.start_btn.clicked.connect(self.start_bridge)
-        self.stop_btn = QPushButton("■  Stop bridge")
+        self.stop_btn = QPushButton("■   Stop bridge")
+        self.stop_btn.setObjectName("secondaryButton")
+        self.stop_btn.setMinimumHeight(48)
         self.stop_btn.clicked.connect(self.stop_bridge)
-        bridge_row.addWidget(self.start_btn)
-        bridge_row.addWidget(self.stop_btn)
-        root.addLayout(bridge_row)
+        bridge_row.addWidget(self.start_btn, 1)
+        bridge_row.addWidget(self.stop_btn, 1)
+        shell_layout.addLayout(bridge_row)
 
-        scopes_title = QLabel("PHONE PERMISSIONS — choose only what this device needs")
-        scopes_title.setStyleSheet("font-weight:600;color:#dbe9f8;")
-        root.addWidget(scopes_title)
-        scope_wrap = QWidget()
-        scope_layout = QHBoxLayout(scope_wrap)
-        scope_layout.setContentsMargins(0, 0, 0, 0)
-        scope_layout.setSpacing(10)
+        # Permission controls
+        permission_card = self._card("contentCard")
+        permission_layout = QVBoxLayout(permission_card)
+        permission_layout.setContentsMargins(16, 14, 16, 15)
+        permission_layout.setSpacing(11)
+        permission_head = QHBoxLayout()
+        permission_head.addWidget(self._section_title("PHONE PERMISSIONS"))
+        permission_hint = QLabel("Choose only what this device needs")
+        permission_hint.setObjectName("mutedText")
+        permission_head.addWidget(permission_hint, 1)
+        permission_layout.addLayout(permission_head)
+
+        scope_grid = QGridLayout()
+        scope_grid.setHorizontalSpacing(9)
+        scope_grid.setVerticalSpacing(8)
         self.scope_checks = {}
-        for key, label in SCOPES:
+        for index, (key, label) in enumerate(SCOPES):
             check = QCheckBox(label)
-            check.setChecked(key in {"command.send", "notification.receive", "media.control", "battery.read"})
+            check.setObjectName("permissionCheck")
+            check.setChecked(key in DEFAULT_SCOPES)
             check.setToolTip(key)
             self.scope_checks[key] = check
-            scope_layout.addWidget(check)
-        root.addWidget(scope_wrap)
+            scope_grid.addWidget(check, index // 4, index % 4)
+        permission_layout.addLayout(scope_grid)
+        shell_layout.addWidget(permission_card)
 
-        pair_row = QHBoxLayout()
-        self.qr_btn = QPushButton("▦  Generate one-time QR code")
-        self.qr_btn.clicked.connect(self.create_offer)
+        # Pairing panel
+        pairing_card = self._card("pairingCard")
+        pairing_layout = QVBoxLayout(pairing_card)
+        pairing_layout.setContentsMargins(16, 14, 16, 14)
+        pairing_layout.setSpacing(10)
+
+        pair_head = QHBoxLayout()
+        qr_icon = QLabel("▦")
+        qr_icon.setObjectName("qrIcon")
+        pair_head.addWidget(qr_icon)
+        pair_titles = QVBoxLayout()
+        pair_titles.setSpacing(1)
+        pair_title = QLabel("Pair your phone")
+        pair_title.setObjectName("pairTitle")
+        pair_subtitle = QLabel("Scan the one-time QR code with your JARVIS Android companion")
+        pair_subtitle.setObjectName("mutedText")
+        pair_subtitle.setWordWrap(True)
+        pair_titles.addWidget(pair_title)
+        pair_titles.addWidget(pair_subtitle)
+        pair_head.addLayout(pair_titles, 1)
+
+        self.qr_btn = QPushButton("Generate one-time QR code")
+        self.qr_btn.setObjectName("qrButton")
+        self.qr_btn.setMinimumHeight(42)
         self.qr_btn.setEnabled(False)
-        pair_row.addWidget(self.qr_btn)
-        self.code_label = QLabel("QR offer expires after 5 minutes")
-        self.code_label.setStyleSheet("color:#9fb5cb;")
-        pair_row.addWidget(self.code_label, 1)
-        root.addLayout(pair_row)
+        self.qr_btn.clicked.connect(self.create_offer)
+        pair_head.addWidget(self.qr_btn)
+        pairing_layout.addLayout(pair_head)
 
+        qr_content = QHBoxLayout()
+        qr_content.setSpacing(16)
         self.qr = QLabel("Start the secure bridge, then generate a QR code.")
+        self.qr.setObjectName("qrCanvas")
         self.qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.qr.setMinimumHeight(230)
-        self.qr.setStyleSheet("background:#101722;border:1px solid #2c3e52;border-radius:10px;color:#91a7bf;")
-        root.addWidget(self.qr)
+        self.qr.setMinimumSize(190, 190)
+        self.qr.setMaximumSize(220, 220)
+        self.qr.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        qr_content.addWidget(self.qr)
 
+        qr_details = QVBoxLayout()
+        qr_details.setSpacing(8)
         self.code = QLabel("")
-        self.code.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.code.setStyleSheet("font-size:24px;font-weight:700;letter-spacing:4px;color:#65d9ff;")
-        root.addWidget(self.code)
+        self.code.setObjectName("pairCode")
+        self.code.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        qr_details.addWidget(self.code)
+        self.code_label = QLabel("QR offer expires after 5 minutes")
+        self.code_label.setObjectName("expiryText")
+        self.code_label.setWordWrap(True)
+        qr_details.addWidget(self.code_label)
+        instructions = QLabel(
+            "1. Keep your phone and computer on the same Wi-Fi network.\n"
+            "2. Scan this code in the JARVIS companion app.\n"
+            "3. Review the requested permissions and approve pairing."
+        )
+        instructions.setObjectName("instructions")
+        instructions.setWordWrap(True)
+        qr_details.addWidget(instructions)
+        qr_details.addStretch(1)
+        qr_content.addLayout(qr_details, 1)
+        pairing_layout.addLayout(qr_content)
+        shell_layout.addWidget(pairing_card)
 
+        # Paired devices and Bluetooth glasses
+        devices_card = self._card("contentCard")
+        devices_layout = QVBoxLayout(devices_card)
+        devices_layout.setContentsMargins(16, 14, 16, 14)
+        devices_layout.setSpacing(10)
         devices_head = QHBoxLayout()
-        devices_head.addWidget(QLabel("PAIRED DEVICES"))
-        self.refresh_btn = QPushButton("↻ Refresh")
+        devices_head.addWidget(self._section_title("PAIRED DEVICES"))
+        self.device_count = QLabel("0 CONNECTED")
+        self.device_count.setObjectName("connectedBadge")
+        devices_head.addWidget(self.device_count)
+        devices_head.addStretch(1)
+        self.refresh_btn = QPushButton("↻  Refresh")
+        self.refresh_btn.setObjectName("secondaryButton")
         self.refresh_btn.clicked.connect(self.refresh_devices)
         devices_head.addWidget(self.refresh_btn)
-        self.scan_btn = QPushButton("⌁ Scan Bluetooth glasses")
+        self.scan_btn = QPushButton("⌁  Scan Bluetooth glasses")
+        self.scan_btn.setObjectName("secondaryButton")
         self.scan_btn.clicked.connect(self.scan_glasses)
         devices_head.addWidget(self.scan_btn)
-        root.addLayout(devices_head)
+        devices_layout.addLayout(devices_head)
 
         self.devices = QListWidget()
-        self.devices.setMinimumHeight(140)
-        self.devices.setStyleSheet("QListWidget{background:#101722;border:1px solid #2c3e52;border-radius:8px;color:#dce8f5;} QListWidget::item{padding:8px;}")
-        root.addWidget(self.devices, 1)
+        self.devices.setObjectName("deviceList")
+        self.devices.setMinimumHeight(104)
+        self.devices.setMaximumHeight(190)
+        self.devices.setSpacing(5)
+        devices_layout.addWidget(self.devices)
 
         self.glasses = QListWidget()
-        self.glasses.setMaximumHeight(100)
-        self.glasses.setStyleSheet("QListWidget{background:#101722;border:1px solid #2c3e52;border-radius:8px;color:#dce8f5;} QListWidget::item{padding:6px;}")
-        root.addWidget(self.glasses)
+        self.glasses.setObjectName("glassesList")
+        self.glasses.setMinimumHeight(42)
+        self.glasses.setMaximumHeight(92)
+        self.glasses.setSpacing(4)
+        devices_layout.addWidget(self.glasses)
+        shell_layout.addWidget(devices_card, 1)
 
         footer = QHBoxLayout()
         footer.addStretch(1)
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton("✕   Close")
+        close_btn.setObjectName("closeButton")
+        close_btn.setMinimumWidth(112)
         close_btn.clicked.connect(self.close)
         footer.addWidget(close_btn)
-        root.addLayout(footer)
+        shell_layout.addLayout(footer)
 
         self.setStyleSheet("""
-            QDialog{background:#151d29;color:#e3edf8;}
-            QPushButton{background:#24364a;color:#e7f2ff;border:1px solid #3d5872;border-radius:7px;padding:9px 12px;}
-            QPushButton:hover{background:#2d4862;}
-            QPushButton:disabled{color:#718196;background:#1b2633;}
-            QCheckBox{color:#c9d9e9;font-size:11px;}
+            QDialog#pairingDialog {
+                background: #050812;
+                color: #edf2ff;
+                font-family: Inter, "Segoe UI", sans-serif;
+                font-size: 13px;
+            }
+            QFrame#drawerShell {
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
+                    stop:0 #0c1425, stop:0.55 #080f1e, stop:1 #10112b);
+                border: 1px solid rgba(91,125,255,0.42);
+                border-radius: 18px;
+            }
+            QFrame#heroHeader {
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
+                    stop:0 #14254a, stop:0.55 #0c1832, stop:1 #111536);
+                border: 1px solid rgba(67,154,255,0.62);
+                border-radius: 15px;
+            }
+            QLabel#heroEmblem {
+                color: #39caff; font-size: 34px; font-weight: 700;
+                background: #0a1b37; border: 1px solid #248eff; border-radius: 14px;
+            }
+            QLabel#heroTitle { color: #f2f6ff; font-size: 25px; font-weight: 750; }
+            QLabel#heroSubtitle { color: #a9c5e8; font-size: 12px; }
+            QLabel#privacyBadge {
+                color: #6ce9b7; background: rgba(23,155,112,0.12);
+                border: 1px solid rgba(67,220,165,0.38); border-radius: 12px;
+                padding: 8px 10px; font-size: 9px; font-weight: 700;
+            }
+            QFrame#statusCard {
+                background: rgba(19,34,60,0.88);
+                border: 1px solid rgba(85,142,220,0.35); border-radius: 12px;
+            }
+            QLabel#statusIcon { color: #6f9cff; font-size: 21px; }
+            QLabel#statusText { color: #d6e5ff; font-size: 13px; }
+            QFrame#contentCard {
+                background: rgba(13,23,41,0.94);
+                border: 1px solid rgba(107,139,190,0.25); border-radius: 14px;
+            }
+            QFrame#pairingCard {
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
+                    stop:0 rgba(16,37,73,0.98), stop:1 rgba(15,18,48,0.98));
+                border: 1px solid rgba(32,172,255,0.68); border-radius: 14px;
+            }
+            QLabel#sectionTitle {
+                color: #eef3ff; font-size: 13px; font-weight: 750; letter-spacing: 1px;
+            }
+            QLabel#mutedText { color: #91a8c8; font-size: 11px; }
+            QLabel#qrIcon { color: #42c9ff; font-size: 25px; padding-right: 5px; }
+            QLabel#pairTitle { color: #f3f6ff; font-size: 16px; font-weight: 700; }
+            QLabel#qrCanvas {
+                color: #93a9c7; background: rgba(4,10,22,0.88);
+                border: 1px solid rgba(81,155,255,0.38); border-radius: 12px;
+                padding: 8px; font-size: 11px;
+            }
+            QLabel#pairCode { color: #62d4ff; font-size: 22px; font-weight: 800; letter-spacing: 4px; }
+            QLabel#expiryText { color: #6dcfff; font-size: 12px; font-weight: 600; }
+            QLabel#instructions { color: #b0c2df; font-size: 11px; line-height: 1.5; }
+            QLabel#connectedBadge {
+                color: #62e6b1; background: rgba(36,172,123,0.12);
+                border: 1px solid rgba(68,215,164,0.3); border-radius: 10px;
+                padding: 5px 8px; font-size: 9px; font-weight: 750;
+            }
+            QCheckBox#permissionCheck {
+                color: #d3e2f7; background: rgba(5,13,27,0.62);
+                border: 1px solid rgba(103,139,194,0.28); border-radius: 9px;
+                padding: 8px 9px; spacing: 7px; font-size: 11px;
+            }
+            QCheckBox#permissionCheck::indicator {
+                width: 16px; height: 16px; border-radius: 4px;
+                background: #17243a; border: 1px solid #627b9f;
+            }
+            QCheckBox#permissionCheck::indicator:checked {
+                background: #167dff; border: 1px solid #4fcaff;
+            }
+            QListWidget#deviceList, QListWidget#glassesList {
+                color: #dce8fa; background: rgba(4,11,23,0.75);
+                border: 1px solid rgba(89,125,179,0.28); border-radius: 10px;
+                padding: 5px; outline: 0;
+            }
+            QListWidget::item { border: 1px solid rgba(104,135,185,0.16);
+                border-radius: 8px; padding: 7px; }
+            QListWidget::item:selected { background: rgba(56,104,184,0.3); }
+            QPushButton {
+                color: #eaf2ff; background: rgba(30,48,76,0.92);
+                border: 1px solid rgba(112,150,201,0.4); border-radius: 10px;
+                padding: 10px 13px; font-size: 12px; font-weight: 600;
+            }
+            QPushButton:hover { background: rgba(44,72,112,0.98); border-color: #559fff; }
+            QPushButton:pressed { background: #142c50; }
+            QPushButton:disabled { color: #62738c; background: #111b2b; border-color: #25344a; }
+            QPushButton#primaryButton {
+                color: white; background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                    stop:0 #0877f9, stop:0.55 #235cff, stop:1 #078fda);
+                border: 1px solid #48c9ff; font-size: 13px; font-weight: 750;
+            }
+            QPushButton#primaryButton:hover { background: #168bff; }
+            QPushButton#qrButton {
+                color: white; background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                    stop:0 #087ce9, stop:1 #514cf0);
+                border: 1px solid #39c5ff; font-weight: 750;
+            }
+            QPushButton#closeButton {
+                background: rgba(21,38,64,0.9); border: 1px solid #368dff;
+                color: #eaf3ff; padding: 10px 15px;
+            }
+            @media (max-width: 820px) {
+                QLabel#privacyBadge { font-size: 8px; }
+            }
         """)
 
     def _request(self, path, method="GET", body=None):
         data = None if body is None else json.dumps(body).encode("utf-8")
         headers = {"Authorization": "Bearer " + self.token, "Content-Type": "application/json"}
         req = urllib.request.Request(self.base_url + path, data=data, headers=headers, method=method)
-        # Dashboard is local and has a per-install self-signed TLS certificate.
         context = ssl._create_unverified_context()
         try:
             with urllib.request.urlopen(req, context=context, timeout=8) as response:
@@ -167,14 +407,9 @@ class DevicePairingDialog(QDialog):
             raise RuntimeError(f"Dashboard request failed: {exc}") from exc
 
     def _authenticate(self):
-        """Establish an owner session, retrying transient one-time-key failures.
-
-        The desktop generates the short-lived PIN locally while the dashboard
-        server consumes it over HTTPS. A stale/consumed PIN must never leave the
-        dialog holding an empty bearer token: request a fresh PIN and retry.
-        """
+        """Establish an owner session, retrying transient one-time-key failures."""
         last_error = None
-        for attempt in range(3):
+        for _attempt in range(3):
             try:
                 pin = self.dashboard.new_key(expiry_secs=120)
                 data = json.dumps({"pin": pin}).encode("utf-8")
@@ -188,8 +423,6 @@ class DevicePairingDialog(QDialog):
                     ) as response:
                         result = json.loads(response.read().decode("utf-8"))
                 except urllib.error.HTTPError as exc:
-                    # FastAPI returns a JSON body for an invalid or expired PIN.
-                    # Preserve that detail rather than showing a generic HTTP 401.
                     try:
                         detail = json.loads(exc.read().decode("utf-8"))
                         message = detail.get("error") or detail.get("detail") or str(exc)
@@ -208,14 +441,12 @@ class DevicePairingDialog(QDialog):
                         result.get("error") or "Dashboard did not issue an owner session."
                     )
                     continue
-
                 self.token = result["token"]
                 self.status.setText("Owner authenticated · Ready to start local pairing.")
                 self.qr_btn.setEnabled(True)
                 return
             except Exception as exc:
                 last_error = exc
-                # Network / TLS failures are not fixed by cycling a PIN.
                 break
 
         self.token = ""
@@ -224,14 +455,15 @@ class DevicePairingDialog(QDialog):
         self.status.setText("Could not authenticate to the dashboard: " + message)
         QMessageBox.warning(
             self, "JARVIS pairing",
-            message + "\\n\\nClose this dialog and retry if the dashboard has just started.",
+            message + "\n\nClose this dialog and retry if the dashboard has just started.",
         )
 
     def start_bridge(self):
         try:
             result = self._request("/api/devices/companion/start", "POST", {})
             self.bridge_running = bool(result.get("running", True))
-            self.status.setText("Secure companion bridge running at " + str(result.get("endpoint", "private LAN endpoint")))
+            endpoint = result.get("endpoint", "private LAN endpoint")
+            self.status.setText("Secure companion bridge running at " + str(endpoint))
             self.qr_btn.setEnabled(True)
         except Exception as exc:
             self.status.setText("Bridge could not start: " + str(exc))
@@ -241,9 +473,12 @@ class DevicePairingDialog(QDialog):
         try:
             self._request("/api/devices/companion/stop", "POST", {})
             self.bridge_running = False
-            self.qr.setText("Bridge stopped. Start it to generate a new pairing QR.")
+            self._offer_timer.stop()
+            self._offer_expires_at = 0
             self.qr.setPixmap(QPixmap())
+            self.qr.setText("Bridge stopped. Start it to generate a new pairing QR.")
             self.code.clear()
+            self.code_label.setText("QR offer expires after 5 minutes")
             self.status.setText("Secure companion bridge stopped.")
         except Exception as exc:
             QMessageBox.warning(self, "Secure bridge", str(exc))
@@ -253,25 +488,53 @@ class DevicePairingDialog(QDialog):
         if not scopes:
             QMessageBox.information(self, "Permissions", "Select at least one permission for the phone.")
             return
+        if not self.bridge_running:
+            QMessageBox.information(self, "Secure bridge", "Start the secure bridge before generating a QR code.")
+            return
         try:
-            result = self._request("/api/devices/pairing-offers", "POST", {"scopes": scopes, "expires_in": 300})
+            result = self._request(
+                "/api/devices/pairing-offers", "POST",
+                {"scopes": scopes, "expires_in": 300},
+            )
             self.code.setText(result.get("code", ""))
-            self.code_label.setText("One-time code · expires " + __import__("datetime").datetime.fromtimestamp(result["expires_at"]).strftime("%H:%M:%S"))
+            self._offer_expires_at = int(result.get("expires_at", time.time() + 300))
+            self._update_offer_countdown()
+            self._offer_timer.start()
+
             uri = result.get("qr_data_uri", "")
+            self.qr.setPixmap(QPixmap())
             if uri.startswith("data:image/png;base64,"):
                 raw = base64.b64decode(uri.split(",", 1)[1])
                 pixmap = QPixmap()
                 if pixmap.loadFromData(raw, "PNG"):
-                    self.qr.setPixmap(pixmap.scaled(260, 260, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                    self.qr.setPixmap(pixmap.scaled(
+                        196, 196, Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    ))
                     self.qr.setText("")
                 else:
                     self.qr.setText("QR image could not be rendered.")
             else:
-                self.qr.setText("QR library missing. Install qrcode[pil] to display the code. Pairing code: " + result.get("code", ""))
-            self.status.setText("Scan this QR from the JARVIS Android companion while both devices are on the same Wi-Fi.")
+                self.qr.setText("QR library missing. Install qrcode[pil] to display the code.")
+
+            self.status.setText(
+                "Scan this QR from the JARVIS Android companion while both devices are on the same Wi-Fi."
+            )
         except Exception as exc:
             self.status.setText("QR generation failed: " + str(exc))
             QMessageBox.warning(self, "Pairing QR", str(exc))
+
+    def _update_offer_countdown(self):
+        remaining = max(0, self._offer_expires_at - int(time.time()))
+        if remaining <= 0:
+            self._offer_timer.stop()
+            self.code_label.setText("QR offer expired · Generate a new code")
+            self.code.clear()
+            self.qr.setPixmap(QPixmap())
+            self.qr.setText("This pairing code has expired. Generate a new one to continue.")
+            return
+        minutes, seconds = divmod(remaining, 60)
+        self.code_label.setText(f"QR offer expires in {minutes}:{seconds:02d}")
 
     def refresh_devices(self):
         if not self.token:
@@ -279,35 +542,60 @@ class DevicePairingDialog(QDialog):
         try:
             result = self._request("/api/devices")
             self.devices.clear()
-            for device in result.get("devices", []):
+            devices = result.get("devices", [])
+            for device in devices:
                 name = device.get("device_name", "Unnamed device")
                 platform = device.get("platform", "Unknown platform")
-                online = "ONLINE" if device.get("online") else "OFFLINE"
-                scopes = ", ".join(device.get("scopes", [])) or "no permissions"
+                online = bool(device.get("online"))
+                scopes = ", ".join(device.get("scopes", [])) or "No permissions"
                 item = QListWidgetItem()
-                item.setSizeHint(item.sizeHint())
-                self.devices.addItem(item)
                 row = QWidget()
                 layout = QHBoxLayout(row)
-                layout.setContentsMargins(8, 4, 8, 4)
-                label = QLabel(f"{name} · {platform} · {online}\\nPermissions: {scopes}")
-                label.setWordWrap(True)
-                layout.addWidget(label, 1)
-                button = QPushButton("Revoke")
+                layout.setContentsMargins(8, 5, 8, 5)
+                layout.setSpacing(10)
+                icon = QLabel("▣" if "android" in str(platform).lower() or "phone" in str(platform).lower() else "⌘")
+                icon.setStyleSheet("color:#65caff;font-size:20px;")
+                layout.addWidget(icon)
+                detail = QVBoxLayout()
+                detail.setSpacing(1)
+                name_label = QLabel(f"{name}  ·  {platform}")
+                name_label.setStyleSheet("color:#edf3ff;font-weight:700;")
+                state_label = QLabel(("● ONLINE" if online else "● OFFLINE") + f"   ·   {scopes}")
+                state_label.setStyleSheet(
+                    "color:#62e6b1;font-size:10px;" if online
+                    else "color:#8999b2;font-size:10px;"
+                )
+                detail.addWidget(name_label)
+                detail.addWidget(state_label)
+                layout.addLayout(detail, 1)
+                revoke = QPushButton("Revoke")
+                revoke.setObjectName("secondaryButton")
+                revoke.setMinimumWidth(78)
                 device_id = device.get("device_id")
-                button.clicked.connect(lambda checked=False, identifier=device_id: self.revoke_device(identifier))
-                layout.addWidget(button)
+                revoke.clicked.connect(
+                    lambda checked=False, identifier=device_id: self.revoke_device(identifier)
+                )
+                layout.addWidget(revoke)
+                self.devices.addItem(item)
                 self.devices.setItemWidget(item, row)
                 item.setSizeHint(row.sizeHint())
                 item.setData(Qt.ItemDataRole.UserRole, device_id)
-            self.status.setText(f"Loaded {self.devices.count()} paired device(s).")
+
+            count = len(devices)
+            self.device_count.setText(f"{count} CONNECTED" if count else "0 CONNECTED")
+            self.status.setText(f"Loaded {count} paired device(s).")
+            if not count:
+                self.devices.addItem("No devices paired yet · Start the secure bridge and scan the QR code above.")
         except Exception as exc:
             self.status.setText("Could not load paired devices: " + str(exc))
 
     def revoke_device(self, device_id):
         if not device_id:
             return
-        answer = QMessageBox.question(self, "Revoke device", "Revoke this device's credentials and permissions?")
+        answer = QMessageBox.question(
+            self, "Revoke device",
+            "Revoke this device's credentials and permissions?",
+        )
         if answer != QMessageBox.StandardButton.Yes:
             return
         try:
@@ -322,15 +610,21 @@ class DevicePairingDialog(QDialog):
         self.glasses.addItem("Scanning nearby Bluetooth devices…")
         self.scan_btn.setEnabled(False)
         try:
-            result = self._request("/api/devices/glasses/discover", "POST", {"timeout": 5.0})
+            result = self._request(
+                "/api/devices/glasses/discover", "POST", {"timeout": 5.0}
+            )
             self.glasses.clear()
             devices = result.get("devices", [])
             if not devices:
-                self.glasses.addItem("No compatible JARVIS BLE glasses detected. Vendor-specific models may need an adapter.")
+                self.glasses.addItem(
+                    "No compatible JARVIS BLE glasses detected. Vendor-specific models may need an adapter."
+                )
                 return
             for device in devices:
                 physical_id = device.get("physical_device_id", "")
-                row = QListWidgetItem(f"{device.get('vendor', 'Unknown')} {device.get('model', 'Glasses')} · {physical_id}")
+                row = QListWidgetItem(
+                    f"{device.get('vendor', 'Unknown')} {device.get('model', 'Glasses')} · {physical_id}"
+                )
                 row.setData(Qt.ItemDataRole.UserRole, device)
                 self.glasses.addItem(row)
             self.glasses.itemDoubleClicked.connect(self.pair_glasses)
@@ -350,7 +644,14 @@ class DevicePairingDialog(QDialog):
                 "physical_device_id": device.get("physical_device_id", ""),
                 "device_name": name,
             })
-            QMessageBox.information(self, "Smart glasses", "Paired and connected: " + result.get("device_name", name))
+            QMessageBox.information(
+                self, "Smart glasses",
+                "Paired and connected: " + result.get("device_name", name),
+            )
             self.refresh_devices()
         except Exception as exc:
             QMessageBox.warning(self, "Smart glasses", str(exc))
+
+    def closeEvent(self, event):
+        self._offer_timer.stop()
+        super().closeEvent(event)
