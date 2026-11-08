@@ -24,6 +24,7 @@ import com.google.android.material.button.MaterialButton
 import androidx.appcompat.app.AppCompatActivity
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import com.google.android.gms.wearable.Wearable
 import org.json.JSONObject
 import java.util.concurrent.Executors
 
@@ -35,6 +36,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var notificationAppsButton: Button
     private lateinit var mediaControlButton: Button
     private lateinit var wearBridgeButton: Button
+    private lateinit var wearStatus: TextView
     private lateinit var remoteRelayButton: Button
     private lateinit var remotePingButton: Button
     private var remoteRelayClient: RemoteRelayClient? = null
@@ -162,6 +164,16 @@ class MainActivity : AppCompatActivity() {
         wearBridgeButton = actionButton("REQUEST WEAR OS BRIDGE", false).apply {
             setOnClickListener { toggleWearBridge() }
         }
+        wearStatus = TextView(this).apply {
+            text = "Wear OS connection status has not been checked yet."
+            textSize = 12f
+            setTextColor(Color.rgb(174, 195, 222))
+            setPadding(dp(4), dp(8), dp(4), dp(8))
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
+        val checkWearConnectionButton = actionButton("CHECK WEAR OS CONNECTION", false).apply {
+            setOnClickListener { refreshWearStatus() }
+        }
         remoteRelayButton = actionButton("CONFIGURE SECURE REMOTE RELAY", false).apply {
             setOnClickListener { configureOrToggleRemoteRelay() }
         }
@@ -183,6 +195,8 @@ class MainActivity : AppCompatActivity() {
             addView(notificationAppsButton, matchWidth())
             addView(mediaControlButton, matchWidth())
             addView(wearBridgeButton, matchWidth())
+            addView(wearStatus, matchWidth())
+            addView(checkWearConnectionButton, matchWidth())
         }
         val disconnect = actionButton("DISCONNECT THIS DEVICE", false).apply {
             setOnClickListener {
@@ -232,6 +246,7 @@ class MainActivity : AppCompatActivity() {
         }
         ViewCompat.requestApplyInsets(scroll)
         refreshBatteryButton()
+        refreshWearStatus()
     }
 
     override fun onResume() {
@@ -239,6 +254,7 @@ class MainActivity : AppCompatActivity() {
         if (::batterySyncButton.isInitialized) {
             refreshBatteryButton()
             refreshNotificationRelayButton()
+            refreshWearStatus()
             notificationAppsButton.isEnabled = settings.hasNotificationScope()
             notificationAppsButton.alpha = if (notificationAppsButton.isEnabled) 1f else 0.55f
             if (settings.mediaControlEnabled() && !hasNotificationAccess()) {
@@ -377,6 +393,26 @@ class MainActivity : AppCompatActivity() {
         wearBridgeButton.alpha = 1f
     }
 
+    private fun refreshWearStatus() {
+        if (!::wearStatus.isInitialized) return
+        val paired = try { !tokenStore.read().isNullOrBlank() && !settings.deviceId().isNullOrBlank() }
+            catch (_: Exception) { false }
+        val approved = try { paired && settings.hasCommandScope() } catch (_: Exception) { false }
+        val enabled = try { settings.wearBridgeEnabled() } catch (_: Exception) { false }
+        wearStatus.text = WearConnectionStatus.describe(paired, approved, enabled, null)
+        Wearable.getNodeClient(this).connectedNodes
+            .addOnSuccessListener { nodes ->
+                if (!isFinishing && !isDestroyed) {
+                    wearStatus.text = WearConnectionStatus.describe(paired, approved, enabled, nodes.size)
+                }
+            }
+            .addOnFailureListener {
+                if (!isFinishing && !isDestroyed) {
+                    wearStatus.text = WearConnectionStatus.describe(paired, approved, enabled, null, lookupFailed = true)
+                }
+            }
+    }
+
     private fun toggleWearBridge() {
         val paired = tokenStore.read() != null && settings.deviceId() != null
         if (paired && settings.hasCommandScope()) {
@@ -393,6 +429,7 @@ class MainActivity : AppCompatActivity() {
             else "Wear OS bridge request cancelled."
         }
         refreshWearBridgeButton()
+        refreshWearStatus()
     }
 
     private fun configureOrToggleRemoteRelay() {
