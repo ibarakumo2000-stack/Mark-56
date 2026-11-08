@@ -117,14 +117,19 @@ class MainActivity : AppCompatActivity() {
         }
         val chatButton = actionButton("OPEN JARVIS CHAT  ·  SECURE DESKTOP", true).apply {
             setOnClickListener {
-                if (tokenStore.read() != null && settings.hasCommandScope()) {
-                    try {
+                // Keep every credential/settings read inside the guard: a broken
+                // preference store must never terminate the home Activity.
+                try {
+                    val token = tokenStore.read()
+                    val commandApproved = settings.hasCommandScope()
+                    if (!token.isNullOrBlank() && commandApproved) {
                         startActivity(Intent(this@MainActivity, ChatActivity::class.java))
-                    } catch (error: Exception) {
-                        status.text = "Could not open secure chat: " + (error.message ?: "please restart the companion app")
+                    } else {
+                        status.text = "JARVIS Chat needs a valid pairing with owner-approved command.send. Return to pairing and approve that permission on your desktop."
                     }
-                } else {
-                    status.text = "JARVIS Chat needs command.send approval. On your JARVIS desktop, create a new phone pairing QR with command.send enabled, then disconnect and pair this phone again. Wear OS permission is not required for chat."
+                } catch (error: Exception) {
+                    status.text = "Secure chat could not read this phone's pairing. Disconnect and pair again. " +
+                        (error.message ?: error.javaClass.simpleName)
                 }
             }
         }
