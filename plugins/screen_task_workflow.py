@@ -26,10 +26,14 @@ _ALLOWED_KEYS = {
     "home", "end", "pageup", "pagedown", "space", "enter",
 }
 _BLOCKED_TASK_TERMS = (
-    "send message", "send email", "send the email", "post this", "publish",
-    "purchase", "buy ", "place an order", "pay ", "transfer money",
-    "delete ", " permanently delete", "wipe ", "format disk",
-    "change password", "enter my password", "security settings",
+    "send message", "send a message", "send text", "send a text",
+    "send email", "send the email", "send whatsapp", "post this", "publish",
+    "purchase", "buy ", "place an order", "place order", "checkout", "pay ",
+    "payment", "transfer money", "transfer funds", "submit ",
+    "delete ", "delete", "remove file", "uninstall", "empty trash",
+    "permanently delete", "wipe ", "format disk", "change password",
+    "enter my password", "enter password", "log in", "login", "credentials",
+    "security settings",
 )
 
 
