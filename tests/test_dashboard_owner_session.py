@@ -27,7 +27,8 @@ class DashboardOwnerSessionTests(unittest.TestCase):
 
         registry = DeviceRegistry()
         try:
-            with patch("dashboard.server._make_device_registry", return_value=registry):
+            with patch("dashboard.server._make_device_registry", return_value=registry), \
+                 patch("dashboard.server._UPLOAD_OK", False):
                 server = DashboardServer()
             token = server.create_owner_session()
             client = TestClient(server.app)
