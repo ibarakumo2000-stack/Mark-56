@@ -337,6 +337,16 @@ def build_device_router(
         for device in devices:
             seen = device.get("last_seen")
             device["online"] = bool(seen and now - seen <= _ONLINE_WINDOW)
+            # Battery telemetry is exposed only through this owner-authenticated
+            # dashboard route and only for devices granted battery.read.
+            device["battery"] = None
+            if companion_app is not None and "battery.read" in device.get("scopes", []):
+                try:
+                    device["battery"] = companion_app.state.device_features.battery_status_for_device(
+                        device["device_id"]
+                    )
+                except (AttributeError, ValueError):
+                    device["battery"] = None
         return JSONResponse({"devices": devices})
 
     @router.put("/api/devices/{device_id}/scopes")
