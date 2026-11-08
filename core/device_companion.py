@@ -63,8 +63,10 @@ def _validate_route(method: str, path: str) -> tuple[str, str]:
     if not isinstance(method, str) or method.upper() not in _ALLOWED_METHODS:
         raise ValueError("Unsupported companion method")
     if (not isinstance(path, str) or not path.startswith("/")
-            or path.startswith("//") or "?" in path or "#" in path
-            or "\\\\" in path or any(ord(ch) < 32 for ch in path)):
+            or path.startswith("//") or path.endswith("//")
+            or "?" in path or "#" in path or "\\" in path
+            or "%" in path or any(ord(ch) < 32 or ord(ch) > 126 for ch in path)
+            or any(segment in {".", ".."} for segment in path.split("/"))):
         raise ValueError("Invalid companion route")
     return method.upper(), path
 
