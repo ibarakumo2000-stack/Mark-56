@@ -44,13 +44,13 @@ class ScreenAgentTests(unittest.TestCase):
             pg.click.assert_not_called()
 
     def test_task_mode_dispatches_to_autonomous_workflow(self):
-        with patch("plugins.screen_task_workflow.run_task", return_value='{"status":"completed"}') as run_task:
+        with patch("plugins._screen_task_workflow.run_task", return_value='{"status":"completed"}') as run_task:
             result = screen_agent.screen_agent({"mode": "task", "task": "Open settings"})
         self.assertIn("completed", result)
         run_task.assert_called_once_with("Open settings")
 
     def test_task_cancel_dispatches_to_workflow_cancellation(self):
-        with patch("plugins.screen_task_workflow.cancel_task", return_value="cancelled") as cancel:
+        with patch("plugins._screen_task_workflow.cancel_task", return_value="cancelled") as cancel:
             result = screen_agent.screen_agent({"mode": "task_cancel"})
         self.assertEqual(result, "cancelled")
         cancel.assert_called_once_with()
