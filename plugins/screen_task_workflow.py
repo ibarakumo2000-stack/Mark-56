@@ -9,7 +9,10 @@ destructive-file actions are exposed by this executor.
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
+import subprocess
 import threading
 import time
 from typing import Any
@@ -120,21 +123,51 @@ def _decision(png: bytes, width: int, height: int, task: str,
     return _json_object(raw)
 
 
+def _ydotool(args: list[str]) -> None:
+    executable = shutil.which("ydotool")
+    if not executable:
+        raise RuntimeError(
+            "No Wayland input backend is available. Install ydotool, enable its "
+            "ydotoold service, grant your user access to the input group, then "
+            "log out and back in."
+        )
+    try:
+        result = subprocess.run(
+            [executable, *args],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=4,
+            check=False,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"ydotool could not send desktop input ({type(exc).__name__}).") from exc
+    if result.returncode:
+        detail = result.stderr.decode("utf-8", "replace").strip()[:250]
+        raise RuntimeError(
+            "ydotool input failed. Confirm ydotoold is running and the current "
+            f"user can access its socket. {detail}"
+        )
+
+
 def _execute(action: Any, width: int, height: int) -> str:
     if not isinstance(action, dict):
         raise ValueError("The vision model did not provide a valid UI action.")
     kind = str(action.get("type") or "").strip().lower()
     from plugins import screen_agent
 
-    if not screen_agent._HAS_PYAUTOGUI or screen_agent.pyautogui is None:
+    pg = screen_agent.pyautogui if screen_agent._HAS_PYAUTOGUI else None
+    wayland = os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+    use_ydotool = wayland and bool(shutil.which("ydotool"))
+    if pg is None and not use_ydotool:
         raise RuntimeError(
-            "Desktop input is unavailable: PyAutoGUI could not connect to the "
-            "active graphical session. Screen monitoring will be stopped."
+            "Desktop input is unavailable. On GNOME Wayland, install and enable "
+            "ydotoold (see the Ubuntu setup instructions); on X11, install the "
+            "project's PyAutoGUI dependencies."
         )
-    pg = screen_agent.pyautogui
-    screen_width, screen_height = pg.size()
+
+    screen_width, screen_height = pg.size() if pg is not None else (width, height)
     if (screen_width, screen_height) != (width, height):
-        # Scale model coordinates only when capture and input dimensions differ.
         sx, sy = screen_width / width, screen_height / height
     else:
         sx = sy = 1.0
@@ -146,7 +179,13 @@ def _execute(action: Any, width: int, height: int) -> str:
         if not (0 <= x < width and 0 <= y < height):
             raise ValueError("Click coordinates are outside the captured screen.")
         px, py = round(x * sx), round(y * sy)
-        if kind == "click":
+        if use_ydotool:
+            _ydotool(["mousemove", "--absolute", str(px), str(py)])
+            if kind == "click":
+                _ydotool(["click", "0xC0"])
+            else:
+                _ydotool(["click", "--repeat", "2", "--next-delay", "100", "0xC0"])
+        elif kind == "click":
             pg.click(px, py)
         else:
             pg.doubleClick(px, py)
@@ -158,14 +197,26 @@ def _execute(action: Any, width: int, height: int) -> str:
             raise ValueError("Typing is limited to 1–300 characters per action.")
         if any(ord(ch) < 32 and ch not in "\t" for ch in value):
             raise ValueError("Control characters are not allowed in typed text.")
-        pg.write(value, interval=0.02)
+        if use_ydotool:
+            _ydotool(["type", "--key-delay", "20", value])
+        else:
+            pg.write(value, interval=0.02)
         return f"typed {len(value)} characters into the currently focused field"
 
     if kind == "press":
         key = str(action.get("key") or "").lower()
         if key not in _ALLOWED_KEYS:
             raise ValueError("Enter is allowed only for benign local dialogs; shortcuts are blocked.")
-        pg.press("esc" if key == "escape" else key)
+        if use_ydotool:
+            keycodes = {
+                "esc": 1, "escape": 1, "tab": 15, "enter": 28, "space": 57,
+                "home": 102, "up": 103, "pageup": 104, "left": 105,
+                "right": 106, "end": 107, "down": 108, "pagedown": 109,
+            }
+            code = keycodes[key]
+            _ydotool(["key", f"{code}:1", f"{code}:0"])
+        else:
+            pg.press("esc" if key == "escape" else key)
         return f"pressed navigation key {key}"
 
     if kind == "scroll":
@@ -173,7 +224,12 @@ def _execute(action: Any, width: int, height: int) -> str:
         amount = action.get("amount", 300)
         if direction not in {"up", "down"} or type(amount) is not int or not 1 <= amount <= 600:
             raise ValueError("Scroll must be up/down with an amount from 1 to 600.")
-        pg.scroll(amount if direction == "up" else -amount)
+        if use_ydotool:
+            code = 104 if direction == "up" else 109
+            repeats = max(1, min(5, round(amount / 120)))
+            _ydotool(["key", *[token for _ in range(repeats) for token in (f"{code}:1", f"{code}:0")]])
+        else:
+            pg.scroll(amount if direction == "up" else -amount)
         return f"scrolled {direction} by {amount}"
 
     raise ValueError("Unsupported action. Only click, double_click, type_text, press, and scroll are allowed.")
