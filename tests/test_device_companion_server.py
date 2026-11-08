@@ -37,6 +37,7 @@ class CompanionServerTests(unittest.TestCase):
     def test_pairing_route_exists_and_media_is_not_an_http_enqueue_route(self):
         paths = {route.path for route in self.app.routes}
         self.assertIn("/v1/notifications", paths)
+        self.assertIn("/v1/media/state", paths)
         self.assertIn("/v1/battery", paths)
         self.assertIn("/v1/media/next", paths)
         self.assertIn("/v1/wearable/action", paths)
