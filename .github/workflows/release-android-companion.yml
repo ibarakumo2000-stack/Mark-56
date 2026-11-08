@@ -112,7 +112,7 @@ jobs:
           cp android-companion/app/build/outputs/bundle/release/app-release.aab "release-apks/JARVIS-Companion.aab"
           cp android-companion/wear-app/build/outputs/bundle/release/wear-app-release.aab "release-apks/JARVIS-Watch.aab"
           cd release-apks
-          sha256sum *.apk *.aab > SHA256SUMS.txt
+          sha256sum -- *.apk *.aab > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: jarvis-signed-android-release
