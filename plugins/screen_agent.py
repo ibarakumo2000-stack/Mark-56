@@ -200,6 +200,12 @@ def screen_agent(parameters: dict, response=None, player=None, session_memory=No
     params = parameters or {}
     mode = str(params.get("mode") or "analyze").strip().lower()
     try:
+        if mode == "task":
+            from plugins.screen_task_workflow import run_task
+            return run_task(params.get("task", ""))
+        if mode == "task_cancel":
+            from plugins.screen_task_workflow import cancel_task
+            return cancel_task()
         if mode == "diagnose":
             return _diagnose()
         if mode == "monitor_start":
@@ -231,19 +237,22 @@ def screen_agent(parameters: dict, response=None, player=None, session_memory=No
 TOOL = {
     "name": "screen_agent",
     "description": (
-        "Mark 56 screen vision agent. When asked what is on screen, default to analyze the captured image and describe visible content; "
-        "observe only captures metadata. Diagnose desktop/model readiness, read visible text with local OCR, "
-        "propose one next step without acting, or execute a narrowly "
-        "allowlisted reversible action only after explicit confirmed=true. Never automatically "
-        "executes a proposal."
+        "Mark 56 screen vision agent. Use mode='task' when the user asks JARVIS to "
+        "complete a desktop task: it requests the GNOME ScreenCast permission, "
+        "uses the configured local image-capable Ollama model to repeatedly observe, "
+        "perform one bounded reversible UI action, and verify the result until done. "
+        "The stream is automatically stopped on completion, failure, timeout, or "
+        "cancellation. No screenshots are sent to cloud services. Use task_cancel "
+        "to stop an active task. Other modes diagnose, observe, read_text, analyze, "
+        "propose, and perform a separately confirmed allowlisted action."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "mode": {"type": "STRING", "description": "analyze (default: visually describe current desktop) | diagnose | observe (capture metadata only) | monitor_start | monitor_status | monitor_stop | read_text | propose | execute"},
+            "mode": {"type": "STRING", "description": "task (autonomous observe-act-verify workflow) | task_cancel | analyze | diagnose | observe | monitor_start | monitor_status | monitor_stop | read_text | propose | execute"},
             "path": {"type": "STRING", "description": "Optional PNG screenshot path inside home directory"},
             "prompt": {"type": "STRING", "description": "Question for screen analysis (max 1000 chars)"},
-            "task": {"type": "STRING", "description": "Goal to plan without taking action"},
+            "task": {"type": "STRING", "description": "Goal for mode=task (maximum 1000 characters), or proposal goal for mode=propose"},
             "action": {"type": "STRING", "description": "For execute: click | type_text | press"},
             "x": {"type": "INTEGER", "description": "Click x coordinate"},
             "y": {"type": "INTEGER", "description": "Click y coordinate"},
