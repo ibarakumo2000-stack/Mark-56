@@ -46,6 +46,23 @@ class ScreenTaskWorkflowTests(unittest.TestCase):
                 workflow._execute({"type": "click", "x": 1300, "y": 10}, 1280, 720)
             pg.click.assert_not_called()
 
+    def test_wayland_uses_ydotool_when_pyautogui_is_unavailable(self):
+        from types import SimpleNamespace
+        with patch.dict("os.environ", {"XDG_SESSION_TYPE": "wayland"}), \
+             patch.object(screen_agent_module, "_HAS_PYAUTOGUI", False), \
+             patch.object(screen_agent_module, "pyautogui", None), \
+             patch.object(workflow.shutil, "which", return_value="/usr/bin/ydotool"), \
+             patch.object(workflow.subprocess, "run", return_value=SimpleNamespace(
+                 returncode=0, stderr=b""
+             )) as run:
+            result = workflow._execute({"type": "click", "x": 100, "y": 200}, 1280, 720)
+        self.assertIn("click", result)
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(commands[0], [
+            "/usr/bin/ydotool", "mousemove", "--absolute", "100", "200"
+        ])
+        self.assertEqual(commands[1], ["/usr/bin/ydotool", "click", "0xC0"])
+
     def test_run_task_observes_acts_verifies_and_stops_stream(self):
         frame = (b"png", 1280, 720)
         decisions = [
