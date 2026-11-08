@@ -1,39 +1,35 @@
 # Phase 7F — Desktop Device Management
 
-## Delivered in this phase
+## Delivered
 
-- Adds a responsive **Devices** panel to the authenticated JARVIS dashboard.
-- Shows enrolled device identity, platform, granted scopes, last-seen timestamp, and a best-effort online indicator.
-- Shows the latest Android battery percentage, charging state, and report time in the owner-authenticated Devices panel when `battery.read` is granted. Battery values are not returned for devices without that scope or while the companion listener is stopped.
-- Starts and stops the companion HTTPS listener only after an authenticated owner action.
-- Binds the companion listener to the private numeric LAN IP used to open the HTTPS dashboard. Wildcard and public addresses are rejected.
-- Reuses the dashboard's locally generated TLS certificate and requires the Android client to pin its SHA-256 fingerprint.
-- Creates five-minute, single-use pairing offers with explicit owner-selected scopes. The QR payload contains only the HTTPS endpoint, one-time code, expiry, and certificate fingerprint; it never contains a long-lived device token.
-- Generates a QR image locally using the already-declared qrcode dependency. The page also exposes a copyable payload/manual code fallback.
-- Allows the owner to edit a device's approved scopes or revoke the device immediately. Scope changes take effect on the next authenticated request.
-- Adds owner-authorized media queue controls for devices that were explicitly granted media.control. The command allowlist remains play, pause, play/pause, next, previous, and stop.
+- Responsive owner-authenticated Devices dashboard for paired phones, watches and supported glasses.
+- Per-device identity, platform, granted scopes, online/offline state, last-seen timestamp and readable last-seen age.
+- Latest battery percentage, charging state and report time for devices granted `battery.read`.
+- Latest Now Playing snapshot for devices granted `media.control`.
+- Owner actions to rename a device, edit its approved scopes, send allow-listed media controls, and immediately revoke a device.
+- Recent Android notification inbox with source-device attribution; notification content is available only to the authenticated desktop owner.
+- Secure bridge start/stop, one-time pairing offers and private-LAN TLS enrollment remain owner-authorized.
 
 ## Security behavior
 
 - All owner management endpoints require the existing dashboard bearer session.
 - Enrollment and credential endpoints require HTTPS except loopback-only development calls.
-- The companion listener is separate from the legacy remote dashboard listener and uses the same private device registry.
-- The companion listener does not start on import or desktop application startup.
-- No public internet bind, wildcard bind, raw token display, broad admin scope, arbitrary phone control, or arbitrary desktop command is introduced.
-- Media queue commands are checked against the active device's currently granted media.control scope before enqueue.
-- Stopping the bridge clears the in-memory companion application and prevents new media queue submissions.
+- Companion devices authenticate with individual credentials and explicitly approved scopes.
+- Scope changes take effect on the next authenticated request; revocation invalidates the device immediately.
+- Notification history and media snapshots are returned only from owner-authenticated dashboard routes and only for devices with the corresponding approved scope.
+- Device telemetry and notification history are bounded in memory; no long-lived device token is shown in the dashboard.
+- The companion listener binds to an explicit private LAN address, not a wildcard or public interface.
 
 ## Operator flow
 
-1. Open the dashboard over HTTPS using the computer's private LAN IP (not localhost).
-2. Open **Devices** in the dashboard header.
-3. Select **Start secure bridge**.
-4. Select only the scopes the phone/watch/glasses actually need.
-5. Create a pairing QR and scan it with the Android companion, or use the displayed code/payload where manual enrollment is supported.
-6. Confirm the new device appears with the expected scopes.
-7. Use media buttons only for a device that has media.control.
-8. Revoke a lost device immediately; stop the bridge when device connectivity is not needed.
+1. Open the authenticated dashboard and select **Devices**.
+2. Start the secure companion bridge and pair the phone using a one-time QR.
+3. Approve only the scopes the phone actually needs.
+4. Rename devices so the dashboard identifies them clearly.
+5. Review last-seen and battery information; review Now Playing only when media.control is approved.
+6. Enable notification relay on the phone only if desired, and exclude sensitive apps in the Android companion.
+7. Edit scopes or revoke a lost device immediately.
 
 ## Validation boundaries
 
-Automated CI verifies route registration, scope allowlisting, registry revocation, syntax, and the existing companion policy tests. It does not prove the LAN firewall, Android certificate pinning, Android background execution, or real media-session behavior on physical hardware. Those remain manual acceptance checks. The dashboard and companion listener must both be reachable on the selected LAN; port 8765 must be allowed only on the trusted private network.
+CI verifies route registration, scope enforcement, registry updates, payload validation and syntax. Physical Android testing is still required for notification access, app filters, MediaSession discovery and actual media commands. LAN firewall behavior and certificate pinning also require an on-network device test.

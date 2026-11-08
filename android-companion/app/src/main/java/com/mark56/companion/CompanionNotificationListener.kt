@@ -18,10 +18,11 @@ import java.util.concurrent.Executors
 class CompanionNotificationListener : NotificationListenerService() {
     private val worker = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
+    @Volatile private var listenerConnected = false
 
     private val mediaPoll = object : Runnable {
         private fun scheduleNext() {
-            handler.postDelayed(this, MediaCommandPolicy.POLL_INTERVAL_MS)
+            if (listenerConnected) handler.postDelayed(this, MediaCommandPolicy.POLL_INTERVAL_MS)
         }
 
         override fun run() {
@@ -41,9 +42,53 @@ class CompanionNotificationListener : NotificationListenerService() {
                 return
             }
 
+            val manager = getSystemService(MEDIA_SESSION_SERVICE) as MediaSessionManager
+            val active = try {
+                manager.getActiveSessions(ComponentName(this@CompanionNotificationListener,
+                    CompanionNotificationListener::class.java)).filter { controller ->
+                    val state = controller.playbackState?.state
+                    state == android.media.session.PlaybackState.STATE_PLAYING ||
+                        state == android.media.session.PlaybackState.STATE_PAUSED ||
+                        state == android.media.session.PlaybackState.STATE_BUFFERING ||
+                        state == android.media.session.PlaybackState.STATE_CONNECTING
+                }
+            } catch (e: SecurityException) {
+                Log.w("Mark56Media", "Notification access is unavailable for media sessions")
+                emptyList()
+            }
+            // Publish metadata only when one session is unambiguous. Never guess
+            // between two active apps; an empty snapshot clears stale dashboard state.
+            val snapshot = if (active.size == 1) {
+                val controller = active.single()
+                val metadata = controller.metadata
+                val packageName = controller.packageName
+                val appLabel = try {
+                    packageManager.getApplicationLabel(packageManager.getApplicationInfo(packageName, 0)).toString()
+                } catch (_: Exception) { packageName }
+                val playback = controller.playbackState
+                Triple(
+                    appLabel,
+                    metadata?.getString(android.media.MediaMetadata.METADATA_KEY_TITLE).orEmpty(),
+                    metadata?.getString(android.media.MediaMetadata.METADATA_KEY_ARTIST).orEmpty()
+                ) to listOf(
+                    metadata?.getString(android.media.MediaMetadata.METADATA_KEY_ALBUM).orEmpty(),
+                    playback?.state == android.media.session.PlaybackState.STATE_PLAYING,
+                    (playback?.position ?: 0L).coerceIn(0L, 86_400_000L),
+                    (metadata?.getLong(android.media.MediaMetadata.METADATA_KEY_DURATION) ?: 0L).coerceIn(0L, 86_400_000L)
+                )
+            } else null
+
             worker.execute {
                 try {
                     val client = CompanionEventClient(endpoint, fingerprint, token, deviceId)
+                    if (snapshot == null) {
+                        client.postMediaState("", "", "", "", false, 0L, 0L)
+                    } else {
+                        val (identity, details) = snapshot
+                        client.postMediaState(identity.first, identity.second, identity.third,
+                            details[0] as String, details[1] as Boolean,
+                            details[2] as Long, details[3] as Long)
+                    }
                     val action = client.pollMediaCommand()
                     if (action != null) executeMediaAction(action)
                 } catch (e: Exception) {
@@ -58,11 +103,13 @@ class CompanionNotificationListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        listenerConnected = true
         handler.removeCallbacks(mediaPoll)
         handler.post(mediaPoll)
     }
 
     override fun onListenerDisconnected() {
+        listenerConnected = false
         handler.removeCallbacks(mediaPoll)
         super.onListenerDisconnected()
     }
@@ -70,6 +117,8 @@ class CompanionNotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val settings = CompanionSettings(this)
         if (!settings.notificationRelayEnabled() || !settings.hasNotificationScope()) return
+        if (sbn.packageName == packageName) return // prevent forwarding JARVIS's own status notifications
+        if (sbn.packageName in settings.excludedNotificationPackages()) return
         val endpoint = settings.endpoint() ?: return
         val fingerprint = settings.fingerprint() ?: return
         val deviceId = settings.deviceId() ?: return
@@ -131,6 +180,7 @@ class CompanionNotificationListener : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        listenerConnected = false
         handler.removeCallbacks(mediaPoll)
         worker.shutdownNow()
         super.onDestroy()

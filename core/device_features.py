@@ -26,10 +26,14 @@ class AndroidDeviceFeatures:
         self._lock = threading.RLock()
         self._events = deque(maxlen=_MAX_EVENTS)
         self._battery = {}
+        self._media = {}
 
     def ingest(self, token: str, message: SignedCompanionMessage, *, now: int | None = None) -> dict[str, Any]:
-        routes = {"/v1/notifications": ("notification.receive", self._notification),
-                  "/v1/battery": ("battery.read", self._battery_report)}
+        routes = {
+            "/v1/notifications": ("notification.receive", self._notification),
+            "/v1/battery": ("battery.read", self._battery_report),
+            "/v1/media/state": ("media.control", self._media_report),
+        }
         route = routes.get(getattr(message, "path", None))
         if route is None or getattr(message, "method", None) != "POST":
             raise DeviceFeatureError("Unsupported companion feature route")
@@ -41,6 +45,8 @@ class AndroidDeviceFeatures:
             self._events.append(event)
             if event["type"] == "battery":
                 self._battery[identity["device_id"]] = dict(event)
+            elif event["type"] == "media":
+                self._media[identity["device_id"]] = dict(event)
         return dict(event)
 
     @staticmethod
@@ -58,6 +64,41 @@ class AndroidDeviceFeatures:
                 "app": _text(body.get("app", ""), "app", 80),
                 "title": _text(body.get("title", ""), "title"),
                 "text": _text(body.get("text", ""), "text"), "occurred_at": stamp}
+
+    @staticmethod
+    def _media_report(body: Any) -> dict[str, Any]:
+        allowed = {"app", "title", "artist", "album", "playing", "position_ms", "duration_ms"}
+        if not isinstance(body, dict) or set(body) != allowed:
+            raise DeviceFeatureError("Invalid media-session snapshot")
+        playing = body.get("playing")
+        position, duration = body.get("position_ms"), body.get("duration_ms")
+        if not isinstance(playing, bool):
+            raise DeviceFeatureError("Media playing state must be boolean")
+        for value in (position, duration):
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 86_400_000:
+                raise DeviceFeatureError("Media position and duration must be bounded milliseconds")
+        return {
+            "type": "media",
+            "app": _text(body.get("app", ""), "app", 80),
+            "title": _text(body.get("title", ""), "title", 256),
+            "artist": _text(body.get("artist", ""), "artist", 160),
+            "album": _text(body.get("album", ""), "album", 160),
+            "playing": playing, "position_ms": position, "duration_ms": duration,
+        }
+
+    def recent_notifications(self, *, limit: int = 30) -> list[dict[str, Any]]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+            raise ValueError("Notification limit must be between 1 and 100")
+        with self._lock:
+            return [dict(event) for event in reversed(self._events)
+                    if event.get("type") == "notification"][:limit]
+
+    def media_status_for_device(self, device_id: str) -> dict[str, Any] | None:
+        if not isinstance(device_id, str) or not device_id.strip():
+            raise ValueError("A device ID is required")
+        with self._lock:
+            status = self._media.get(device_id)
+            return dict(status) if status else None
 
     @staticmethod
     def _battery_report(body: Any) -> dict[str, Any]:

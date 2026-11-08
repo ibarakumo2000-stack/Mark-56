@@ -28,6 +28,26 @@ class AndroidDeviceFeatureTests(unittest.TestCase):
         self.assertEqual(event["kind"], "call")
         self.assertEqual(self.features.drain_events()[0]["type"], "notification")
 
+    def test_media_session_snapshot_is_scoped_and_owner_readable(self):
+        message = self.message(
+            "/v1/media/state",
+            {"app": "Music", "title": "Track", "artist": "Artist", "album": "Album",
+             "playing": True, "position_ms": 1200, "duration_ms": 240000},
+            "media_state_nonce_00001")
+        event = self.features.ingest(self.device.token, message, now=1000)
+        self.assertEqual(event["type"], "media")
+        self.assertEqual(event["title"], "Track")
+        self.assertTrue(self.features.media_status_for_device(self.device.device_id)["playing"])
+
+    def test_recent_notifications_returns_snapshot_without_draining_events(self):
+        message = self.message(
+            "/v1/notifications",
+            {"kind": "notification", "app": "Mail", "title": "New mail", "text": "Preview"},
+            "notification_snapshot_01")
+        self.features.ingest(self.device.token, message, now=1000)
+        self.assertEqual(self.features.recent_notifications()[0]["app"], "Mail")
+        self.assertEqual(self.features.drain_events()[0]["type"], "notification")
+
     def test_battery_report(self):
         self.features.ingest(self.device.token, self.message(
             "/v1/battery", {"level":73,"charging":False}, "battery_nonce_0000000001"), now=1000)

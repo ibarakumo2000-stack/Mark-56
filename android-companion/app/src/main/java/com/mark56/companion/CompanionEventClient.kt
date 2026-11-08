@@ -77,6 +77,19 @@ class CompanionEventClient(
         return postEvent("/v1/notifications", body)
     }
 
+    /** Publishes the active Android MediaSession snapshot to the owner dashboard. */
+    fun postMediaState(
+        app: String, title: String, artist: String, album: String,
+        playing: Boolean, positionMs: Long, durationMs: Long
+    ): Int {
+        require(app.length <= 80 && title.length <= 256 && artist.length <= 160 && album.length <= 160)
+        require(positionMs in 0..86_400_000 && durationMs in 0..86_400_000)
+        val body = JSONObject().put("app", app).put("title", title)
+            .put("artist", artist).put("album", album).put("playing", playing)
+            .put("position_ms", positionMs).put("duration_ms", durationMs)
+        return postEvent("/v1/media/state", body)
+    }
+
     /** Forwards a narrowly allowlisted Wear OS action after desktop scope approval. */
     fun postWearableAction(action: String): Int {
         require(action in setOf("assistant.ping", "media.play_pause", "media.next", "media.previous"))

@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var batterySyncButton: Button
     private lateinit var notificationRelayButton: Button
+    private lateinit var notificationAppsButton: Button
     private lateinit var mediaControlButton: Button
     private lateinit var wearBridgeButton: Button
     private lateinit var remoteRelayButton: Button
@@ -152,6 +153,9 @@ class MainActivity : AppCompatActivity() {
         notificationRelayButton = actionButton("ENABLE NOTIFICATION RELAY", false).apply {
             setOnClickListener { toggleNotificationRelay() }
         }
+        notificationAppsButton = actionButton("CHOOSE APPS TO EXCLUDE FROM RELAY", false).apply {
+            setOnClickListener { configureNotificationAppFilter() }
+        }
         mediaControlButton = actionButton("REQUEST MEDIA CONTROL SCOPE", false).apply {
             setOnClickListener { toggleMediaControl() }
         }
@@ -176,6 +180,7 @@ class MainActivity : AppCompatActivity() {
             })
             addView(batterySyncButton, matchWidth())
             addView(notificationRelayButton, matchWidth())
+            addView(notificationAppsButton, matchWidth())
             addView(mediaControlButton, matchWidth())
             addView(wearBridgeButton, matchWidth())
         }
@@ -233,6 +238,9 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         if (::batterySyncButton.isInitialized) {
             refreshBatteryButton()
+            refreshNotificationRelayButton()
+            notificationAppsButton.isEnabled = settings.hasNotificationScope()
+            notificationAppsButton.alpha = if (notificationAppsButton.isEnabled) 1f else 0.55f
             if (settings.mediaControlEnabled() && !hasNotificationAccess()) {
                 status.text = "Media controls are enabled but Android Notification Access is not granted. Re-enable access to discover media sessions."
             }
@@ -532,6 +540,33 @@ class MainActivity : AppCompatActivity() {
             else "Media scope request cancelled."
         }
         refreshMediaControlButton()
+    }
+
+    private fun configureNotificationAppFilter() {
+        if (!settings.hasNotificationScope() || tokenStore.read().isNullOrBlank()) {
+            status.text = "Pair with notification.receive permission before configuring notification app filters."
+            return
+        }
+        val apps = packageManager.getInstalledApplications(0)
+            .filter { it.packageName != packageName }
+            .sortedBy { packageManager.getApplicationLabel(it).toString().lowercase() }
+        val labels = apps.map { packageManager.getApplicationLabel(it).toString() }.toTypedArray()
+        val excluded = settings.excludedNotificationPackages().toMutableSet()
+        val checked = apps.map { it.packageName in excluded }.toBooleanArray()
+        AlertDialog.Builder(this)
+            .setTitle("Exclude apps from JARVIS")
+            .setMultiChoiceItems(labels, checked) { _, which, selected ->
+                if (selected) excluded.add(apps[which].packageName)
+                else excluded.remove(apps[which].packageName)
+            }
+            .setPositiveButton("Save exclusions") { _, _ ->
+                settings.setExcludedNotificationPackages(excluded)
+                status.text = if (excluded.isEmpty())
+                    "No apps are excluded. All notifications are eligible for forwarding while the relay is enabled."
+                else "${excluded.size} app(s) excluded. Their notification content will remain on this phone."
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun toggleNotificationRelay() {
