@@ -26,6 +26,37 @@ class CompanionEventClient(
         require(token.length >= 32 && deviceId.isNotBlank())
     }
 
+
+    /** Sends a user chat message through the approved command.send scope. */
+    fun sendChat(messageId: String, message: String): Boolean {
+        require(messageId.length in 8..80 && message.isNotBlank() && message.length <= 4000)
+        val body = JSONObject().put("message_id", messageId).put("message", message.trim())
+        val connection = signedConnection("/v1/chat/send", body)
+        return try {
+            val status = connection.responseCode
+            if (status !in 200..299) {
+                val detail = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                throw IllegalStateException("Chat send rejected ($status): " + (detail ?: "request failed"))
+            }
+            JSONObject(connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() })
+                .optBoolean("accepted", false)
+        } finally { connection.disconnect() }
+    }
+
+    /** Polls the secure desktop reply queue; null means no reply is ready yet. */
+    fun pollChatReply(): JSONObject? {
+        val connection = signedConnection("/v1/chat/poll", JSONObject())
+        return try {
+            val status = connection.responseCode
+            if (status !in 200..299) {
+                val detail = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                throw IllegalStateException("Chat poll rejected ($status): " + (detail ?: "request failed"))
+            }
+            JSONObject(connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() })
+                .optJSONObject("reply")
+        } finally { connection.disconnect() }
+    }
+
     fun postBattery(level: Int, charging: Boolean): Int {
         require(level in 0..100)
         return postEvent("/v1/battery", JSONObject().put("level", level).put("charging", charging))
