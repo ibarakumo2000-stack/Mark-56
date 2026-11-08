@@ -507,6 +507,21 @@ class DashboardServer:
         self._pending_keys[key] = now + expiry_secs
         return key
 
+    def create_owner_session(self) -> str:
+        """Issue an owner token to trusted in-process desktop UI.
+
+        The native pairing dialog already holds this DashboardServer instance.
+        Issuing its session here avoids sending a one-time PIN back through a
+        guessed LAN address, which could reach a stale/second JARVIS process.
+        The token is still checked by the same owner_auth guard on every route.
+        """
+        session_key = secrets.token_urlsafe(32)
+        token = secrets.token_urlsafe(32)
+        self._tokens.add(token)
+        self._token_keys[token] = session_key
+        self._aes_key(session_key)
+        return token
+
     @staticmethod
     def _ssl_enabled() -> bool:
         certs = BASE_DIR / "config" / "certs"
@@ -515,6 +530,11 @@ class DashboardServer:
     def get_url(self) -> str:
         proto = "https" if self._ssl_enabled() else "http"
         return f"{proto}://{self._ip}:{PORT}"
+
+    def get_local_url(self) -> str:
+        """Return the loopback URL for trusted desktop-to-dashboard requests."""
+        proto = "https" if self._ssl_enabled() else "http"
+        return f"{proto}://127.0.0.1:{PORT}"
 
     def get_manual_url(self) -> str:
         """URL for manual browser entry. When HTTPS active, points to alias port (also HTTPS)."""
