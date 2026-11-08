@@ -77,6 +77,14 @@ class ScreenTaskWorkflowTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         stop.assert_called_once()
 
+    def test_cancel_does_not_block_on_an_active_vision_step(self):
+        with patch.object(workflow._RUN_LOCK, "locked", return_value=True), patch.object(
+            workflow.wayland_screencast, "stop_monitoring"
+        ) as stop:
+            result = workflow.cancel_task()
+        self.assertIn("Cancellation requested", result)
+        stop.assert_not_called()
+
     def test_task_requires_approval_before_opening_screen_stream(self):
         with patch.object(workflow.wayland_screencast, "start_monitoring") as start:
             result = json.loads(workflow.run_task("delete the old project"))
