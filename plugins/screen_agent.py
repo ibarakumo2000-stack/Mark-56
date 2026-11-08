@@ -83,7 +83,7 @@ def _diagnose() -> str:
         "pyautogui_imported": _HAS_PYAUTOGUI,
         "ocr_packages_imported": _HAS_OCR,
         "capture_tools": {name: shutil.which(name) for name in ("gnome-screenshot", "grim", "spectacle", "import", "scrot")},
-        "input_tools": {name: shutil.which(name) for name in ("ydotool", "wtype", "xdotool")},
+        "input_tools": {name: shutil.which(name) for name in ("ydotool", "ydotoold", "wtype", "xdotool")},
     }
     try:
         if _HAS_PYAUTOGUI:
@@ -100,7 +100,19 @@ def _diagnose() -> str:
         details["capture"] = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:1000]}"}
     try:
         from core import local_model
-        details["local_model"] = local_model.status()
+        local_status = local_model.status()
+        details["local_model"] = local_status
+        vision_name = str(local_model._settings().get("local_vision_model_name") or "").strip()
+        installed = vision_name in set(local_status.get("models") or [])
+        details["local_vision_model"] = {
+            "configured": vision_name or None,
+            "installed": installed,
+            "ready": bool(local_status.get("ok") and local_status.get("enabled") and installed),
+            "hint": None if installed else (
+                f"Run 'ollama pull {vision_name}'" if vision_name else
+                "Configure local_vision_model_name in config/local_model.json"
+            ),
+        }
     except Exception as exc:
         details["local_model"] = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:250]}"}
     return json.dumps(details, ensure_ascii=False, indent=2)
