@@ -611,6 +611,8 @@ class JarvisLive:
         self._resume_handle: str | None = None
         self._turn_done_event: asyncio.Event | None = None
         self._dashboard     = None
+        self._companion_app = None
+        self._companion_chat_pending = None
         self._briefing_sent    = False          # morning briefing fires once per process
         self._sys_monitor      = SystemMonitor()  # persistent cooldown state
         self._proactive        = ProactiveEngine()
@@ -2166,6 +2168,65 @@ class JarvisLive:
             except Exception as e:
                 print(f"[Dashboard] Command error: {e}")
                 await asyncio.sleep(0.5)
+
+    def _on_companion_app_changed(self, app) -> None:
+        """Receive the authenticated companion app when its owner starts/stops it."""
+        self._companion_app = app
+
+    async def _process_companion_chat_messages(self) -> None:
+        """Route authenticated phone messages through the active JARVIS Live session."""
+        while True:
+            app = self._companion_app
+            session = self.session
+            if app is None or session is None:
+                await asyncio.sleep(0.25)
+                continue
+            try:
+                messages = app.state.drain_chat_messages(limit=1)
+            except Exception as exc:
+                print(f"[CompanionChat] Queue read failed: {type(exc).__name__}: {exc}")
+                await asyncio.sleep(0.5)
+                continue
+            if not messages:
+                await asyncio.sleep(0.15)
+                continue
+            message = messages[0]
+            device_id = message.get("device_id", "")
+            message_id = message.get("message_id", "")
+            text = str(message.get("message", "")).strip()
+            if not device_id or not message_id or not text:
+                continue
+            if self._wake_enabled and not self._awake:
+                reply = "JARVIS is asleep. Wake the desktop assistant before sending a chat message."
+            else:
+                future = asyncio.get_running_loop().create_future()
+                pending = {"device_id": device_id, "message_id": message_id, "future": future}
+                self._companion_chat_pending = pending
+                try:
+                    self._session_log.append(f"Phone: {text}")
+                    await session.send_client_content(
+                        turns={"role": "user", "parts": [{
+                            "text": (
+                                "The user sent this message from their authenticated JARVIS Android companion. "
+                                "Respond directly and conversationally as JARVIS. Do not mention this transport.\n\n"
+                                + text
+                            )
+                        }]},
+                        turn_complete=True,
+                    )
+                    reply = await asyncio.wait_for(future, timeout=45.0)
+                except asyncio.TimeoutError:
+                    reply = "I'm sorry, I couldn't complete that response in time. Please try again."
+                except Exception as exc:
+                    print(f"[CompanionChat] Live response failed: {type(exc).__name__}: {exc}")
+                    reply = "I'm temporarily unable to respond. Please try again when JARVIS is connected."
+                finally:
+                    if self._companion_chat_pending is pending:
+                        self._companion_chat_pending = None
+            try:
+                app.state.queue_chat_reply(device_id, message_id, reply)
+            except Exception as exc:
+                print(f"[CompanionChat] Could not publish reply: {type(exc).__name__}: {exc}")
 
     # ── main loop ───────────────────────────────────────────────────────────
 
