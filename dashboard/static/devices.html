@@ -89,7 +89,9 @@ input,select,textarea{border-radius:11px!important;background:rgba(7,12,22,.72)!
 <div id="watch-activity" class="empty" style="margin-top:14px">No watch actions retrieved yet.</div>
 </section>
 <section class="panel wide">
-<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1"><h2>Live phone notifications</h2><p class="hint" style="margin:4px 0 0">Recent notifications received from opted-in paired phones. Content is visible only to this authenticated desktop owner.</p><div id="notification-inbox" class="device-list" style="margin-top:14px"><div class="empty">No forwarded notifications yet.</div></div><div class="actions"><button class="btn" id="refresh-notifications">Refresh notifications</button></div></section>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1"><h2>Live phone notifications</h2><p class="hint" style="margin:4px 0 0">Recent notifications received from opted-in paired phones. Content is visible only to this authenticated desktop owner.</p></div><button class="btn" id="refresh-notifications">Refresh notifications</button></div>
+<div id="notification-inbox" class="device-list" style="margin-top:14px"><div class="empty">No forwarded notifications yet.</div></div>
+</section>
 <section class="panel wide">
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1"><h2>Paired devices</h2><p class="hint" style="margin:4px 0 0">Online status reflects recent authenticated device activity, not guaranteed reachability.</p></div><button class="btn" id="refresh">Refresh</button></div>
 <div class="device-list" id="device-list" style="margin-top:16px"><div class="empty">Loading paired devices…</div></div>
