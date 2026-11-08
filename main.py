@@ -1640,6 +1640,13 @@ class JarvisLive:
                                 if full_out in self._last_out_logged:
                                     full_out = ""
                             if full_out:
+                                # Ignore intermediate tool-call turns; the phone
+                                # request completes only on JARVIS's final answer.
+                                pending_chat = self._companion_chat_pending
+                                if pending_chat is not None and not response.tool_call:
+                                    future = pending_chat.get("future")
+                                    if future is not None and not future.done():
+                                        future.set_result(full_out)
                                 self._last_out_logged = full_out
                                 self.ui.write_log(f"{self._asst_name}: {full_out}")
                                 self._session_log.append(f"{self._asst_name}: {full_out}")
