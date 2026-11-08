@@ -270,9 +270,12 @@ def _describe_limits(has_vision: bool, has_mic: bool) -> str:
     ]
     if has_vision:
         out.append(
-            "- Your sight is not continuous. You see nothing until you call a "
-            "vision tool, and then only that single frame at that moment — you "
-            "cannot watch, monitor or notice something changing on screen.")
+            "- For ordinary screen questions, use a one-time frame. When the user "
+            "asks you to complete a desktop task, call screen_agent mode='task': "
+            "that workflow temporarily watches the screen, takes one safe UI action "
+            "at a time, verifies each result, and stops the stream automatically "
+            "when complete, cancelled, blocked, or failed. Screen frames stay local "
+            "and are analyzed by the configured local vision model.")
     else:
         out.append("- You have no sight at all in this build.")
     if has_mic:
