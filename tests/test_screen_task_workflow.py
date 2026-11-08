@@ -22,14 +22,17 @@ class ScreenTaskWorkflowTests(unittest.TestCase):
     def test_safe_local_ui_task_is_allowed(self):
         self.assertTrue(workflow._policy_allows("Open the settings window"))
 
-    def test_action_rejects_enter_and_hotkeys(self):
+    def test_enter_is_available_for_local_dialogs_but_shortcuts_are_blocked(self):
         pg = MagicMock()
         pg.size.return_value = (1280, 720)
         fake_agent = MagicMock(_HAS_PYAUTOGUI=True, pyautogui=pg)
         with patch.dict("sys.modules", {"plugins.screen_agent": fake_agent}):
-            with self.assertRaisesRegex(ValueError, "navigation keys"):
-                workflow._execute({"type": "press", "key": "enter"}, 1280, 720)
-            pg.press.assert_not_called()
+            self.assertIn("enter", workflow._execute(
+                {"type": "press", "key": "enter"}, 1280, 720
+            ))
+            pg.press.assert_called_once_with("enter")
+            with self.assertRaisesRegex(ValueError, "shortcuts are blocked"):
+                workflow._execute({"type": "press", "key": "ctrl+alt+delete"}, 1280, 720)
 
     def test_action_rejects_out_of_bounds_coordinates(self):
         pg = MagicMock()
