@@ -10,6 +10,7 @@ on:
     paths:
       - "android-companion/**"
       - ".github/workflows/android-companion-ci.yml"
+      - ".github/workflows/release-android-companion.yml"
   workflow_dispatch:
 
 permissions:
