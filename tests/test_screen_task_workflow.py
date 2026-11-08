@@ -48,7 +48,7 @@ class ScreenTaskWorkflowTests(unittest.TestCase):
             {"status": "done", "message": "The settings window is now visible.", "action": None},
         ]
         with patch.object(workflow, "_ensure_vision_ready", return_value="llava:7b"), \
-             patch.object(workflow.wayland_screencast, "monitoring_active", side_effect=[False, True, True, False]), \
+             patch.object(workflow.wayland_screencast, "monitoring_active", side_effect=[False, False]), \
              patch.object(workflow.wayland_screencast, "start_monitoring", return_value="started"), \
              patch.object(workflow.wayland_screencast, "capture_monitor_frame", return_value=frame), \
              patch.object(workflow.wayland_screencast, "stop_monitoring", return_value="stopped") as stop, \
