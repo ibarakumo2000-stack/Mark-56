@@ -114,6 +114,7 @@ class CompanionNotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val settings = CompanionSettings(this)
         if (!settings.notificationRelayEnabled() || !settings.hasNotificationScope()) return
+        if (sbn.packageName in settings.excludedNotificationPackages()) return
         val endpoint = settings.endpoint() ?: return
         val fingerprint = settings.fingerprint() ?: return
         val deviceId = settings.deviceId() ?: return
