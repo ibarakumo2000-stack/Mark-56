@@ -177,6 +177,78 @@ class CompanionServerTests(unittest.TestCase):
             finally:
                 server.stop()
 
+    def _enrolled_chat_device(self):
+        offer = self.registry.create_pairing_offer(("command.send",))
+        return self.registry.redeem_pairing_code(
+            offer.code, device_name="Phone", device_type="android",
+            platform="android", capabilities=("chat",),
+            requested_scopes=("command.send",),
+        )
+
+    def test_chat_rejects_replayed_signed_request(self):
+        device = self._enrolled_chat_device()
+        signed = sign_companion_message(
+            device.token, device_id=device.device_id, method="POST",
+            path="/v1/chat/send",
+            body={"message_id": "chat-msg-replay-01", "message": "Hello"},
+        )
+        client = TestClient(self.app)
+        headers = {"Authorization": "Bearer " + device.token}
+        first = client.post("/v1/chat/send", json=asdict(signed), headers=headers)
+        replay = client.post("/v1/chat/send", json=asdict(signed), headers=headers)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(replay.status_code, 400)
+        self.assertEqual(len(self.app.state.drain_chat_messages()), 1)
+
+    def test_chat_rejects_tampered_body_and_route_mismatch(self):
+        device = self._enrolled_chat_device()
+        signed = sign_companion_message(
+            device.token, device_id=device.device_id, method="POST",
+            path="/v1/chat/send",
+            body={"message_id": "chat-msg-tamper1", "message": "Original"},
+        )
+        tampered = asdict(signed)
+        tampered["body"]["message"] = "Modified"
+        client = TestClient(self.app)
+        headers = {"Authorization": "Bearer " + device.token}
+        bad_body = client.post("/v1/chat/send", json=tampered, headers=headers)
+        wrong_route = client.post("/v1/chat/poll", json=asdict(signed), headers=headers)
+        self.assertEqual(bad_body.status_code, 400)
+        self.assertEqual(wrong_route.status_code, 400)
+        self.assertEqual(self.app.state.drain_chat_messages(), [])
+
+    def test_chat_requires_bearer_authentication(self):
+        device = self._enrolled_chat_device()
+        signed = sign_companion_message(
+            device.token, device_id=device.device_id, method="POST",
+            path="/v1/chat/send",
+            body={"message_id": "chat-msg-noauth1", "message": "Hello"},
+        )
+        response = TestClient(self.app).post("/v1/chat/send", json=asdict(signed))
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(self.app.state.drain_chat_messages(), [])
+
+    def test_chat_queue_is_bounded_and_returns_rate_limit_status(self):
+        device = self._enrolled_chat_device()
+        client = TestClient(self.app)
+        headers = {"Authorization": "Bearer " + device.token}
+        for index in range(32):
+            signed = sign_companion_message(
+                device.token, device_id=device.device_id, method="POST",
+                path="/v1/chat/send",
+                body={"message_id": f"chat-msg-{index:08d}", "message": "Hello"},
+            )
+            response = client.post("/v1/chat/send", json=asdict(signed), headers=headers)
+            self.assertEqual(response.status_code, 200)
+        overflow = sign_companion_message(
+            device.token, device_id=device.device_id, method="POST",
+            path="/v1/chat/send",
+            body={"message_id": "chat-msg-overflow", "message": "One too many"},
+        )
+        response = client.post("/v1/chat/send", json=asdict(overflow), headers=headers)
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(len(self.app.state.drain_chat_messages(limit=32)), 32)
+
     def test_pairing_code_is_one_time(self):
         offer = self.registry.create_pairing_offer(("battery.read",))
         enrolled = self.registry.redeem_pairing_code(
