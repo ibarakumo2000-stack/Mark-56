@@ -77,6 +77,7 @@ class FloatingLauncherWiringTests(unittest.TestCase):
         source = (ROOT / "ui.py").read_text(encoding="utf-8")
         self.assertIn("self.launcher.set_avatar(", source)
         self.assertIn("self._win.hud._avatar", source)
+        self.assertIn("floating_hologram_size", (ROOT / "floating_launcher.py").read_text(encoding="utf-8"))
         self.assertIn("QColor(C.PRI)", source)
 
     def test_right_click_menu_exposes_quick_chat_voice_and_exit(self):
@@ -87,7 +88,9 @@ class FloatingLauncherWiringTests(unittest.TestCase):
         self.assertIn("Mute microphone", source)
         self.assertIn("Open full JARVIS interface", source)
         self.assertIn("Quit JARVIS completely", source)
-        self.assertIn("QInputDialog.getText", source)
+        self.assertIn("QLineEdit", source)
+        self.assertIn("def _send_inline_message", source)
+        self.assertNotIn("QInputDialog", source)
 
     def test_hologram_speech_and_blink_are_driven_by_live_hud_avatar(self):
         source = (ROOT / "ui.py").read_text(encoding="utf-8")
