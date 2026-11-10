@@ -6181,6 +6181,9 @@ class MainWindow(QMainWindow):
         if muted == self._muted:
             return
         self._muted = muted
+        launcher = getattr(self, "_floating_launcher", None)
+        if launcher is not None:
+            launcher.set_muted(muted)
         self.hud.muted = muted
         self._style_mute_btn()
         if muted:
