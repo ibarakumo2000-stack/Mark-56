@@ -1,20 +1,19 @@
-"""Compact, always-on-top JARVIS launcher for the desktop application.
+"""Minimal holographic JARVIS face launcher.
 
-The launcher is a presentation layer only. Commands and microphone state are
-provided by JarvisUI, which delegates them to the existing JarvisLive runtime.
+The face reuses the live HoloAvatar instance owned by HudCanvas, so its blink,
+gaze and speech animation stay in sync with the main assistant's audio pipeline.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QBrush, QColor, QIcon, QPainter, QPen, QRadialGradient
 from PyQt6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu,
-    QPushButton, QSystemTrayIcon, QVBoxLayout, QWidget,
+    QApplication, QInputDialog, QMenu, QSystemTrayIcon, QToolTip, QWidget,
 )
 
 
 class FloatingLauncher(QWidget):
-    """Draggable assistant orb with quick controls and a compact chat surface."""
+    """Small transparent, draggable holographic face with a right-click menu."""
 
     command_requested = pyqtSignal(str)
     mute_requested = pyqtSignal()
@@ -27,19 +26,29 @@ class FloatingLauncher(QWidget):
     def __init__(self, icon: QIcon | None = None, parent=None):
         super().__init__(parent)
         self._drag_offset: QPoint | None = None
-        self._expanded = True
         self._muted = False
         self._status = "CONNECTING"
-        self.setWindowTitle("JARVIS")
+        self._reply = ""
+        self._avatar = None
+        self._primary = QColor("#00d4ff")
+        self._accent = QColor("#ff6b00")
+        self._background = QColor("#00060a")
+        self._large = False
+        self._allow_close = False
+
+        self.setWindowTitle("JARVIS Hologram")
         self.setWindowFlags(
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setMinimumWidth(310)
-        self.setMaximumWidth(350)
-        self._build_ui()
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setFixedSize(156, 166)
+        self.setToolTip("J.A.R.V.I.S · Right-click for controls")
+        self.setMouseTracking(True)
+
         self.command_requested.connect(self._dispatch_command)
         self.mute_requested.connect(self._dispatch_mute)
         self.open_requested.connect(self._dispatch_open)
@@ -52,121 +61,36 @@ class FloatingLauncher(QWidget):
         if QSystemTrayIcon.isSystemTrayAvailable():
             self._tray = QSystemTrayIcon(icon or QIcon(), self)
             self._tray.setToolTip("JARVIS is running")
-            menu = QMenu()
-            show_action = QAction("Show JARVIS", menu)
+            tray_menu = QMenu()
+            show_action = QAction("Show hologram", tray_menu)
             show_action.triggered.connect(self.show_launcher)
-            open_action = QAction("Open full interface", menu)
+            open_action = QAction("Open full interface", tray_menu)
             open_action.triggered.connect(self.open_requested.emit)
-            quit_action = QAction("Quit JARVIS", menu)
+            quit_action = QAction("Quit JARVIS", tray_menu)
             quit_action.triggered.connect(self.quit_requested.emit)
-            menu.addAction(show_action)
-            menu.addAction(open_action)
-            menu.addSeparator()
-            menu.addAction(quit_action)
-            self._tray.setContextMenu(menu)
+            tray_menu.addAction(show_action)
+            tray_menu.addAction(open_action)
+            tray_menu.addSeparator()
+            tray_menu.addAction(quit_action)
+            self._tray.setContextMenu(tray_menu)
             self._tray.activated.connect(lambda _reason: self.show_launcher())
             self._tray.show()
 
+        self._animation_timer = QTimer(self)
+        self._animation_timer.timeout.connect(self.update)
+        self._animation_timer.start(33)
         self._place_initially()
 
-    def _build_ui(self):
-        self.setStyleSheet("""
-            QWidget#launcherCard {
-                background: #07131d;
-                border: 1px solid #17617a;
-                border-radius: 18px;
-                color: #d8f8ff;
-            }
-            QLabel { background: transparent; color: #d8f8ff; }
-            QLabel#brand { color: #35dfff; font-size: 13px; font-weight: 800; letter-spacing: 2px; }
-            QLabel#status { color: #62a9ba; font-size: 9px; font-weight: 700; }
-            QLabel#reply { color: #b9eaf2; font-size: 11px; padding: 7px; background: #0b202c; border-radius: 9px; }
-            QPushButton {
-                background: #0b2634; color: #9deeff; border: 1px solid #1b5268;
-                border-radius: 9px; padding: 7px 10px; font-size: 10px; font-weight: 700;
-            }
-            QPushButton:hover { background: #10394a; border-color: #28c9ed; }
-            QPushButton#primary { background: #063a4a; border-color: #00c9f0; color: #d9fbff; }
-            QPushButton#danger { color: #ff9bad; border-color: #6d3041; }
-            QLineEdit {
-                background: #030c12; color: #e5fbff; border: 1px solid #1b5268;
-                border-radius: 10px; padding: 10px; selection-background-color: #087b98;
-            }
-            QFrame#separator { background: #173747; max-height: 1px; }
-        """)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(5, 5, 5, 5)
-        card = QFrame()
-        card.setObjectName("launcherCard")
-        outer.addWidget(card)
-        root = QVBoxLayout(card)
-        root.setContentsMargins(13, 11, 13, 12)
-        root.setSpacing(9)
-
-        header = QHBoxLayout()
-        orb = QLabel("◉")
-        orb.setStyleSheet("color:#22d9ff;font-size:23px;font-weight:900;")
-        header.addWidget(orb)
-        identity = QVBoxLayout()
-        brand = QLabel("J.A.R.V.I.S")
-        brand.setObjectName("brand")
-        status = QLabel("INITIALISING")
-        status.setObjectName("status")
-        self.status_label = status
-        identity.addWidget(brand)
-        identity.addWidget(status)
-        header.addLayout(identity)
-        header.addStretch()
-        self.expand_button = QPushButton("—")
-        self.expand_button.setFixedWidth(30)
-        self.expand_button.setToolTip("Collapse launcher")
-        self.expand_button.clicked.connect(self.toggle_expanded)
-        header.addWidget(self.expand_button)
-        dismiss = QPushButton("×")
-        dismiss.setObjectName("danger")
-        dismiss.setFixedWidth(30)
-        dismiss.setToolTip("Hide to system tray")
-        dismiss.clicked.connect(self.hide_to_tray)
-        header.addWidget(dismiss)
-        root.addLayout(header)
-
-        self.details = QWidget()
-        details = QVBoxLayout(self.details)
-        details.setContentsMargins(0, 0, 0, 0)
-        details.setSpacing(8)
-
-        controls = QHBoxLayout()
-        self.open_button = QPushButton("OPEN FULL INTERFACE")
-        self.open_button.setObjectName("primary")
-        self.open_button.clicked.connect(self.open_requested.emit)
-        controls.addWidget(self.open_button, 1)
-        self.mute_button = QPushButton("MIC ON")
-        self.mute_button.clicked.connect(self.mute_requested.emit)
-        controls.addWidget(self.mute_button)
-        details.addLayout(controls)
-
-        sep = QFrame()
-        sep.setObjectName("separator")
-        sep.setFrameShape(QFrame.Shape.HLine)
-        details.addWidget(sep)
-
-        self.reply_label = QLabel("Ready when you are. Ask JARVIS anything.")
-        self.reply_label.setObjectName("reply")
-        self.reply_label.setWordWrap(True)
-        self.reply_label.setMinimumHeight(38)
-        details.addWidget(self.reply_label)
-
-        chat = QHBoxLayout()
-        self.input = QLineEdit()
-        self.input.setPlaceholderText("Message JARVIS…")
-        self.input.returnPressed.connect(self.send_message)
-        chat.addWidget(self.input, 1)
-        send = QPushButton("SEND")
-        send.setObjectName("primary")
-        send.clicked.connect(self.send_message)
-        chat.addWidget(send)
-        details.addLayout(chat)
-        root.addWidget(self.details)
+    def set_avatar(self, avatar, primary=None, accent=None, background=None):
+        """Share the main HUD's animated avatar rather than creating a second one."""
+        self._avatar = avatar
+        if primary is not None:
+            self._primary = QColor(primary)
+        if accent is not None:
+            self._accent = QColor(accent)
+        if background is not None:
+            self._background = QColor(background)
+        self.update()
 
     def _place_initially(self):
         screen = QApplication.primaryScreen()
@@ -174,11 +98,9 @@ class FloatingLauncher(QWidget):
             self.move(30, 80)
             return
         area = screen.availableGeometry()
-        self.adjustSize()
-        self.move(area.right() - self.width() - 24, area.bottom() - self.height() - 70)
+        self.move(area.right() - self.width() - 30, area.bottom() - self.height() - 90)
 
     def _dispatch_command(self, text: str):
-        # The host wires this signal to JarvisLive._on_text_command.
         callback = getattr(self, "on_command", None)
         if callable(callback):
             callback(text)
@@ -198,33 +120,49 @@ class FloatingLauncher(QWidget):
         if callable(callback):
             callback()
 
-    def send_message(self):
-        text = self.input.text().strip()
-        if not text:
+    def open_quick_chat(self):
+        message, accepted = QInputDialog.getText(
+            self, "Talk to JARVIS", "Message JARVIS:"
+        )
+        message = message.strip()
+        if accepted and message:
+            self._reply = "You: " + message
+            self.setToolTip(self._reply + "\nJARVIS is responding…")
+            self.command_requested.emit(message)
+
+    def send_message(self, text: str | None = None):
+        """Compatibility entry point for quick-chat integrations."""
+        if text is None:
+            self.open_quick_chat()
             return
-        self.input.clear()
-        self.reply_label.setText("YOU  ·  " + text[:240])
-        callback = getattr(self, "on_command", None)
-        if callable(callback):
-            callback(text)
+        message = str(text).strip()
+        if message:
+            self.command_requested.emit(message)
 
     def _show_reply(self, text: str):
-        self.reply_label.setText("JARVIS  ·  " + (text or "").strip()[:700])
-        self.reply_label.setToolTip(text or "")
+        self._reply = (text or "").strip()
+        if self._reply:
+            self.setToolTip("JARVIS · " + self._reply[:700])
+            if self.isVisible():
+                QToolTip.showText(
+                    self.mapToGlobal(QPoint(self.width() // 2, self.height() - 8)),
+                    "JARVIS\n" + self._reply[:260],
+                    self,
+                    self.rect(),
+                    5500,
+                )
 
     def _set_status(self, status: str):
         self._status = str(status or "UNKNOWN").upper()
-        self.status_label.setText(self._status[:32])
         if self._tray:
             self._tray.setToolTip("JARVIS · " + self._status)
+        self.setToolTip(
+            f"J.A.R.V.I.S · {self._status} · Right-click for controls"
+        )
 
     def _set_muted(self, muted: bool):
         self._muted = bool(muted)
-        self.mute_button.setText("MIC MUTED" if self._muted else "MIC ON")
-        self.mute_button.setStyleSheet(
-            "color:#ff9bad;border-color:#a13b55;" if self._muted else
-            "color:#8cffbd;border-color:#1b7652;"
-        )
+        self.update()
 
     def set_reply(self, text: str):
         self.reply_received.emit(str(text or ""))
@@ -236,30 +174,125 @@ class FloatingLauncher(QWidget):
         self.muted_received.emit(bool(muted))
 
     def toggle_expanded(self):
-        self._expanded = not self._expanded
-        self.details.setVisible(self._expanded)
-        self.expand_button.setText("—" if self._expanded else "+")
-        self.expand_button.setToolTip("Collapse launcher" if self._expanded else "Expand launcher")
-        self.adjustSize()
+        # Kept as a compact compatibility action: enlarge the face slightly,
+        # never reveal a rectangular control panel.
+        self._large = not self._large
+        self.setFixedSize(178, 188) if self._large else self.setFixedSize(156, 166)
+        self.update()
 
     def show_launcher(self):
         self.show()
         self.raise_()
-        self.activateWindow()
 
     def hide_to_tray(self):
         if self._tray:
             self.hide()
             self._tray.showMessage("JARVIS", "Still running in the background.")
             return
-        # Some Linux desktops ship without a system-tray host. Never strand
-        # the running assistant behind an invisible window in that case.
-        self._expanded = False
-        self.details.hide()
-        self.expand_button.setText("+")
-        self.expand_button.setToolTip("Expand launcher")
-        self.adjustSize()
+        # Without a tray host, keep the hologram reachable instead of hiding
+        # the live assistant behind an invisible process.
+        self.setToolTip("JARVIS is running · This desktop has no system tray")
+        self._large = False
+        self.setFixedSize(156, 166)
         self.show_launcher()
+
+    def _build_context_menu(self) -> QMenu:
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background: #061722; color: #d8f8ff;
+                border: 1px solid #1686a5; padding: 6px;
+            }
+            QMenu::item { padding: 8px 24px; }
+            QMenu::item:selected { background: #0b5269; }
+            QMenu::separator { height: 1px; background: #174052; margin: 4px 8px; }
+        """)
+        chat = QAction("Quick chat with JARVIS…", menu)
+        chat.triggered.connect(self.open_quick_chat)
+        menu.addAction(chat)
+
+        mic = QAction(
+            "Unmute microphone" if self._muted else "Mute microphone", menu
+        )
+        mic.triggered.connect(self.mute_requested.emit)
+        menu.addAction(mic)
+
+        menu.addSeparator()
+        open_full = QAction("Open full JARVIS interface", menu)
+        open_full.triggered.connect(self.open_requested.emit)
+        menu.addAction(open_full)
+
+        size_action = QAction(
+            "Restore hologram size" if self._large else "Enlarge hologram slightly",
+            menu,
+        )
+        size_action.triggered.connect(self.toggle_expanded)
+        menu.addAction(size_action)
+
+        if self._tray:
+            hide_action = QAction("Hide hologram to system tray", menu)
+            hide_action.triggered.connect(self.hide_to_tray)
+            menu.addAction(hide_action)
+
+        menu.addSeparator()
+        quit_action = QAction("Quit JARVIS completely", menu)
+        quit_action.triggered.connect(self.quit_requested.emit)
+        menu.addAction(quit_action)
+        return menu
+
+    def contextMenuEvent(self, event):
+        self._build_context_menu().exec(event.globalPos())
+        event.accept()
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        cx = self.width() / 2.0
+        cy = self.height() / 2.0 + 2.0
+
+        # A restrained aura keeps the face legible without drawing a panel,
+        # card, border or opaque backdrop.
+        halo = QRadialGradient(cx, cy, min(self.width(), self.height()) * 0.48)
+        halo.setColorAt(0.0, QColor(0, 212, 255, 24))
+        halo.setColorAt(0.55, QColor(0, 160, 210, 13))
+        halo.setColorAt(1.0, QColor(0, 100, 150, 0))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(halo))
+        painter.drawEllipse(
+            int(cx - 70), int(cy - 76), 140 if not self._large else 160,
+            148 if not self._large else 166,
+        )
+
+        if self._avatar is not None:
+            try:
+                radius = 43.0 if not self._large else 49.0
+                self._avatar.paint(
+                    painter, cx, cy, radius,
+                    self._primary, self._accent, self._background,
+                )
+            except Exception:
+                self._paint_fallback_face(painter, cx, cy)
+        else:
+            self._paint_fallback_face(painter, cx, cy)
+
+        # Small state indicator, integrated into the hologram rather than a
+        # label or control strip.
+        state_color = QColor("#ff5577") if self._muted else QColor("#55ffbd")
+        if self._status in ("SPEAKING", "THINKING", "PROCESSING"):
+            state_color = QColor("#00dfff")
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(state_color))
+        painter.drawEllipse(int(cx + 43), int(cy + 47), 7, 7)
+        painter.end()
+
+    def _paint_fallback_face(self, painter: QPainter, cx: float, cy: float):
+        color = QColor(self._primary)
+        painter.setPen(QPen(color, 1.8))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(int(cx - 35), int(cy - 48), 70, 96)
+        painter.drawArc(int(cx - 22), int(cy - 22), 17, 11, 0, 180 * 16)
+        painter.drawArc(int(cx + 5), int(cy - 22), 17, 11, 0, 180 * 16)
+        painter.drawArc(int(cx - 13), int(cy + 7), 26, 14, 190 * 16, 160 * 16)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -280,6 +313,9 @@ class FloatingLauncher(QWidget):
         super().mouseReleaseEvent(event)
 
     def closeEvent(self, event):
-        # Closing the compact surface means dismiss, not terminate the assistant.
+        if self._allow_close:
+            event.accept()
+            return
+        # A window-manager close dismisses the launcher, not the assistant.
         event.ignore()
         self.hide_to_tray()
