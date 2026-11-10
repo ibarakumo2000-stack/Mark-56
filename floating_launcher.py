@@ -5,11 +5,11 @@ gaze and speech animation stay in sync with the main assistant's audio pipeline.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QPoint, QSettings, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QIcon, QPainter, QPen, QRadialGradient
 from PyQt6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLineEdit, QMenu, QPushButton,
-    QSettings, QSystemTrayIcon, QToolTip, QWidget,
+    QSystemTrayIcon, QToolTip, QWidget,
 )
 
 
