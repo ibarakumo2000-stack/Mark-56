@@ -8,7 +8,8 @@ from __future__ import annotations
 from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QIcon, QPainter, QPen, QRadialGradient
 from PyQt6.QtWidgets import (
-    QApplication, QInputDialog, QMenu, QSystemTrayIcon, QToolTip, QWidget,
+    QApplication, QFrame, QHBoxLayout, QLineEdit, QMenu, QPushButton,
+    QSettings, QSystemTrayIcon, QToolTip, QWidget,
 )
 
 
@@ -35,6 +36,8 @@ class FloatingLauncher(QWidget):
         self._background = QColor("#00060a")
         self._large = False
         self._allow_close = False
+        self._base_size = 156
+        self._chat_height = 48
 
         self.setWindowTitle("JARVIS Hologram")
         self.setWindowFlags(
@@ -45,9 +48,39 @@ class FloatingLauncher(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
-        self.setFixedSize(156, 166)
+        settings = QSettings("Mark56", "JARVIS")
+        try:
+            self._base_size = max(112, min(280, int(settings.value("floating_hologram_size", 156))))
+        except (TypeError, ValueError):
+            self._base_size = 156
+        self.setFixedSize(self._base_size, self._base_size + 10)
         self.setToolTip("J.A.R.V.I.S · Right-click for controls")
         self.setMouseTracking(True)
+
+        # Inline chat expands beneath the face; it is not a modal dialog.
+        self._chat_bar = QFrame(self)
+        self._chat_bar.setObjectName("jarvisFloatingChat")
+        self._chat_bar.setStyleSheet("""
+            QFrame#jarvisFloatingChat { background: rgba(3,20,30,238); border: 1px solid #1686a5; border-radius: 12px; }
+            QLineEdit { background: #06131b; color: #d8f8ff; border: 1px solid #17627a; border-radius: 8px; padding: 7px 9px; }
+            QPushButton { background: #073247; color: #d8f8ff; border: 1px solid #1686a5; border-radius: 8px; padding: 6px 10px; font-weight: 600; }
+            QPushButton:hover { background: #0b5269; }
+        """)
+        chat_layout = QHBoxLayout(self._chat_bar)
+        chat_layout.setContentsMargins(7, 5, 7, 5)
+        chat_layout.setSpacing(5)
+        self._chat_input = QLineEdit(self._chat_bar)
+        self._chat_input.setPlaceholderText("Message JARVIS…")
+        self._chat_input.returnPressed.connect(self._send_inline_message)
+        send_button = QPushButton("Send", self._chat_bar)
+        send_button.clicked.connect(self._send_inline_message)
+        close_button = QPushButton("×", self._chat_bar)
+        close_button.setFixedWidth(28)
+        close_button.clicked.connect(self.close_quick_chat)
+        chat_layout.addWidget(self._chat_input, 1)
+        chat_layout.addWidget(send_button)
+        chat_layout.addWidget(close_button)
+        self._chat_bar.hide()
 
         self.command_requested.connect(self._dispatch_command)
         self.mute_requested.connect(self._dispatch_mute)
@@ -121,14 +154,37 @@ class FloatingLauncher(QWidget):
             callback()
 
     def open_quick_chat(self):
-        message, accepted = QInputDialog.getText(
-            self, "Talk to JARVIS", "Message JARVIS:"
-        )
-        message = message.strip()
-        if accepted and message:
-            self._reply = "You: " + message
-            self.setToolTip(self._reply + "\nJARVIS is responding…")
-            self.command_requested.emit(message)
+        self._chat_bar.show()
+        self.setFixedSize(self._base_size, self._base_size + 10 + self._chat_height)
+        self._layout_chat_bar()
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+        self.activateWindow()
+        self._chat_input.setFocus()
+
+    def close_quick_chat(self):
+        self._chat_bar.hide()
+        self.setFixedSize(self._base_size, self._base_size + 10)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.update()
+
+    def _layout_chat_bar(self):
+        if self._chat_bar.isVisible():
+            self._chat_bar.setGeometry(5, self.height() - self._chat_height - 3,
+                                       self.width() - 10, self._chat_height)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "_chat_bar"):
+            self._layout_chat_bar()
+
+    def _send_inline_message(self):
+        message = self._chat_input.text().strip()
+        if not message:
+            return
+        self._chat_input.clear()
+        self._reply = "You: " + message
+        self.setToolTip(self._reply + "\nJARVIS is responding…")
+        self.command_requested.emit(message)
 
     def send_message(self, text: str | None = None):
         """Compatibility entry point for quick-chat integrations."""
@@ -177,7 +233,13 @@ class FloatingLauncher(QWidget):
         # Kept as a compact compatibility action: enlarge the face slightly,
         # never reveal a rectangular control panel.
         self._large = not self._large
-        self.setFixedSize(178, 188) if self._large else self.setFixedSize(156, 166)
+        self.set_hologram_size(212 if self._large else 156)
+
+    def set_hologram_size(self, size: int):
+        self._base_size = max(112, min(280, int(size)))
+        QSettings("Mark56", "JARVIS").setValue("floating_hologram_size", self._base_size)
+        extra = self._chat_height + 10 if self._chat_bar.isVisible() else 10
+        self.setFixedSize(self._base_size, self._base_size + extra)
         self.update()
 
     def show_launcher(self):
@@ -193,7 +255,7 @@ class FloatingLauncher(QWidget):
         # the live assistant behind an invisible process.
         self.setToolTip("JARVIS is running · This desktop has no system tray")
         self._large = False
-        self.setFixedSize(156, 166)
+        self.set_hologram_size(156)
         self.show_launcher()
 
     def _build_context_menu(self) -> QMenu:
@@ -222,12 +284,18 @@ class FloatingLauncher(QWidget):
         open_full.triggered.connect(self.open_requested.emit)
         menu.addAction(open_full)
 
-        size_action = QAction(
-            "Restore hologram size" if self._large else "Enlarge hologram slightly",
-            menu,
-        )
-        size_action.triggered.connect(self.toggle_expanded)
-        menu.addAction(size_action)
+        size_menu = menu.addMenu("Hologram size")
+        for label, size in (("Compact", 128), ("Standard", 156),
+                            ("Comfortable", 196), ("Large", 236),
+                            ("Extra large", 272)):
+            action = QAction(label, size_menu)
+            action.setCheckable(True)
+            action.setChecked(self._base_size == size)
+            action.triggered.connect(lambda _checked=False, value=size: self.set_hologram_size(value))
+            size_menu.addAction(action)
+        reset_size = QAction("Reset to standard size", menu)
+        reset_size.triggered.connect(lambda: self.set_hologram_size(156))
+        menu.addAction(reset_size)
 
         if self._tray:
             hide_action = QAction("Hide hologram to system tray", menu)
@@ -248,24 +316,25 @@ class FloatingLauncher(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         cx = self.width() / 2.0
-        cy = self.height() / 2.0 + 2.0
+        face_height = self.height() - (self._chat_height + 10 if self._chat_bar.isVisible() else 0)
+        cy = face_height / 2.0 + 2.0
 
         # A restrained aura keeps the face legible without drawing a panel,
         # card, border or opaque backdrop.
-        halo = QRadialGradient(cx, cy, min(self.width(), self.height()) * 0.48)
+        halo = QRadialGradient(cx, cy, min(self.width(), face_height) * 0.48)
         halo.setColorAt(0.0, QColor(0, 212, 255, 24))
         halo.setColorAt(0.55, QColor(0, 160, 210, 13))
         halo.setColorAt(1.0, QColor(0, 100, 150, 0))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(halo))
         painter.drawEllipse(
-            int(cx - 70), int(cy - 76), 140 if not self._large else 160,
-            148 if not self._large else 166,
+            int(cx - 70), int(cy - 76), int(self._base_size * 0.90),
+            int(self._base_size * 0.95),
         )
 
         if self._avatar is not None:
             try:
-                radius = 43.0 if not self._large else 49.0
+                radius = self._base_size * 0.285
                 self._avatar.paint(
                     painter, cx, cy, radius,
                     self._primary, self._accent, self._background,
@@ -282,7 +351,8 @@ class FloatingLauncher(QWidget):
             state_color = QColor("#00dfff")
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(state_color))
-        painter.drawEllipse(int(cx + 43), int(cy + 47), 7, 7)
+        dot = max(5, int(self._base_size * 0.045))
+        painter.drawEllipse(int(cx + self._base_size * 0.28), int(cy + self._base_size * 0.30), dot, dot)
         painter.end()
 
     def _paint_fallback_face(self, painter: QPainter, cx: float, cy: float):

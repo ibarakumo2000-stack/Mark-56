@@ -691,7 +691,9 @@ class HudCanvas(QWidget):
         # starts talking. Same lesson the head's sway taught.
         self._core_phase += min(0.10, max(0.0, dt))
 
-        if self._avatar is not None and self.hud_style == "face":
+        if self._avatar is not None:
+            # Advance the shared face for the floating hologram even when the
+            # full HUD is configured to render the reactor core.
             self._avatar.step(dt, amp, speaking=self.speaking,
                               muted=self.muted, state=self.state,
                               v_open=v_open, v_wide=v_wide or 0.0,

@@ -69,14 +69,15 @@ class FloatingLauncherWiringTests(unittest.TestCase):
         self.assertIn("WA_TranslucentBackground", source)
         self.assertIn("def paintEvent", source)
         self.assertIn("self._avatar.paint(", source)
-        self.assertNotIn("QFrame", source)
-        self.assertNotIn("QVBoxLayout", source)
-        self.assertNotIn("QLineEdit", source)
+        self.assertIn('self._chat_bar.setObjectName("jarvisFloatingChat")', source)
+        self.assertIn("self._chat_bar.hide()", source)
+        self.assertNotIn("QInputDialog", source)
 
     def test_hologram_reuses_the_main_holo_avatar(self):
         source = (ROOT / "ui.py").read_text(encoding="utf-8")
         self.assertIn("self.launcher.set_avatar(", source)
         self.assertIn("self._win.hud._avatar", source)
+        self.assertIn("floating_hologram_size", (ROOT / "floating_launcher.py").read_text(encoding="utf-8"))
         self.assertIn("QColor(C.PRI)", source)
 
     def test_right_click_menu_exposes_quick_chat_voice_and_exit(self):
@@ -87,7 +88,9 @@ class FloatingLauncherWiringTests(unittest.TestCase):
         self.assertIn("Mute microphone", source)
         self.assertIn("Open full JARVIS interface", source)
         self.assertIn("Quit JARVIS completely", source)
-        self.assertIn("QInputDialog.getText", source)
+        self.assertIn("QLineEdit", source)
+        self.assertIn("def _send_inline_message", source)
+        self.assertNotIn("QInputDialog", source)
 
     def test_hologram_speech_and_blink_are_driven_by_live_hud_avatar(self):
         source = (ROOT / "ui.py").read_text(encoding="utf-8")
@@ -98,6 +101,15 @@ class FloatingLauncherWiringTests(unittest.TestCase):
         self.assertIn("self._mouth", avatar_source)
         self.assertIn("def step(", avatar_source)
         self.assertIn("def paint(", avatar_source)
+        self.assertIn("if self._avatar is not None:", source)
+        self.assertIn("self._avatar.step(dt, amp, speaking=self.speaking", source)
+
+    def test_hologram_size_has_persistent_bounded_presets(self):
+        source = (ROOT / "floating_launcher.py").read_text(encoding="utf-8")
+        self.assertIn("max(112, min(280, int(size)))", source)
+        self.assertIn('("Compact", 128)', source)
+        self.assertIn('("Extra large", 272)', source)
+        self.assertIn('setValue("floating_hologram_size", self._base_size)', source)
 
     def test_launcher_is_draggable_and_can_collapse_or_hide_to_tray(self):
         source = (ROOT / "floating_launcher.py").read_text(encoding="utf-8")
