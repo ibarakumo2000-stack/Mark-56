@@ -248,9 +248,18 @@ class FloatingLauncher(QWidget):
         self.activateWindow()
 
     def hide_to_tray(self):
-        self.hide()
         if self._tray:
+            self.hide()
             self._tray.showMessage("JARVIS", "Still running in the background.")
+            return
+        # Some Linux desktops ship without a system-tray host. Never strand
+        # the running assistant behind an invisible window in that case.
+        self._expanded = False
+        self.details.hide()
+        self.expand_button.setText("+")
+        self.expand_button.setToolTip("Expand launcher")
+        self.adjustSize()
+        self.show_launcher()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
