@@ -67,7 +67,6 @@ REQUIRED = [
     "PyPDF2",
     "docx",
     "pynvml",
-    "pygetwindow",
     "googleapiclient",
     "google_auth_oauthlib",
     "msal",
@@ -83,6 +82,7 @@ REQUIRED_WINDOWS = [
     "win32com.client",
     "wmi",
     "pywinauto",
+    "pygetwindow",
 ]
 
 
@@ -134,6 +134,7 @@ FORBIDDEN = [
 # source during the static source scan.
 EXCLUDED_SOURCE_DIRS = {
     "runtime",
+    "tests",
     "__pycache__",
 }
 
@@ -260,6 +261,8 @@ def main():
 
     mods = REQUIRED + (
         REQUIRED_WINDOWS if os.name == "nt" else []
+    ) + (
+        ["pygetwindow"] if sys.platform == "darwin" else []
     )
 
     for m in mods:
@@ -339,22 +342,20 @@ def main():
         except Exception:
             found = False
 
-        # These imports are used only by the Linux Wayland screen-capture
-        # backend. They are intentionally absent from the Windows runtime and
-        # must not make a Windows installer fail its source-import audit.
-        windows_only_missing_ok = (
-            os.name == "nt"
-            and m in {"dbus_next", "gi"}
+        # Imports for optional native integrations on another operating
+        # system are not missing application dependencies. They are guarded
+        # at their point of use and are intentionally platform-specific.
+        platform_optional_missing = (
+            (os.name != "nt" and m in {
+                "comtypes", "pycaw", "win10toast", "win32com", "wmi", "pywinauto"
+            })
+            or (sys.platform != "linux" and m in {"dbus_next", "gi"})
         )
 
         if (
             not found
             and m not in OPTIONAL
-            and not windows_only_missing_ok
-            and not (
-                m == "win32com"
-                and os.name != "nt"
-            )
+            and not platform_optional_missing
         ):
             unknown.append(
                 f"{m} (first seen in {where})"
