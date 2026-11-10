@@ -349,7 +349,11 @@ def main():
             (os.name != "nt" and m in {
                 "comtypes", "pycaw", "win10toast", "win32com", "wmi", "pywinauto"
             })
-            or (sys.platform != "linux" and m in {"dbus_next", "gi"})
+            or (sys.platform != "linux" and m == "dbus_next")
+            # PyGObject is a system-provided, optional GNOME/Wayland
+            # integration, not a portable pip dependency. The app degrades
+            # gracefully when it is unavailable.
+            or m == "gi"
         )
 
         if (
