@@ -6229,14 +6229,15 @@ class MainWindow(QMainWindow):
             pass
 
     def closeEvent(self, event):
-        # Return to the compact launcher without stopping the live assistant.
+        # Closing the main JARVIS window exits the whole application, including
+        # the floating launcher and its system-tray icon.
         launcher = getattr(self, "_floating_launcher", None)
         if launcher is not None:
-            event.ignore()
-            self.hide()
-            launcher.show_launcher()
-            return
-        super().closeEvent(event)
+            launcher.close()
+        event.accept()
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
 
     def _check_config(self) -> bool:
         if not API_FILE.exists(): return False
