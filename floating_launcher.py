@@ -157,11 +157,14 @@ class FloatingLauncher(QWidget):
         self._chat_bar.show()
         self.setFixedSize(self._base_size, self._base_size + 10 + self._chat_height)
         self._layout_chat_bar()
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+        self.activateWindow()
         self._chat_input.setFocus()
 
     def close_quick_chat(self):
         self._chat_bar.hide()
         self.setFixedSize(self._base_size, self._base_size + 10)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.update()
 
     def _layout_chat_bar(self):
@@ -171,7 +174,8 @@ class FloatingLauncher(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._layout_chat_bar()
+        if hasattr(self, "_chat_bar"):
+            self._layout_chat_bar()
 
     def _send_inline_message(self):
         message = self._chat_input.text().strip()
