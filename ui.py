@@ -42,7 +42,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QConicalGradient, QDragEnterEvent, QDropEvent, QFont,
-    QFontDatabase, QKeySequence, QLinearGradient, QPainter, QPainterPath,
+    QFontDatabase, QIcon, QKeySequence, QLinearGradient, QPainter, QPainterPath,
     QPen, QPixmap, QRadialGradient, QShortcut, QDesktopServices,
 )
 # Video playback for the HUD. Part of PyQt6, so it costs no new dependency —
@@ -6229,14 +6229,16 @@ class MainWindow(QMainWindow):
             pass
 
     def closeEvent(self, event):
-        # Return to the compact launcher without stopping the live assistant.
+        # Closing the main JARVIS window exits the whole application, including
+        # the floating launcher and its system-tray icon.
         launcher = getattr(self, "_floating_launcher", None)
         if launcher is not None:
-            event.ignore()
-            self.hide()
-            launcher.show_launcher()
-            return
-        super().closeEvent(event)
+            launcher._allow_close = True
+            launcher.close()
+        event.accept()
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
 
     def _check_config(self) -> bool:
         if not API_FILE.exists(): return False
@@ -6292,6 +6294,12 @@ class JarvisUI:
         icon_path = CONFIG_DIR / "jarvis.ico"
         icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
         self.launcher = FloatingLauncher(icon=icon)
+        self.launcher.set_avatar(
+            self._win.hud._avatar,
+            QColor(C.PRI),
+            QColor(C.ACC),
+            QColor(C.BG),
+        )
         self._win._floating_launcher = self.launcher
         self.launcher.on_command = lambda text: (
             self.on_text_command(text) if callable(self.on_text_command) else None
