@@ -1652,6 +1652,9 @@ class JarvisLive:
                                         future.set_result(full_out)
                                 self._last_out_logged = full_out
                                 self.ui.write_log(f"{self._asst_name}: {full_out}")
+                                # Mirror the final Live-session answer into the compact
+                                # launcher; intermediate tool turns are intentionally excluded.
+                                self.ui.show_launcher_reply(full_out)
                                 self._session_log.append(f"{self._asst_name}: {full_out}")
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
