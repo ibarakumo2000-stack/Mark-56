@@ -65,10 +65,10 @@ from PyQt6.QtWidgets import (
     QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar, QMessageBox,
 )
 
-try:
-    from floating_launcher import FloatingLauncher
+from floating_launcher import FloatingLauncher
 
-from core.avatar import HoloAvatar
+try:
+    from core.avatar import HoloAvatar
 except Exception:      # pragma: no cover — HUD must never die over cosmetics
     HoloAvatar = None
 
