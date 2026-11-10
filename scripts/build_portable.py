@@ -199,7 +199,7 @@ The bundle includes Python and its Python dependencies. Online AI features need
 internet access and your own provider API key. Some Linux audio/Qt features need
 native system libraries. Ubuntu/Debian users can run:
   JARVIS_INSTALL_SYSTEM_LIBS=1 bash install.sh
-This can call sudo to install system libraries.
+This can call sudo to install system libraries, including PortAudio (required for microphone input through sounddevice).
 
 Only install software downloaded from the official Mark-56 GitHub Release.
 """
