@@ -482,7 +482,9 @@ with Image.open(src) as original:
     installer_script = dmg_root / "Install.command"
     installer_script.write_text(MAC_INSTALLER, encoding="utf-8")
     installer_script.chmod(0o755)
-    (dmg_root / "Applications").symlink_to("/Applications", target_is_directory=True)
+    # Do not add a live /Applications symlink to the source tree. hdiutil may
+    # traverse the host volume while packaging and fail with "Resource busy"
+    # on Intel runners. Installation is handled safely by Install.command.
     return dmg_root
 
 
