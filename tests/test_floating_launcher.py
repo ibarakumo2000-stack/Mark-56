@@ -64,6 +64,41 @@ class FloatingLauncherWiringTests(unittest.TestCase):
         self.assertIn("app.quit()", close_source)
         self.assertNotIn("launcher.show_launcher()", close_source)
 
+    def test_launcher_is_a_transparent_holographic_face_not_a_panel(self):
+        source = (ROOT / "floating_launcher.py").read_text(encoding="utf-8")
+        self.assertIn("WA_TranslucentBackground", source)
+        self.assertIn("def paintEvent", source)
+        self.assertIn("self._avatar.paint(", source)
+        self.assertNotIn("QFrame", source)
+        self.assertNotIn("QVBoxLayout", source)
+        self.assertNotIn("QLineEdit", source)
+
+    def test_hologram_reuses_the_main_holo_avatar(self):
+        source = (ROOT / "ui.py").read_text(encoding="utf-8")
+        self.assertIn("self.launcher.set_avatar(", source)
+        self.assertIn("self._win.hud._avatar", source)
+        self.assertIn("QColor(C.PRI)", source)
+
+    def test_right_click_menu_exposes_quick_chat_voice_and_exit(self):
+        source = (ROOT / "floating_launcher.py").read_text(encoding="utf-8")
+        self.assertIn("def contextMenuEvent", source)
+        self.assertIn("def _build_context_menu", source)
+        self.assertIn("Quick chat with JARVIS", source)
+        self.assertIn("Mute microphone", source)
+        self.assertIn("Open full JARVIS interface", source)
+        self.assertIn("Quit JARVIS completely", source)
+        self.assertIn("QInputDialog.getText", source)
+
+    def test_hologram_speech_and_blink_are_driven_by_live_hud_avatar(self):
+        source = (ROOT / "ui.py").read_text(encoding="utf-8")
+        self.assertIn("self.hud.speaking = (state == \"SPEAKING\")", source)
+        self.assertIn("self._win.hud._avatar", source)
+        avatar_source = (ROOT / "core/avatar.py").read_text(encoding="utf-8")
+        self.assertIn("self._blink_at", avatar_source)
+        self.assertIn("self._mouth", avatar_source)
+        self.assertIn("def step(", avatar_source)
+        self.assertIn("def paint(", avatar_source)
+
     def test_launcher_is_draggable_and_can_collapse_or_hide_to_tray(self):
         source = (ROOT / "floating_launcher.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
