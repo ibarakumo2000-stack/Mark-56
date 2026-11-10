@@ -65,6 +65,8 @@ from PyQt6.QtWidgets import (
     QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar, QMessageBox,
 )
 
+from floating_launcher import FloatingLauncher
+
 try:
     from core.avatar import HoloAvatar
 except Exception:      # pragma: no cover — HUD must never die over cosmetics
@@ -6179,6 +6181,9 @@ class MainWindow(QMainWindow):
         if muted == self._muted:
             return
         self._muted = muted
+        launcher = getattr(self, "_floating_launcher", None)
+        if launcher is not None:
+            launcher.set_muted(muted)
         self.hud.muted = muted
         self._style_mute_btn()
         if muted:
@@ -6222,6 +6227,16 @@ class MainWindow(QMainWindow):
             self._style_state_pill(state)
         except Exception:
             pass
+
+    def closeEvent(self, event):
+        # Return to the compact launcher without stopping the live assistant.
+        launcher = getattr(self, "_floating_launcher", None)
+        if launcher is not None:
+            event.ignore()
+            self.hide()
+            launcher.show_launcher()
+            return
+        super().closeEvent(event)
 
     def _check_config(self) -> bool:
         if not API_FILE.exists(): return False
@@ -6272,9 +6287,34 @@ class JarvisUI:
     def __init__(self, face_path: str, size=None):
         self._app = QApplication.instance() or QApplication(sys.argv)
         self._app.setStyle("Fusion")
+        self._app.setQuitOnLastWindowClosed(False)
         self._win = MainWindow(face_path)
+        icon_path = CONFIG_DIR / "jarvis.ico"
+        icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
+        self.launcher = FloatingLauncher(icon=icon)
+        self._win._floating_launcher = self.launcher
+        self.launcher.on_command = lambda text: (
+            self.on_text_command(text) if callable(self.on_text_command) else None
+        )
+        self.launcher.on_mute = self._win._toggle_mute
+        self.launcher.on_open = self._show_full_interface
+        self.launcher.on_quit = self._app.quit
+        self.launcher.set_muted(self._win._muted)
         self.root = _RootShim(self._app)
-        self._win.show()
+        if self._win._ready:
+            self.launcher.show_launcher()
+        else:
+            # First-run API-key setup must remain visible before the assistant connects.
+            self._win.show()
+
+    def _show_full_interface(self):
+        self._win.showNormal()
+        self._win.raise_()
+        self._win.activateWindow()
+        self.launcher.hide()
+
+    def show_launcher_reply(self, text: str):
+        self.launcher.set_reply(text)
 
     @property
     def muted(self) -> bool:
@@ -6284,6 +6324,7 @@ class JarvisUI:
     def muted(self, v: bool):
         if v != self._win._muted:
             self._win._toggle_mute()
+        self.launcher.set_muted(self._win._muted)
 
     @property
     def current_file(self) -> str | None:
@@ -6296,6 +6337,7 @@ class JarvisUI:
     @on_text_command.setter
     def on_text_command(self, cb):
         self._win.on_text_command = cb
+        self.launcher.on_command = cb
 
     @property
     def on_pair_device_clicked(self):
@@ -6433,6 +6475,7 @@ class JarvisUI:
 
     def set_state(self, state: str):
         self._win._state_sig.emit(state)
+        self.launcher.set_status(state)
 
     def write_log(self, text: str):
         self._win._log_sig.emit(text)
