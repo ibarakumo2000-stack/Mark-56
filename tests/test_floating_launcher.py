@@ -47,6 +47,23 @@ class FloatingLauncherWiringTests(unittest.TestCase):
         self.assertIn("self.ui.show_launcher_reply(full_out)", receive_source)
         self.assertIn("if full_out:", receive_source)
 
+    def test_closing_main_window_exits_launcher_and_application(self):
+        source = (ROOT / "ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        main_window = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
+        )
+        close_event = next(
+            node for node in main_window.body
+            if isinstance(node, ast.FunctionDef) and node.name == "closeEvent"
+        )
+        close_source = ast.get_source_segment(source, close_event) or ""
+        self.assertIn("launcher.close()", close_source)
+        self.assertIn("event.accept()", close_source)
+        self.assertIn("app.quit()", close_source)
+        self.assertNotIn("launcher.show_launcher()", close_source)
+
     def test_launcher_is_draggable_and_can_collapse_or_hide_to_tray(self):
         source = (ROOT / "floating_launcher.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
