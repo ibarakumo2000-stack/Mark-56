@@ -26,15 +26,24 @@ class ScreenTaskWorkflowTests(unittest.TestCase):
     def test_enter_is_available_for_local_dialogs_but_shortcuts_are_blocked(self):
         pg = MagicMock()
         pg.size.return_value = (1280, 720)
-        with patch.object(screen_agent_module, "_HAS_PYAUTOGUI", True), patch.object(
-            screen_agent_module, "pyautogui", pg
-        ):
-            self.assertIn("enter", workflow._execute(
-                {"type": "press", "key": "enter"}, 1280, 720
-            ))
+
+        with patch.object(screen_agent_module, "_HAS_PYAUTOGUI", True), \
+             patch.object(screen_agent_module, "pyautogui", pg), \
+             patch.object(workflow.shutil, "which", return_value=None):
+            self.assertIn(
+                "enter",
+                workflow._execute(
+                    {"type": "press", "key": "enter"}, 1280, 720
+                ),
+            )
             pg.press.assert_called_once_with("enter")
+
             with self.assertRaisesRegex(ValueError, "shortcuts are blocked"):
-                workflow._execute({"type": "press", "key": "ctrl+alt+delete"}, 1280, 720)
+                workflow._execute(
+                    {"type": "press", "key": "ctrl+alt+delete"},
+                    1280,
+                    720,
+                )
 
     def test_action_rejects_out_of_bounds_coordinates(self):
         pg = MagicMock()
