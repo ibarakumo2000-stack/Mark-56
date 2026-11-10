@@ -6233,6 +6233,7 @@ class MainWindow(QMainWindow):
         # the floating launcher and its system-tray icon.
         launcher = getattr(self, "_floating_launcher", None)
         if launcher is not None:
+            launcher._allow_close = True
             launcher.close()
         event.accept()
         app = QApplication.instance()
@@ -6293,6 +6294,12 @@ class JarvisUI:
         icon_path = CONFIG_DIR / "jarvis.ico"
         icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
         self.launcher = FloatingLauncher(icon=icon)
+        self.launcher.set_avatar(
+            self._win.hud._avatar,
+            QColor(C.PRI),
+            QColor(C.ACC),
+            QColor(C.BG),
+        )
         self._win._floating_launcher = self.launcher
         self.launcher.on_command = lambda text: (
             self.on_text_command(text) if callable(self.on_text_command) else None
