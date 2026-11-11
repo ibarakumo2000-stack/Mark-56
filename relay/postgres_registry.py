@@ -295,6 +295,13 @@ class PostgresRelayRegistry:
                    WHERE principal_id=%s AND channel_id=%s AND revoked_at IS NULL""",
                 (time.time(), principal_id, channel_id),
             )
+            if cursor.rowcount == 1:
+                connection.execute(
+                    """DELETE FROM relay_messages
+                       WHERE channel_id=%s
+                         AND (sender_principal_id=%s OR recipient_principal_id=%s)""",
+                    (channel_id, principal_id, principal_id),
+                )
             return cursor.rowcount == 1
 
     def healthcheck(self) -> bool:
