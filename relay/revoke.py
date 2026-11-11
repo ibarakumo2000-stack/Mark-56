@@ -1,8 +1,6 @@
 """Revoke a relay principal credential by channel and principal ID."""
 from __future__ import annotations
-import argparse
-import os
-from relay.registry_factory import build_registry
+import argparsefrom relay.registry_factory import build_registry
 
 
 def main() -> int:
