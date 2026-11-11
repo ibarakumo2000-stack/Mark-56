@@ -1,7 +1,8 @@
 """Provision a relay desktop or device identity; prints the secret only once."""
 from __future__ import annotations
 import argparse
-import jsonfrom relay.registry_factory import build_registry
+import json
+from relay.registry_factory import build_registry
 
 
 def main() -> int:
