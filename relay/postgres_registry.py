@@ -205,6 +205,11 @@ class PostgresRelayRegistry:
         now = time.time()
         self._ensure_schema()
         with self._lock, self._connect() as connection:
+            # Reclaim expired rows even when their recipient never reconnects.
+            connection.execute(
+                "DELETE FROM relay_messages WHERE expires_at<=%s",
+                (now,),
+            )
             pending = connection.execute(
                 """SELECT COUNT(*) AS count FROM relay_messages
                    WHERE channel_id=%s AND recipient_principal_id=%s AND expires_at>%s""",
