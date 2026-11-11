@@ -85,6 +85,7 @@ from core                      import undo as undo_stack
 from core                      import confirm as confirm_gate
 from core                      import audio_devices
 from core.action_loader        import discover_actions
+from core.action_loader        import strip_meta
 from core.echo                 import EchoGuard
 from core.viseme               import VisemeStream
 from core.wake_word            import (
@@ -2324,9 +2325,9 @@ class JarvisLive:
                 raise RuntimeError(f"{llm_id} needs: {', '.join(missing)}")
             llm = registry.build(llm_id, get_provider_config(llm_id))
 
-            # Preflight every selected pipeline component before opening a
-            # session. Missing local extras must fall back cleanly to Gemini,
-            # not fail repeatedly inside the session TaskGroup.
+            # Preflight all selected pipeline components before opening a
+            # session. Missing optional packages must fall back cleanly to
+            # Gemini instead of failing repeatedly inside the session TaskGroup.
             for _slot in ("stt", "tts"):
                 _pid = str(pipe.get(_slot) or "").strip()
                 if not _pid:
