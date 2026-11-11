@@ -65,6 +65,9 @@ class ProviderConfigTests(unittest.TestCase):
         self.assertTrue(callable(PipelineEngine))
 
     def test_native_panel_imports_when_qt_is_installed(self):
+        import ast
+        panel_path = Path(__file__).parents[1] / "providers" / "panel.py"
+        ast.parse(panel_path.read_text(encoding="utf-8"), filename=str(panel_path))
         try:
             import PyQt6  # noqa: F401
         except ModuleNotFoundError:
