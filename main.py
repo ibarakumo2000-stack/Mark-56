@@ -2321,6 +2321,19 @@ class JarvisLive:
                 raise RuntimeError(f"{llm_id} needs: {', '.join(missing)}")
             llm = registry.build(llm_id, get_provider_config(llm_id))
 
+            # Preflight every selected pipeline component before opening a
+            # session. Missing local extras must fall back cleanly to Gemini,
+            # not fail repeatedly inside the session TaskGroup.
+            for _slot in ("stt", "tts"):
+                _pid = str(pipe.get(_slot) or "").strip()
+                if not _pid:
+                    continue
+                _cfg = get_provider_config(_pid)
+                _missing = registry.missing_fields(_pid, _cfg)
+                if _missing:
+                    raise RuntimeError(f"{_pid} needs: {', '.join(_missing)}")
+                registry.build(_pid, _cfg)
+
             # Ask the model whether it can see, once, and remember the answer.
             #
             # This decides whether `screen_process` is declared at all, so it
