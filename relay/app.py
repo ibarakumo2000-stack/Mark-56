@@ -16,7 +16,8 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 
-from relay.registry import RelayAuthError, RelayRegistry
+from relay.registry import RelayAuthError
+from relay.registry_factory import build_registry
 
 MAX_MESSAGE_BYTES = 32_768
 MAX_RATE = 60
@@ -35,26 +36,7 @@ SCOPE_BY_TYPE = {
 
 
 def _build_registry(environ: dict[str, str] | None = None):
-    """Use the connected Neon pooled URL on Vercel; keep SQLite locally."""
-    env = os.environ if environ is None else environ
-    # Marketplace integration prefixes its generated variables with the
-    # configured resource prefix, producing *_DATABASE_URL and
-    # *_DATABASE_URL_UNPOOLED names rather than the unprefixed defaults.
-    database_url = (
-        env.get("JARVIS_RELAY_DATABASE_URL")
-        or env.get("JARVIS_RELAY_DATABASE_URL_DATABASE_URL")
-        or env.get("DATABASE_URL")
-        or env.get("POSTGRES_URL")
-    )
-    if database_url:
-        from relay.postgres_registry import PostgresRelayRegistry
-        return PostgresRelayRegistry(database_url)
-    if env.get("VERCEL") == "1":
-        raise RuntimeError(
-            "Vercel relay requires managed PostgreSQL. Connect the Neon pooled "
-            "DATABASE_URL environment variable to JARVIS_RELAY_DATABASE_URL."
-        )
-    return RelayRegistry(env.get("JARVIS_RELAY_DATABASE", "relay-data/relay.sqlite3"))
+    return build_registry(environ)
 
 
 def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
