@@ -5122,6 +5122,10 @@ class MainWindow(QMainWindow):
             f"Kind: {routine.get('kind', 'routine')}",
             f"Quiet-aware: {'yes' if routine.get('quiet', True) else 'no'}",
         ]
+        if routine.get("next_ts"):
+            lines.append(
+                "Next run: " + time.strftime("%Y-%m-%d %H:%M", time.localtime(float(routine["next_ts"])))
+            )
         if routine.get("text"):
             lines.extend(["", str(routine["text"])])
         if routine.get("last_result"):
