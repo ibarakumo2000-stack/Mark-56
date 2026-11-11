@@ -2257,6 +2257,78 @@ class JarvisLive:
             log  = self.ui.write_log,
         )
         set_trim_notifier(self.ui.write_log)
+        
+        # Mark-LVII persistent background work and scheduled routines. These
+        # services use Mark 56's existing UI speech/content channels; they do
+        # not replace the live assistant, plugin loader, or device services.
+        try:
+            from core.tasks import desktop as _task_desktop
+            _task_desktop.attach(self.ui)  # also recovers checkpointed tasks
+        except Exception as _task_error:
+            self.ui.write_log(f"ERR: Background tasks unavailable: {_task_error}")
+
+        try:
+            from core.routines.desktop import CallbackHost as _RoutineHost, attach as _attach_routines
+
+            def _routine_ready():
+                return bool(self.session and (not self._wake_enabled or self._awake))
+
+            def _routine_say(text):
+                self.plugin_say(
+                    "[SCHEDULED REMINDER] Say this reminder naturally in the user's language: "
+                    + str(text)
+                )
+
+            def _routine_prompt(text):
+                self.plugin_say(
+                    "[SCHEDULED INSTRUCTION] Carry out this user-authorized scheduled instruction: "
+                    + str(text)
+                )
+
+            def _routine_builtin(name, options):
+                name = str(name or "").strip().lower()
+                options = dict(options or {})
+                if name == "briefing":
+                    if self._loop:
+                        self._loop.call_soon_threadsafe(
+                            lambda: asyncio.create_task(self._send_startup_briefing())
+                        )
+                elif name == "news_watch":
+                    def _check_watched_topics():
+                        try:
+                            _alerts = monitor_check_all()
+                            if _alerts:
+                                self.plugin_say(
+                                    "[SCHEDULED NEWS WATCH] Summarise these new monitored headlines "
+                                    "for the user, with sources:\\n" + "\\n".join(_alerts)
+                                )
+                        except Exception as _exc:
+                            self.ui.write_log(f"ERR: Scheduled news watch failed: {_exc}")
+                    threading.Thread(target=_check_watched_topics, daemon=True,
+                                     name="routine-news-watch").start()
+                elif name == "checkin":
+                    _focuses = options.get("focuses") or [
+                        "the user's active projects", "a timely helpful suggestion"
+                    ]
+                    self.plugin_say(
+                        "[SCHEDULED CHECK-IN] Offer one brief, considerate check-in based on "
+                        "these allowed subjects: " + "; ".join(map(str, _focuses))
+                    )
+                else:
+                    self.ui.write_log(f"SYS: Unknown built-in routine: {name}")
+
+            _routine_host = _RoutineHost(
+                ready=_routine_ready,
+                idle_seconds=lambda: max(0.0, time.monotonic() - self._last_user_speech),
+                say=_routine_say,
+                prompt=_routine_prompt,
+                builtin=_routine_builtin,
+                log=self.ui.write_log,
+            )
+            _attach_routines(_routine_host, log=self.ui.write_log)
+        except Exception as _routine_error:
+            self.ui.write_log(f"ERR: Scheduled routines unavailable: {_routine_error}")
+
 
         # Tell the device picker the exact rates the streams open at, from the
         # constants that actually open them — so it can never list a device that
