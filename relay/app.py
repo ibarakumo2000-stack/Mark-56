@@ -11,7 +11,7 @@ import time
 from collections import defaultdict, deque
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 
 from relay.registry import RelayAuthError, RelayRegistry
 
@@ -29,8 +29,27 @@ SCOPE_BY_TYPE = {
 }
 
 
+def _build_registry(environ: dict[str, str] | None = None):
+    """Use durable PostgreSQL on Vercel; retain SQLite for local/self-hosted use."""
+    env = os.environ if environ is None else environ
+    database_url = (
+        env.get("JARVIS_RELAY_DATABASE_URL")
+        or env.get("DATABASE_URL")
+        or env.get("POSTGRES_URL")
+    )
+    if database_url:
+        from relay.postgres_registry import PostgresRelayRegistry
+        return PostgresRelayRegistry(database_url)
+    if env.get("VERCEL") == "1":
+        raise RuntimeError(
+            "Vercel relay requires managed PostgreSQL. Configure "
+            "JARVIS_RELAY_DATABASE_URL with the provider's pooled connection URL."
+        )
+    return RelayRegistry(env.get("JARVIS_RELAY_DATABASE", "relay-data/relay.sqlite3"))
+
+
 def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
-    db = registry or RelayRegistry(os.environ.get("JARVIS_RELAY_DATABASE", "relay-data/relay.sqlite3"))
+    db = registry or _build_registry()
     app = FastAPI(title="JARVIS Secure Relay", docs_url=None, redoc_url=None, openapi_url=None)
     peers: dict[tuple[str, str], WebSocket] = {}
     desktop_peers: dict[str, WebSocket] = {}
@@ -42,7 +61,13 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health():
-        return {"service": "jarvis-relay", "status": "ready", "version": 1}
+        try:
+            ready = db.healthcheck()
+        except Exception:
+            ready = False
+        if not ready:
+            raise HTTPException(status_code=503, detail="Relay database unavailable")
+        return {"service": "jarvis-relay", "status": "ready", "database": "ready", "version": 1}
 
     @app.websocket("/v1/connect/{channel_id}/{principal_id}")
     async def connect(websocket: WebSocket, channel_id: str, principal_id: str):
