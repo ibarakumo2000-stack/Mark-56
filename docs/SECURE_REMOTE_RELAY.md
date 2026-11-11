@@ -71,7 +71,9 @@ stopped explicitly.
 - Revoke lost credentials with the trusted CLI:
   `docker compose -f relay/compose.yml exec relay python -m relay.revoke --channel "$CHANNEL" --principal-id "$PRINCIPAL_ID"`.
 - Never place relay tokens in QR codes, URLs, app logs or source control.
-- Messages are ephemeral; disconnected peers receive no stored backlog.
+- Self-hosted SQLite mode does not persist message bodies. Vercel mode uses the
+  separately documented 20-second bounded delivery queue for cross-instance
+  handoff; queued payloads are deleted after delivery or expiry.
 
 ## Completion boundary
 
