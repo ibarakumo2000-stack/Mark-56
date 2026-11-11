@@ -131,8 +131,8 @@ APP_PROTOCOL = APP_VERSION.split()[-1]
 
 _DEFAULT_W, _DEFAULT_H = 980, 700
 _MIN_W,     _MIN_H     = 820, 580
-_LEFT_W  = 148
-_RIGHT_W = 340
+_LEFT_W  = 190
+_RIGHT_W = 300
 
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 
@@ -3588,6 +3588,11 @@ class MainWindow(QMainWindow):
         self._metric_tmr.start(2000)
         self._update_metrics()
 
+        self._automation_tmr = QTimer(self)
+        self._automation_tmr.timeout.connect(self._refresh_tasks)
+        self._automation_tmr.start(2500)
+        self._refresh_tasks()
+
         self._log_sig.connect(self._log.append_log)
         self._state_sig.connect(self._apply_state)
         self._content_sig.connect(self._show_content)
@@ -4551,7 +4556,44 @@ class MainWindow(QMainWindow):
         ip_lay.addWidget(os_lbl)
 
         lay.addWidget(info_panel)
-        lay.addStretch()
+
+        # Automation lives in the lower left rail: system telemetry and
+        # routines/tasks on the left, the HUD and conversation in the centre,
+        # communications and command entry on the right.
+        self._tasks_panel = QWidget()
+        self._tasks_panel.setObjectName("automationPanel")
+        self._tasks_panel.setStyleSheet(
+            f"#automationPanel {{ background: {C.PANEL2}; border: 1px solid {C.BORDER}; border-radius: 8px; }}"
+        )
+        auto_lay = QVBoxLayout(self._tasks_panel)
+        auto_lay.setContentsMargins(7, 6, 7, 6)
+        auto_lay.setSpacing(5)
+        auto_head = QHBoxLayout()
+        auto_title = QLabel("TASKS")
+        auto_title.setFont(_sans_font(8, True, 1.0))
+        auto_title.setStyleSheet(f"color: {C.PRI}; background: transparent;")
+        auto_head.addWidget(auto_title)
+        auto_head.addStretch()
+        self._automation_switch = QPushButton("ROUTINES")
+        self._automation_switch.setFixedHeight(20)
+        self._automation_switch.setFont(_sans_font(7, True, 0.4))
+        self._automation_switch.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._automation_switch.setStyleSheet(
+            f"QPushButton {{ color: {C.TEXT_MED}; background: transparent; border: 1px solid {C.BORDER}; border-radius: 4px; padding: 1px 5px; }}"
+            f"QPushButton:hover {{ color: {C.PRI}; border-color: {C.PRI_DIM}; }}"
+        )
+        self._automation_switch.clicked.connect(self._flip_tasks_panel)
+        auto_head.addWidget(self._automation_switch)
+        auto_lay.addLayout(auto_head)
+        self._automation_stack = QStackedWidget()
+        self._automation_stack.setMinimumHeight(88)
+        self._automation_stack.setStyleSheet("background: transparent;")
+        self._task_rows_host, self._task_rows_layout = self._make_automation_list()
+        self._routine_rows_host, self._routine_rows_layout = self._make_automation_list()
+        self._automation_stack.addWidget(self._task_rows_host)
+        self._automation_stack.addWidget(self._routine_rows_host)
+        auto_lay.addWidget(self._automation_stack)
+        lay.addWidget(self._tasks_panel, stretch=1)
 
         for txt, col in [
             ("AI CORE\nACTIVE",  C.GREEN),
@@ -4568,6 +4610,186 @@ class MainWindow(QMainWindow):
             lay.addWidget(lbl)
 
         return w
+
+    def _make_automation_list(self):
+        host = QWidget()
+        host.setStyleSheet("background: transparent;")
+        outer = QVBoxLayout(host)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        scroll.viewport().setStyleSheet("background: transparent;")
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        rows = QVBoxLayout(content)
+        rows.setContentsMargins(0, 0, 3, 0)
+        rows.setSpacing(4)
+        rows.addStretch(1)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        return host, rows
+
+    @staticmethod
+    def _clear_automation_rows(layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _flip_tasks_panel(self):
+        routines = self._automation_stack.currentIndex() == 0
+        self._automation_stack.setCurrentIndex(1 if routines else 0)
+        self._automation_switch.setText("TASKS" if routines else "ROUTINES")
+        self._refresh_tasks()
+
+    def _refresh_tasks(self):
+        """Refresh task and routine summaries from Mark 56's existing engines."""
+        if not hasattr(self, "_task_rows_layout"):
+            return
+        try:
+            from core.tasks import desktop as task_desktop
+            task_engine = task_desktop.engine()
+            tasks = task_engine.list(limit=5) if task_engine else []
+        except Exception as exc:
+            tasks, task_error = [], str(exc)
+        else:
+            task_error = ""
+        try:
+            from core.routines import desktop as routine_desktop
+            routine_engine = routine_desktop.engine()
+            routines = routine_engine.list() if routine_engine else []
+        except Exception:
+            routine_engine, routines = None, []
+
+        self._clear_automation_rows(self._task_rows_layout)
+        active = [t for t in tasks if t.get("status") not in ("done", "cancelled", "failed")]
+        visible_tasks = active[:5] or tasks[:3]
+        if not visible_tasks:
+            label = QLabel(task_error or "No background tasks yet.")
+            label.setWordWrap(True)
+            label.setFont(_sans_font(7.5))
+            label.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+            self._task_rows_layout.insertWidget(0, label)
+        for task in visible_tasks:
+            tid = str(task.get("id") or task.get("task_id") or "")
+            title = str(task.get("title") or task.get("task") or "Background task")
+            status = str(task.get("status") or "queued").upper()
+            button = QPushButton(f"•  {title[:24]}\n   {status}")
+            button.setToolTip(f"{title} — {status.lower()}")
+            button.setFont(_sans_font(7.2))
+            button.setFixedHeight(34)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setStyleSheet(
+                f"QPushButton {{ color: {C.TEXT_MED}; background: transparent; border: 1px solid {C.BORDER}; border-radius: 4px; text-align: left; padding: 3px 5px; }}"
+                f"QPushButton:hover {{ color: {C.PRI}; border-color: {C.PRI_DIM}; }}"
+            )
+            button.clicked.connect(lambda checked=False, task_id=tid: self._open_task(task_id))
+            self._task_rows_layout.insertWidget(self._task_rows_layout.count() - 1, button)
+
+        self._clear_automation_rows(self._routine_rows_layout)
+        enabled_count = sum(1 for r in routines if r.get("enabled"))
+        if not routines:
+            label = QLabel("No scheduled routines yet.")
+            label.setWordWrap(True)
+            label.setFont(_sans_font(7.5))
+            label.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+            self._routine_rows_layout.insertWidget(0, label)
+        for routine in routines[:8]:
+            rid = str(routine.get("id") or "")
+            name = str(routine.get("name") or "Routine")
+            when = str(routine_engine.describe(routine)) if routine_engine else ""
+            row = QWidget()
+            row.setStyleSheet("background: transparent;")
+            row_lay = QHBoxLayout(row)
+            row_lay.setContentsMargins(0, 0, 0, 0)
+            row_lay.setSpacing(3)
+            detail = QPushButton(name[:15])
+            detail.setToolTip(f"{name} — {when}")
+            detail.setFont(_sans_font(7.2))
+            detail.setCursor(Qt.CursorShape.PointingHandCursor)
+            detail.setStyleSheet(
+                f"QPushButton {{ color: {C.TEXT_MED}; background: transparent; border: 1px solid {C.BORDER}; border-radius: 4px; text-align: left; padding: 3px; }}"
+                f"QPushButton:hover {{ color: {C.PRI}; border-color: {C.PRI_DIM}; }}"
+            )
+            detail.clicked.connect(lambda checked=False, routine_id=rid: self._open_routine(routine_id))
+            toggle = QPushButton("ON" if routine.get("enabled") else "OFF")
+            toggle.setFixedWidth(30)
+            toggle.setFont(_sans_font(6.5, True))
+            toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+            toggle.setStyleSheet(
+                f"QPushButton {{ color: {C.GREEN if routine.get('enabled') else C.TEXT_DIM}; background: transparent; border: 1px solid {C.BORDER}; border-radius: 4px; }}"
+            )
+            toggle.clicked.connect(
+                lambda checked=False, routine_id=rid, enabled=bool(routine.get("enabled")):
+                    self._toggle_routine(routine_id, not enabled)
+            )
+            row_lay.addWidget(detail, 1)
+            row_lay.addWidget(toggle)
+            self._routine_rows_layout.insertWidget(self._routine_rows_layout.count() - 1, row)
+        self._automation_switch.setToolTip(
+            f"{enabled_count} enabled routines · switch to tasks"
+            if self._automation_stack.currentIndex() == 1
+            else f"{len(active)} active tasks · switch to routines"
+        )
+
+    def _toggle_routine(self, routine_id: str, enabled: bool):
+        try:
+            from core.routines import desktop
+            engine = desktop.engine()
+            if engine:
+                engine.update(routine_id, enabled=bool(enabled))
+                self.write_log(f"SYS: Routine {'enabled' if enabled else 'paused'}")
+        except Exception as exc:
+            self.write_log(f"ERR: Could not update routine: {exc}")
+        self._refresh_tasks()
+
+    def _open_task(self, task_id: str):
+        try:
+            from core.tasks import desktop
+            engine = desktop.engine()
+            task = engine.get(task_id) if engine else None
+        except Exception:
+            task = None
+        if not task:
+            return
+        title = str(task.get("title") or task.get("task") or "Background task")
+        lines = [title, "", f"Status: {task.get('status', 'unknown')}"]
+        if task.get("result"):
+            lines.extend(["", str(task["result"])])
+        if task.get("error"):
+            lines.extend(["", f"Error: {task['error']}"])
+        if task.get("events"):
+            lines.extend(["", "Recent activity:"])
+            lines.extend(f"• {event.get('text', '')}" for event in task["events"][-12:])
+        if task.get("report"):
+            lines.extend(["", f"Full report: {task['report']}"])
+        self._show_content("BACKGROUND TASK", "\n".join(lines)[:4000])
+
+    def _open_routine(self, routine_id: str):
+        try:
+            from core.routines import desktop
+            engine = desktop.engine()
+            routine = engine.get(routine_id) if engine else None
+        except Exception:
+            routine = None
+        if not routine:
+            return
+        lines = [
+            str(routine.get("name") or "Routine"), "",
+            f"When: {engine.describe(routine)}",
+            f"State: {'enabled' if routine.get('enabled') else 'paused'}",
+            f"Runs: {int(routine.get('runs') or 0)}",
+        ]
+        if routine.get("text"):
+            lines.extend(["", str(routine["text"])])
+        if routine.get("last_result"):
+            lines.extend(["", f"Last result: {routine['last_result']}"])
+        lines.extend(["", "Change or reschedule this routine by asking JARVIS."])
+        self._show_content("SCHEDULED ROUTINE", "\n".join(lines)[:4000])
 
     def _build_right_panel(self) -> QWidget:
         w = QWidget()
