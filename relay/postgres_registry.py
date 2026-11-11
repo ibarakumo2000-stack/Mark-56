@@ -29,22 +29,7 @@ class PostgresRelayRegistry:
             raise ValueError("A PostgreSQL connection URL is required")
         self.database_url = database_url
         self._lock = threading.RLock()
-        with self._connect() as connection:
-            connection.execute(
-                """CREATE TABLE IF NOT EXISTS principals (
-                    principal_id TEXT PRIMARY KEY,
-                    channel_id TEXT NOT NULL,
-                    role TEXT NOT NULL CHECK(role IN ('desktop','device')),
-                    token_hash TEXT NOT NULL UNIQUE,
-                    scopes_json TEXT NOT NULL,
-                    created_at DOUBLE PRECISION NOT NULL,
-                    revoked_at DOUBLE PRECISION
-                )"""
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_relay_channel "
-                "ON principals(channel_id, revoked_at)"
-            )
+        self._schema_ready = False
 
     def _connect(self):
         import psycopg
@@ -55,6 +40,28 @@ class PostgresRelayRegistry:
             connect_timeout=5,
             application_name="jarvis-secure-relay",
         )
+
+    def _ensure_schema(self):
+        with self._lock:
+            if self._schema_ready:
+                return
+            with self._connect() as connection:
+                connection.execute(
+                    """CREATE TABLE IF NOT EXISTS principals (
+                        principal_id TEXT PRIMARY KEY,
+                        channel_id TEXT NOT NULL,
+                        role TEXT NOT NULL CHECK(role IN ('desktop','device')),
+                        token_hash TEXT NOT NULL UNIQUE,
+                        scopes_json TEXT NOT NULL,
+                        created_at DOUBLE PRECISION NOT NULL,
+                        revoked_at DOUBLE PRECISION
+                    )"""
+                )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_relay_channel "
+                    "ON principals(channel_id, revoked_at)"
+                )
+            self._schema_ready = True
 
     @staticmethod
     def _hash(token: str) -> str:
@@ -111,6 +118,7 @@ class PostgresRelayRegistry:
             principal_id=principal_id,
         )
         token = "rly_" + secrets.token_urlsafe(40)
+        self._ensure_schema()
         with self._lock, self._connect() as connection:
             connection.execute(
                 """INSERT INTO principals
@@ -139,6 +147,7 @@ class PostgresRelayRegistry:
             or not 32 <= len(token) <= 160
         ):
             raise RelayAuthError("Invalid relay credentials")
+        self._ensure_schema()
         with self._lock, self._connect() as connection:
             row = connection.execute(
                 """SELECT principal_id, channel_id, role, scopes_json
@@ -156,6 +165,7 @@ class PostgresRelayRegistry:
         }
 
     def revoke(self, principal_id: str, channel_id: str) -> bool:
+        self._ensure_schema()
         with self._lock, self._connect() as connection:
             cursor = connection.execute(
                 """UPDATE principals SET revoked_at=%s
@@ -165,6 +175,7 @@ class PostgresRelayRegistry:
             return cursor.rowcount == 1
 
     def healthcheck(self) -> bool:
+        self._ensure_schema()
         with self._connect() as connection:
             return connection.execute("SELECT 1 AS ready").fetchone()["ready"] == 1
 
