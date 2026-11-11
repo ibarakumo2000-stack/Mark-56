@@ -134,6 +134,11 @@ def create_relay_app(registry: RelayRegistry | None = None) -> FastAPI:
                     except Exception:
                         pass
                     return
+                except Exception:
+                    # Database connectivity may flap during a serverless
+                    # instance's lifetime; retry without dropping the socket.
+                    await asyncio.sleep(1.0)
+                    continue
                 try:
                     claims = db.claim_messages(channel_id, principal_id, limit=10)
                     for claim in claims:
