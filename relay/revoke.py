@@ -2,7 +2,7 @@
 from __future__ import annotations
 import argparse
 import os
-from relay.registry import RelayRegistry
+from relay.registry_factory import build_registry
 
 
 def main() -> int:
@@ -10,7 +10,7 @@ def main() -> int:
     parser.add_argument("--channel", required=True)
     parser.add_argument("--principal-id", required=True)
     args = parser.parse_args()
-    registry = RelayRegistry(os.environ.get("JARVIS_RELAY_DATABASE", "relay-data/relay.sqlite3"))
+    registry = build_registry()
     try:
         revoked = registry.revoke(args.principal_id, args.channel)
         if not revoked:
