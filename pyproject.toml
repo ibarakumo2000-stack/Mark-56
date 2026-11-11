@@ -1,0 +1,4 @@
+[tool.vercel]
+# Mark 56's root main.py is the Qt desktop launcher, not an ASGI entrypoint.
+# The deployable FastAPI service is the authenticated remote relay.
+entrypoint = "relay.app:app"
