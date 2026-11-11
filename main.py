@@ -1100,7 +1100,7 @@ class JarvisLive:
             platform_ctx = (
                 "[DESKTOP CAPABILITY / PERMISSION REPORT]\n"
                 + format_platform_report()
-                + "\nTreat LIMITED and PERMISSION-REQUIRED capabilities as unavailable "
+                + "\nTreat LIMITED and PERMISSION-REQUIRED capabilities as unavailable, and CHECK or UNKNOWN capabilities as unverified "
                   "until the relevant user-approved OS flow succeeds. Do not claim "
                   "screen capture, global hotkeys, or device access worked merely "
                   "because a tool was invoked. If blocked, explain the detected "
