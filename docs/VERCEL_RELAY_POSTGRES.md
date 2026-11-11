@@ -56,12 +56,55 @@ For privacy and bounded storage:
 
 The relay does not persist messages in local SQLite mode.
 
+## Existing device credentials and provisioning
+
+The Vercel project uses Neon, while an existing desktop installation may have
+provisioned relay principals in its private local SQLite file. Do not delete
+that file or copy its raw contents into GitHub. The migration utility copies
+only the existing SHA-256 token hashes and principal metadata; this preserves
+already-issued tokens without revealing or regenerating them.
+
+From the Mark 56 repository root, with the Vercel CLI linked to the **mark-56**
+project, run:
+
+```bash
+vercel env run -e production -- python3 -m relay.migrate_registry \
+  --sqlite-path relay-data/relay.sqlite3
+```
+
+The command opens SQLite read-only, imports principals idempotently, skips
+matching principals already in Neon, and aborts on identity/hash conflicts.
+It prints counts only. It never prints tokens, token hashes, or the database
+URL. The local SQLite file is not modified.
+
+After this migration, provisioning and revocation commands automatically use
+Neon when run with the same Vercel environment:
+
+```bash
+vercel env run -e production -- python3 -m relay.provision \
+  --channel "$CHANNEL_ID" --role device \
+  --scopes command.send,notification.receive,media.control
+
+vercel env run -e production -- python3 -m relay.revoke \
+  --channel "$CHANNEL_ID" --principal-id "$DEVICE_ID"
+```
+
+Use the existing channel ID when migrating or provisioning a paired device.
+Keep the returned token in the Android Keystore or the desktop OS credential
+store; never paste it into chat, a QR code URL, logs, or source control.
+
+If the local SQLite registry does not exist or has no principals, skip the
+migration and provision new desktop/device credentials directly into Neon.
+Vercel CLI's `env run` injects project variables into the command without
+writing the secret values to a local environment file.
+
 ## Local development
 
 Without `VERCEL=1` and without a PostgreSQL URL, the relay continues to use
 the existing SQLite database and in-process WebSocket routing. To test the
-PostgreSQL backend locally, set `JARVIS_RELAY_DATABASE_URL` to a development
-database's pooled connection URL.
+PostgreSQL backend locally, use `vercel env run -e production --` to inject
+the linked project's Neon connection without writing it to disk, or set
+`JARVIS_RELAY_DATABASE_URL` to a development database's pooled URL.
 
 ## Operational notes
 
