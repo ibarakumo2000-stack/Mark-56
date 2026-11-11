@@ -4745,7 +4745,8 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _clear_automation_rows(layout):
-        while layout.count():
+        # Keep the final stretch spacer so refreshed rows remain top-aligned.
+        while layout.count() > 1:
             item = layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
@@ -4775,6 +4776,17 @@ class MainWindow(QMainWindow):
             routines = routine_engine.list() if routine_engine else []
         except Exception:
             routine_engine, routines = None, []
+
+        if routine_engine and hasattr(self, "_quiet_hours_input") and not self._quiet_hours_input.hasFocus():
+            try:
+                quiet_value = routine_engine.quiet_hours()
+                if self._quiet_hours_input.text() != quiet_value:
+                    self._quiet_hours_input.setText(quiet_value)
+                self._quiet_hours_status.setText(
+                    f"QUIET HOURS · {quiet_value}" if quiet_value else "QUIET HOURS · OFF"
+                )
+            except Exception:
+                pass
 
         self._clear_automation_rows(self._task_rows_layout)
         active = [t for t in tasks if t.get("status") not in ("done", "cancelled", "failed")]
@@ -4992,6 +5004,9 @@ class MainWindow(QMainWindow):
             f"When: {engine.describe(routine)}",
             f"State: {'enabled' if routine.get('enabled') else 'paused'}",
             f"Runs: {int(routine.get('runs') or 0)}",
+            f"Delivery: {routine.get('deliver', 'voice')}",
+            f"Kind: {routine.get('kind', 'routine')}",
+            f"Quiet-aware: {'yes' if routine.get('quiet', True) else 'no'}",
         ]
         if routine.get("text"):
             lines.extend(["", str(routine["text"])])
