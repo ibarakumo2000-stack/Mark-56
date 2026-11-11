@@ -5261,12 +5261,9 @@ class MainWindow(QMainWindow):
             return button
 
         _action("◉  REMOTE CONTROL", self._open_remote, primary=True)
-        _action("＋  PAIR PHONE / DEVICE", self._open_device_pairing,
-                tooltip="Securely pair Android, Wear OS and compatible smart glasses")
         _action("⚙  ENGINE & PROVIDERS", self._open_provider_settings,
                 tooltip="Choose Gemini Live or a local / custom speech and model stack")
 
-        _action("⚙  CUSTOMISE ASSISTANT", self._open_customize)
         _action("🎧  AUDIO DEVICES", self._open_audio_devices,
                 tooltip="Choose microphone and speaker devices")
         _action("🧠  MEMORY", self._open_memory_panel,
@@ -5274,12 +5271,7 @@ class MainWindow(QMainWindow):
 
         _action("🧩  PLUGIN MANAGER", self._open_plugin_manager)
         _action("⚙  PLUGIN CONFIGURATION", self._open_plugin_settings)
-        _action("✦  WEBSITE STUDIO", self._open_website_studio,
-                tooltip="Create and preview websites in the local workspace")
-
         _action("⊞  CREATE DESKTOP SHORTCUT", self._create_desktop_shortcut)
-        self._autostart_btn = _action("◉  AUTO-START: OFF", self._toggle_autostart)
-        _action("↻  CHECK FOR UPDATES", self._check_for_updates)
 
         lay.addStretch(1)
         w.setMinimumWidth(250)
@@ -5327,6 +5319,20 @@ class MainWindow(QMainWindow):
         mute_btn.clicked.connect(self._toggle_mute)
         interrupt_btn = _row(QPushButton("■  INTERRUPT JARVIS"))
         interrupt_btn.clicked.connect(self._do_interrupt)
+
+        # Frequently used system and workspace actions live in Controls.
+        pair_btn = _row(QPushButton("＋  PAIR PHONE / DEVICE"))
+        pair_btn.setToolTip("Securely pair Android, Wear OS and compatible smart glasses")
+        pair_btn.clicked.connect(self._open_device_pairing)
+        customise_btn = _row(QPushButton("⚙  CUSTOMISE JARVIS"))
+        customise_btn.clicked.connect(self._open_customize)
+        website_btn = _row(QPushButton("✦  WEBSITE BUILDER"))
+        website_btn.setToolTip("Create and preview websites in the local workspace")
+        website_btn.clicked.connect(self._open_website_studio)
+        self._autostart_btn = _row(QPushButton("◉  AUTO-START: OFF"))
+        self._autostart_btn.clicked.connect(self._toggle_autostart)
+        updates_btn = _row(QPushButton("↻  CHECK FOR UPDATES"))
+        updates_btn.clicked.connect(self._check_for_updates)
 
         self._brief_btn = _row(QPushButton())
         self._brief_btn.clicked.connect(self._toggle_brief)
