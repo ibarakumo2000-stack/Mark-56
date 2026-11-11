@@ -49,6 +49,22 @@ _BEHAVIORS = ("BLOCKING", "NON_BLOCKING")
 _SCHEDULING = ("WHEN_IDLE", "SILENT", "INTERRUPT")
 
 
+# Internal ranking / compact-description fields used by optional model schemas.
+# They are stripped before declarations reach Gemini or another provider API.
+META_KEYS = ("tier", "brief")
+
+
+def strip_meta(decls):
+    """Remove internal declaration metadata; leave all other entries unchanged."""
+    out = []
+    for decl in decls:
+        if isinstance(decl, dict) and any(key in decl for key in META_KEYS):
+            out.append({key: value for key, value in decl.items() if key not in META_KEYS})
+        else:
+            out.append(decl)
+    return out
+
+
 def _opt_upper(value, allowed: tuple[str, ...]) -> Optional[str]:
     v = str(value or "").strip().upper()
     return v if v in allowed else None

@@ -3349,6 +3349,7 @@ class MainWindow(QMainWindow):
         self.on_interrupt      = None   # callable: () -> None — stop JARVIS mid-speech
         self.on_voice_change   = None   # callable: () -> None — rebuild session with new voice
         self.on_audio_device_change = None  # callable: () -> None — reopen audio streams
+        self.on_provider_change = None  # callable: () -> None — reconnect with the selected engine
         self._confirm_overlay  = None   # live ConfirmBanner, if one is on screen
         self.get_plugins       = None   # callable: () -> list[dict], set by JarvisLive
         self.get_plugin_settings = None # callable: () -> list[dict] settings schemas, set by JarvisLive
@@ -4708,6 +4709,8 @@ class MainWindow(QMainWindow):
         _action("◉  REMOTE CONTROL", self._open_remote, primary=True)
         _action("＋  PAIR PHONE / DEVICE", self._open_device_pairing,
                 tooltip="Securely pair Android, Wear OS and compatible smart glasses")
+        _action("⚙  ENGINE & PROVIDERS", self._open_provider_settings,
+                tooltip="Choose Gemini Live or a local / custom speech and model stack")
 
         _section("PERSONALISATION")
         _action("⚙  CUSTOMISE ASSISTANT", self._open_customize)
@@ -6145,6 +6148,24 @@ class MainWindow(QMainWindow):
         ov.raise_()
         self._plugin_settings_overlay = ov   # keep a reference so it isn't GC'd
 
+    def _open_provider_settings(self):
+        """Open the native engine/provider selector without disturbing other drawers."""
+        try:
+            from providers.panel import ProviderSettingsDialog
+
+            def _applied():
+                callback = self.on_provider_change
+                if callable(callback):
+                    callback(keep_context=False, reason="engine/provider settings changed")
+
+            dialog = ProviderSettingsDialog(self, on_applied=_applied)
+            dialog.exec()
+        except Exception as exc:
+            self._log.append_log(
+                f"SYS: Engine & Providers panel unavailable: {type(exc).__name__}: {exc}"
+            )
+            QMessageBox.warning(self, "JARVIS Engine & Providers", str(exc))
+
     # ── Clipboard intelligence ───────────────────────────────────────────────────
 
     def _on_clipboard_changed(self):
@@ -6394,6 +6415,14 @@ class JarvisUI:
     @on_audio_device_change.setter
     def on_audio_device_change(self, cb):
         self._win.on_audio_device_change = cb
+
+    @property
+    def on_provider_change(self):
+        return self._win.on_provider_change
+
+    @on_provider_change.setter
+    def on_provider_change(self, cb):
+        self._win.on_provider_change = cb
 
     def show_confirm(self, title: str, detail: str) -> None:
         """Thread-safe: raise the irreversible-action gate. Called from action
