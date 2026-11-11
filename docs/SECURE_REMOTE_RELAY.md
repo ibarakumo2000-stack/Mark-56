@@ -9,8 +9,17 @@ configured TLS reverse proxy.
 
 The relay forwards bounded JSON envelopes only between desktop and device
 principals in the same channel. Sender and recipient must both hold the
-required scope for the message type. The broker does not interpret commands,
+required scope for the message type. The self-hosted SQLite broker does not
 persist message bodies, store raw credentials, or log message content.
+
+The Vercel deployment uses the connected Neon PostgreSQL integration for
+credential persistence and a bounded cross-instance delivery queue. When a
+recipient is connected to a different Vercel function instance (or briefly
+offline), a message can be buffered in PostgreSQL for up to 20 seconds. It is
+deleted after socket delivery or expiry, and the queue is capped at 100 pending
+messages per recipient. This is temporary cloud-side buffering, not message
+history. Do not enable the Vercel relay if this short-lived server-side storage
+is incompatible with your privacy requirements.
 
 ## Deploy
 
@@ -68,6 +77,9 @@ stopped explicitly.
 
 The relay service, credential registry, provisioning CLI, Docker/Caddy
 deployment, desktop connector, and Android WebSocket client are implemented.
+The Android client recognizes relay acknowledgements/errors and reconnects
+with bounded exponential backoff after serverless function-duration closures;
+credential rejection remains terminal until the owner refreshes credentials.
 Authenticated incoming events now reach the desktop application's
 metadata-only event callback and appear in the desktop event panel. The relay
 runtime sends only event type, device ID, and receive timestamp to that
