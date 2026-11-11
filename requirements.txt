@@ -15,6 +15,7 @@ sounddevice>=0.4,<1
 numpy>=1.24,<3
 google-genai>=2.8.0,<3
 openai>=1.68,<3
+httpx>=0.27,<1  # optional provider pipeline transport
 
 # ── Web search & browser control ──────────────────────────────────────────────
 requests>=2.31,<3
@@ -120,3 +121,10 @@ bleak>=0.22,<2
 
 # GNOME Wayland ScreenCast portal support (Linux only).
 dbus-next>=0.2.3,<1; sys_platform == "linux"
+
+
+# Optional voice-engine extras — install only when selected in Engine & Providers.
+# Local speech recognition (CPU is the default; no GPU required):
+#   pip install faster-whisper
+# Local neural speech synthesis:
+#   pip install piper-tts
