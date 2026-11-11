@@ -2336,7 +2336,16 @@ class JarvisLive:
                 _missing = registry.missing_fields(_pid, _cfg)
                 if _missing:
                     raise RuntimeError(f"{_pid} needs: {', '.join(_missing)}")
-                registry.build(_pid, _cfg)
+                _provider = registry.build(_pid, _cfg)
+                if (_slot == "stt" and _pid.split("@", 1)[0] == "whisper"
+                        and str(_cfg.get("backend") or "local").lower() == "local"):
+                    # Whisper's local backend is an optional extra. Its probe
+                    # checks the installed package without downloading a model.
+                    _probe = getattr(_provider, "probe", None)
+                    if callable(_probe):
+                        _ok, _message = _probe()
+                        if not _ok:
+                            raise RuntimeError(_message)
 
             # Ask the model whether it can see, once, and remember the answer.
             #
