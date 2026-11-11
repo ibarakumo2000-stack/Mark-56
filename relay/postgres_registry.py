@@ -141,6 +141,63 @@ class PostgresRelayRegistry:
             "role": role, "token": token,
         }
 
+    def import_principals(self, records) -> tuple[int, int]:
+        """Import SQLite credential hashes without ever handling raw tokens.
+
+        Existing matching rows are left untouched, making repeated imports
+        safe. A principal-ID or token-hash collision with different identity
+        data aborts the transaction rather than overwriting a live credential.
+        """
+        import re
+
+        self._ensure_schema()
+        imported = 0
+        skipped = 0
+        with self._lock, self._connect() as connection:
+            for record in records:
+                principal_id = record["principal_id"]
+                channel_id, principal_id, scopes = self._validate_identity(
+                    channel_id=record["channel_id"],
+                    role=record["role"],
+                    scopes=json.loads(record["scopes_json"]),
+                    principal_id=principal_id,
+                )
+                token_hash = record["token_hash"]
+                if not isinstance(token_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", token_hash):
+                    raise ValueError("Source registry contains an invalid token hash")
+                created_at = float(record["created_at"])
+                revoked_at = (
+                    float(record["revoked_at"])
+                    if record["revoked_at"] is not None else None
+                )
+                existing = connection.execute(
+                    """SELECT principal_id, token_hash FROM principals
+                       WHERE principal_id=%s OR token_hash=%s""",
+                    (principal_id, token_hash),
+                ).fetchone()
+                if existing is not None:
+                    if (
+                        existing["principal_id"] != principal_id
+                        or existing["token_hash"] != token_hash
+                    ):
+                        raise ValueError(
+                            "Source registry conflicts with an existing Neon principal"
+                        )
+                    skipped += 1
+                    continue
+                connection.execute(
+                    """INSERT INTO principals
+                       (principal_id, channel_id, role, token_hash, scopes_json,
+                        created_at, revoked_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    (
+                        principal_id, channel_id, record["role"], token_hash,
+                        json.dumps(scopes), created_at, revoked_at,
+                    ),
+                )
+                imported += 1
+        return imported, skipped
+
     def authenticate(self, token: str) -> dict:
         if not isinstance(token, str) or not token.startswith("rly_") or not 32 <= len(token) <= 160:
             raise RelayAuthError("Invalid relay credentials")
