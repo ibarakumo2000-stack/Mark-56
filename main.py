@@ -2316,6 +2316,9 @@ class JarvisLive:
             llm_id = str(pipe.get("llm") or "").strip()
             if not llm_id:
                 raise RuntimeError("no language model is chosen")
+            stt_id = str(pipe.get("stt") or "").strip()
+            if not stt_id:
+                raise RuntimeError("no speech recognizer is chosen")
             missing = registry.missing_fields(llm_id, get_provider_config(llm_id))
             if missing:
                 raise RuntimeError(f"{llm_id} needs: {', '.join(missing)}")
