@@ -14,8 +14,6 @@ import threading
 import time
 import uuid
 
-from psycopg.rows import dict_row
-
 from relay.registry import RelayAuthError
 
 
@@ -33,6 +31,7 @@ class PostgresRelayRegistry:
 
     def _connect(self):
         import psycopg
+        from psycopg.rows import dict_row
 
         return psycopg.connect(
             self.database_url,
