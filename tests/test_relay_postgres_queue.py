@@ -57,8 +57,9 @@ class PostgresRelayQueueTests(unittest.TestCase):
                 ttl_seconds=999,
             )
         self.assertTrue(message_id)
-        self.assertEqual(len(connection.calls), 2)
-        sql, params = connection.calls[1]
+        self.assertEqual(len(connection.calls), 3)
+        self.assertIn("DELETE FROM relay_messages", connection.calls[0][0])
+        sql, params = connection.calls[2]
         self.assertIn("INSERT INTO relay_messages", sql)
         self.assertEqual(json.loads(params[4]), {
             "type": "command", "payload": {"text": "hello"}
@@ -77,7 +78,8 @@ class PostgresRelayQueueTests(unittest.TestCase):
                     recipient_principal_id="recipient",
                     payload={"type": "command"},
                 )
-        self.assertEqual(len(connection.calls), 1)
+        self.assertEqual(len(connection.calls), 2)
+        self.assertIn("DELETE FROM relay_messages", connection.calls[0][0])
 
     def test_claim_returns_decoded_payload_and_claim_token(self):
         connection = _Connection(rows=[{
