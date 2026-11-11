@@ -1102,7 +1102,7 @@ class JarvisLive:
             output_audio_transcription={},
             input_audio_transcription={},
             system_instruction="\n".join(parts),
-            tools=[{"function_declarations": _all_decls}],
+            tools=[{"function_declarations": strip_meta(_all_decls)}],
             # Asks the server to issue session-resumption handles. Enabled but
             # NOT yet used: no handle is captured from the resumption update and
             # none is passed back here, so a reconnect starts a fresh session
