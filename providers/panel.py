@@ -201,8 +201,8 @@ class ProviderSettingsDialog(QDialog):
         saved = get_provider_config(service_id)
         values = dict(defaults)
         values.update(entry_values)
-        values.update(self._drafts.get(service_id, {}))
         values.update(saved)
+        values.update(self._drafts.get(service_id, {}))
         self._drafts[service_id] = values
 
         for field in decl.get("needs", ()):
