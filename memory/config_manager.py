@@ -436,3 +436,109 @@ def save_plugin_removed(filename: str, removed: bool, plugin_name: str | None = 
         data["plugins_enabled"] = enabled_cfg
 
     CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+
+
+# ── Optional conversation providers (ported from FatihMakes/Mark-LVII) ────────
+# Gemini Live remains the default. Provider modules are imported only after a
+# user explicitly selects the pipeline engine.
+PROVIDER_MODE_GEMINI = "gemini"
+PROVIDER_MODE_PIPELINE = "pipeline"
+
+_PROVIDER_LOCK = __import__("threading").RLock()
+
+
+def get_providers() -> dict:
+    value = load_api_keys().get("providers")
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def get_provider_mode() -> str:
+    mode = str(get_providers().get("mode", "") or "").strip().lower()
+    return mode if mode in (PROVIDER_MODE_GEMINI, PROVIDER_MODE_PIPELINE) else PROVIDER_MODE_GEMINI
+
+
+def get_provider_config(provider_id: str) -> dict:
+    creds = get_providers().get("creds")
+    value = creds.get(provider_id) if isinstance(creds, dict) else None
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def get_pipeline() -> dict:
+    value = get_providers().get("pipeline")
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def get_sidecar_provider() -> str:
+    return str(get_providers().get("sidecar", "") or "").strip()
+
+
+def _patch_providers(**fields) -> None:
+    with _PROVIDER_LOCK:
+        ensure_config_dir()
+        data = load_api_keys()
+        block = data.get("providers")
+        block = dict(block) if isinstance(block, dict) else {}
+        block.update(fields)
+        data["providers"] = block
+        CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+
+
+def save_provider_mode(mode: str) -> None:
+    value = str(mode or "").strip().lower()
+    _patch_providers(mode=value if value in (PROVIDER_MODE_GEMINI, PROVIDER_MODE_PIPELINE) else PROVIDER_MODE_GEMINI)
+
+
+def save_provider_config(provider_id: str, values: dict) -> None:
+    with _PROVIDER_LOCK:
+        providers = get_providers()
+        creds = providers.get("creds")
+        creds = dict(creds) if isinstance(creds, dict) else {}
+        current = creds.get(provider_id)
+        current = dict(current) if isinstance(current, dict) else {}
+        current.update(values or {})
+        creds[provider_id] = current
+        _patch_providers(creds=creds)
+
+
+def save_pipeline(stt: str = None, llm: str = None, tts: str = None) -> None:
+    with _PROVIDER_LOCK:
+        pipeline = get_pipeline()
+        for key, value in (("stt", stt), ("llm", llm), ("tts", tts)):
+            if value is not None:
+                pipeline[key] = str(value or "").strip()
+        _patch_providers(pipeline=pipeline)
+
+
+def save_sidecar_provider(provider_id: str) -> None:
+    _patch_providers(sidecar=str(provider_id or "").strip())
+
+
+def save_providers(mode: str = None, pipeline: dict = None, creds: dict = None,
+                   sidecar: str = None) -> None:
+    """Persist several provider settings in one config-file write."""
+    with _PROVIDER_LOCK:
+        ensure_config_dir()
+        data = load_api_keys()
+        block = data.get("providers")
+        block = dict(block) if isinstance(block, dict) else {}
+        if mode is not None:
+            value = str(mode).strip().lower()
+            block["mode"] = value if value in (PROVIDER_MODE_GEMINI, PROVIDER_MODE_PIPELINE) else PROVIDER_MODE_GEMINI
+        if pipeline is not None:
+            current = block.get("pipeline")
+            current = dict(current) if isinstance(current, dict) else {}
+            current.update({key: str(value or "").strip() for key, value in pipeline.items()})
+            block["pipeline"] = current
+        if creds is not None:
+            current = block.get("creds")
+            current = dict(current) if isinstance(current, dict) else {}
+            for provider_id, values in creds.items():
+                one = current.get(provider_id)
+                one = dict(one) if isinstance(one, dict) else {}
+                one.update(values or {})
+                current[provider_id] = one
+            block["creds"] = current
+        if sidecar is not None:
+            block["sidecar"] = str(sidecar or "").strip()
+        data["providers"] = block
+        CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
