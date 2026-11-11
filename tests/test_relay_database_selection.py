@@ -1,3 +1,4 @@
+import importlib
 import unittest
 from unittest.mock import patch
 
@@ -18,7 +19,8 @@ class RelayDatabaseSelectionTests(unittest.TestCase):
             _build_registry({"VERCEL": "1"})
 
     def test_vercel_runtime_prefers_explicit_relay_database_url(self):
-        with patch("relay.postgres_registry.PostgresRelayRegistry") as factory:
+        module = importlib.import_module("relay.postgres_registry")
+        with patch.object(module, "PostgresRelayRegistry") as factory:
             expected = object()
             factory.return_value = expected
             result = _build_registry({
@@ -30,7 +32,8 @@ class RelayDatabaseSelectionTests(unittest.TestCase):
         factory.assert_called_once_with("postgresql://pooled.example/db")
 
     def test_vercel_runtime_accepts_standard_database_url(self):
-        with patch("relay.postgres_registry.PostgresRelayRegistry") as factory:
+        module = importlib.import_module("relay.postgres_registry")
+        with patch.object(module, "PostgresRelayRegistry") as factory:
             _build_registry({
                 "VERCEL": "1",
                 "DATABASE_URL": "postgresql://db.example/app",
