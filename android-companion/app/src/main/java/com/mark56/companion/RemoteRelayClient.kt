@@ -140,7 +140,7 @@ class RemoteRelayClient(
             }
         })
         synchronized(reconnectLock) {
-            if (manuallyClosed) newSocket.cancel() else if (socket == null) socket = newSocket
+            if (manuallyClosed) newSocket.cancel() else socket = newSocket
         }
     }
 
