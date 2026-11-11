@@ -4874,7 +4874,17 @@ class MainWindow(QMainWindow):
                 f"QPushButton {{ color: {C.PRI}; background: transparent; border: 1px solid {C.BORDER}; border-radius: 4px; }}"
             )
             run_btn.clicked.connect(lambda checked=False, routine_id=rid: self._run_routine_now(routine_id))
+            edit_btn = QPushButton("✎")
+            edit_btn.setFixedWidth(20)
+            edit_btn.setFont(_sans_font(6.5, True))
+            edit_btn.setToolTip("Edit instruction and schedule")
+            edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            edit_btn.setStyleSheet(
+                f"QPushButton {{ color: {C.TEXT_MED}; background: transparent; border: 1px solid {C.BORDER}; border-radius: 4px; }}"
+            )
+            edit_btn.clicked.connect(lambda checked=False, routine_id=rid: self._edit_routine(routine_id))
             row_lay.addWidget(detail, 1)
+            row_lay.addWidget(edit_btn)
             row_lay.addWidget(run_btn)
             row_lay.addWidget(toggle)
             if not routine.get("system"):
@@ -4895,12 +4905,33 @@ class MainWindow(QMainWindow):
             else f"{len(active)} active tasks · switch to routines"
         )
 
+    def _routine_trigger_dialog(self, parent_name: str):
+        choices = ["Idle check-in (15 minutes)", "Daily schedule", "Assistant startup"]
+        choice, ok = QInputDialog.getItem(
+            self, parent_name, "When should this routine run?", choices, 0, False
+        )
+        if not ok:
+            return None
+        if choice == choices[1]:
+            clock, ok = QInputDialog.getText(
+                self, parent_name, "Daily time (24-hour HH:MM):", text="09:00"
+            )
+            if not ok:
+                return None
+            from core.routines import rules
+            return {"type": "time", "rule": {
+                "type": "weekly", "time": rules.hhmm(clock), "days": [1, 2, 3, 4, 5, 6, 7]
+            }}
+        if choice == choices[2]:
+            return {"type": "startup"}
+        return {"type": "idle", "minutes": 15, "cooldown": 60}
+
     def _add_routine(self):
         name, ok = QInputDialog.getText(self, "New routine", "Routine name:")
         if not ok or not name.strip():
             return
         instruction, ok = QInputDialog.getMultiLineText(
-            self, "Routine instruction", "What should JARVIS do when you have been idle?",
+            self, "Routine instruction", "What should JARVIS do?",
             "Check in with me about my current priorities."
         )
         if not ok or not instruction.strip():
@@ -4910,15 +4941,47 @@ class MainWindow(QMainWindow):
             engine = desktop.engine()
             if engine is None:
                 raise RuntimeError("The routine engine is not running.")
+            trigger = self._routine_trigger_dialog("Schedule routine")
+            if trigger is None:
+                return
             engine.add(
                 name=name.strip(), kind="prompt", text=instruction.strip(),
-                trigger={"type": "idle", "minutes": 15, "cooldown": 60},
-                deliver="panel", quiet=True,
+                trigger=trigger, deliver="panel",
+                quiet=trigger.get("type") == "idle",
             )
             self.write_log(f"SYS: Routine created — {name.strip()}")
             self._refresh_tasks()
         except Exception as exc:
             QMessageBox.warning(self, "New routine", str(exc))
+
+    def _edit_routine(self, routine_id: str):
+        try:
+            from core.routines import desktop
+            engine = desktop.engine()
+            routine = engine.get(routine_id) if engine else None
+            if not routine:
+                return
+            name, ok = QInputDialog.getText(
+                self, "Edit routine", "Routine name:", text=str(routine.get("name") or "")
+            )
+            if not ok or not name.strip():
+                return
+            instruction, ok = QInputDialog.getMultiLineText(
+                self, "Edit routine", "Instruction:", text=str(routine.get("text") or "")
+            )
+            if not ok or not instruction.strip():
+                return
+            trigger = self._routine_trigger_dialog("Reschedule routine")
+            if trigger is None:
+                return
+            engine.update(
+                routine_id, name=name.strip(), text=instruction.strip(),
+                trigger=trigger, quiet=trigger.get("type") == "idle",
+            )
+            self.write_log(f"SYS: Routine updated — {name.strip()}")
+            self._refresh_tasks()
+        except Exception as exc:
+            QMessageBox.warning(self, "Edit routine", str(exc))
 
     def _show_platform_report(self):
         try:
