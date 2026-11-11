@@ -38,23 +38,14 @@ def routines_path() -> Path:
 
 
 def seed_defaults(engine, brief_enabled: bool) -> None:
-    """Create the built-in routines once, from the settings the app had."""
-    if engine.seeded:
-        return
-    if engine.find_builtin("briefing") is None:
-        engine.add(name="Opening briefing", kind="builtin", builtin="briefing",
-                   trigger={"type": "startup"}, system=True, enabled=bool(brief_enabled),
-                   options={"news": True, "news_topic": "top world news today", "extra": ""})
-    if engine.find_builtin("checkin") is None:
-        engine.add(name="Check-in", kind="builtin", builtin="checkin",
-                   trigger={"type": "idle", "minutes": 15, "cooldown": 20}, system=True, quiet=True,
-                   options={"focuses": list(DEFAULT_FOCUSES)})
-    if engine.find_builtin("news_watch") is None:
-        engine.add(name="News watch", kind="builtin", builtin="news_watch",
-                   trigger={"type": "time", "rule": {"type": "interval", "minutes": 30,
-                                                     "start": "00:00", "end": "23:59"}},
-                   system=True, quiet=True)
-    engine.mark_seeded()
+    """Mark the migration complete without duplicating Mark 56's existing
+    morning briefing, proactive check-ins, or background topic monitor.
+
+    User-created routines remain fully available. Those three behaviors already
+    have established Mark 56 services and must keep a single owner.
+    """
+    if not engine.seeded:
+        engine.mark_seeded()
 
 
 def attach(host, log=print):
