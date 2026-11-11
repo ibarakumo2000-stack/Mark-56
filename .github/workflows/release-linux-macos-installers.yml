@@ -53,8 +53,24 @@ jobs:
       - name: Install Linux build prerequisites
         if: matrix.target == 'linux-x86_64'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxcb-cursor0 libegl1 libgl1 libasound2t64 libpulse0 libportaudio2
+          # GitHub-hosted runners can experience brief DNS/mirror outages.
+          # Retry the complete apt operation with backoff instead of failing
+          # the Linux package build on a transient Ubuntu mirror resolution error.
+          for attempt in 1 2 3 4 5; do
+            echo "Installing Linux prerequisites (attempt ${attempt}/5)..."
+            if sudo apt-get -o Acquire::Retries=5 update && \
+               sudo apt-get -o Acquire::Retries=5 install -y \
+                 xvfb libxcb-cursor0 libegl1 libgl1 libasound2t64 libpulse0 libportaudio2; then
+              exit 0
+            fi
+            if [ "${attempt}" -lt 5 ]; then
+              delay=$((attempt * 15))
+              echo "apt failed; retrying in ${delay}s..."
+              sleep "${delay}"
+            fi
+          done
+          echo "Unable to install Linux prerequisites after 5 attempts."
+          exit 1
       - name: Build self-contained installer
         run: python scripts/build_portable.py --target "${{ matrix.target }}" --version "$APP_VERSION"
       - name: Upload installer artifact
