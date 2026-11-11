@@ -1093,7 +1093,28 @@ class JarvisLive:
             ),
         })
 
-        parts = [time_ctx, identity_ctx]
+        # Give JARVIS an explicit, read-only view of desktop constraints.
+        # This is refreshed for every Live session and never bypasses OS consent.
+        try:
+            from core.platform_awareness import format_platform_report
+            platform_ctx = (
+                "[DESKTOP CAPABILITY / PERMISSION REPORT]\n"
+                + format_platform_report()
+                + "\nTreat LIMITED and PERMISSION-REQUIRED capabilities as unavailable, and CHECK or UNKNOWN capabilities as unverified "
+                  "until the relevant user-approved OS flow succeeds. Do not claim "
+                  "screen capture, global hotkeys, or device access worked merely "
+                  "because a tool was invoked. If blocked, explain the detected "
+                  "constraint and the suggested user action. Never attempt to bypass "
+                  "Wayland portals or operating-system privacy controls.\n\n"
+            )
+        except Exception as _platform_diag_error:
+            platform_ctx = (
+                "[DESKTOP CAPABILITY REPORT]\nDiagnostics unavailable: "
+                + str(_platform_diag_error)[:240]
+                + ". Verify desktop permissions before retrying a blocked action.\n\n"
+            )
+
+        parts = [time_ctx, identity_ctx, platform_ctx]
         if mem_str:
             parts.append(mem_str)
         parts.append(sys_prompt)
