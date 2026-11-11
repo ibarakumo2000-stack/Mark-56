@@ -5261,6 +5261,9 @@ class MainWindow(QMainWindow):
             return button
 
         _action("◉  REMOTE CONTROL", self._open_remote, primary=True)
+        _action("＋  PAIR PHONE / DEVICE", self._open_device_pairing,
+                tooltip="Securely pair Android, Wear OS and compatible smart glasses")
+        _action("↻  CHECK FOR UPDATES", self._check_for_updates)
         _action("⚙  ENGINE & PROVIDERS", self._open_provider_settings,
                 tooltip="Choose Gemini Live or a local / custom speech and model stack")
 
@@ -5320,10 +5323,6 @@ class MainWindow(QMainWindow):
         interrupt_btn = _row(QPushButton("■  INTERRUPT JARVIS"))
         interrupt_btn.clicked.connect(self._do_interrupt)
 
-        # Frequently used system and workspace actions live in Controls.
-        pair_btn = _row(QPushButton("＋  PAIR PHONE / DEVICE"))
-        pair_btn.setToolTip("Securely pair Android, Wear OS and compatible smart glasses")
-        pair_btn.clicked.connect(self._open_device_pairing)
         customise_btn = _row(QPushButton("⚙  CUSTOMISE JARVIS"))
         customise_btn.clicked.connect(self._open_customize)
         website_btn = _row(QPushButton("✦  WEBSITE BUILDER"))
@@ -5331,8 +5330,6 @@ class MainWindow(QMainWindow):
         website_btn.clicked.connect(self._open_website_studio)
         self._autostart_btn = _row(QPushButton("◉  AUTO-START: OFF"))
         self._autostart_btn.clicked.connect(self._toggle_autostart)
-        updates_btn = _row(QPushButton("↻  CHECK FOR UPDATES"))
-        updates_btn.clicked.connect(self._check_for_updates)
 
         self._brief_btn = _row(QPushButton())
         self._brief_btn.clicked.connect(self._toggle_brief)
@@ -5359,6 +5356,10 @@ class MainWindow(QMainWindow):
         w.setMinimumWidth(250)
         w.setMaximumHeight(560)
         return w
+
+    def write_log(self, message: str) -> None:
+        """Write UI status messages through the MainWindow log signal."""
+        self._log_sig.emit(str(message))
 
     def _warm_wake_state(self) -> None:
         """Work out the wake-word state off the UI thread, once.
