@@ -437,7 +437,6 @@ def save_plugin_removed(filename: str, removed: bool, plugin_name: str | None = 
 
     CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
 
-
 # ── Optional conversation providers (ported from FatihMakes/Mark-LVII) ────────
 # Gemini Live remains the default. Provider modules are imported only after a
 # user explicitly selects the pipeline engine.
