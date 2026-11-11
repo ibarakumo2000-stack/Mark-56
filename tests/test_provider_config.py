@@ -53,10 +53,9 @@ class ProviderConfigTests(unittest.TestCase):
         self.assertEqual(cfg["model"], "qwen2.5:7b")
         self.assertEqual(cfg["base_url"], "http://localhost:11434/v1")
 
-    def test_provider_modules_and_native_panel_import(self):
+    def test_provider_catalogs_and_engine_import(self):
         from providers import registry
         from providers.engine_pipeline import PipelineEngine
-        from providers.panel import ProviderSettingsDialog
 
         declarations = registry.discover()
         ids = {item["id"] for item in declarations}
@@ -64,6 +63,13 @@ class ProviderConfigTests(unittest.TestCase):
         self.assertIn("whisper", ids)
         self.assertIn("piper", ids)
         self.assertTrue(callable(PipelineEngine))
+
+    def test_native_panel_imports_when_qt_is_installed(self):
+        try:
+            import PyQt6  # noqa: F401
+        except ModuleNotFoundError:
+            self.skipTest("PyQt6 is installed in desktop packaging, not headless unit jobs")
+        from providers.panel import ProviderSettingsDialog
         self.assertTrue(callable(ProviderSettingsDialog))
 
     def test_invalid_mode_falls_back_to_gemini(self):
