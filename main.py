@@ -47,6 +47,7 @@ import json
 import sys
 import traceback
 from datetime import datetime
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import sounddevice as sd
@@ -301,6 +302,16 @@ def _render_prompt(template: str, values: dict) -> str:
 def _get_api_key() -> str:
     with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
         return json.load(f)["gemini_api_key"]
+
+
+def _gemini_usable() -> bool:
+    """True when Gemini Live is configured and not explicitly disabled."""
+    try:
+        from memory.config_manager import load_api_keys
+        cfg = load_api_keys()
+    except Exception:
+        return False
+    return bool(str(cfg.get("gemini_api_key") or "").strip()) and not bool(cfg.get("local_only"))
 
 
 def _load_system_prompt() -> str:
@@ -560,6 +571,9 @@ class JarvisLive:
         self._vision_last_time     = 0.0     # monotonic time of last screen_process call (cooldown guard)
         self._vision_busy          = False   # True while a vision capture/inject cycle is in flight
         self._interrupted          = False   # True while draining audio after user interrupt
+        # Optional STT → LLM → TTS engine. None preserves Gemini Live exactly.
+        self._engine_caps          = None
+        self._engine               = None
         # Transcript-driven mouth shapes for the avatar. Fed from the receive
         # loop as words arrive, drained by the playback loop against the audio.
         self._visemes              = VisemeStream()
@@ -933,6 +947,13 @@ class JarvisLive:
     def _on_ptt(self, held: bool) -> None:
         """Chord pressed or released — may arrive on the hotkey thread."""
         self._ptt_held = held
+        if not held and self._engine is not None and self._loop is not None:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self._engine.flush_microphone(SEND_SAMPLE_RATE), self._loop
+                )
+            except Exception as e:
+                print(f"[JARVIS] PTT flush failed: {e}")
         if held:
             # Holding the key is also a way to wake it, so push-to-talk works
             # without having to say the wake word first.
@@ -947,6 +968,11 @@ class JarvisLive:
     def interrupt(self) -> None:
         """Stop JARVIS mid-speech: drain queued audio and open mic immediately."""
         self._interrupted = True
+        if self._engine is not None:
+            try:
+                self._engine.interrupt()
+            except Exception:
+                pass
         q = self.audio_in_queue
         if q:
             drained = 0
@@ -1033,6 +1059,26 @@ class JarvisLive:
         _all_decls = (TOOL_DECLARATIONS
                       + self._action_registry.get_tool_declarations()
                       + self._plugin_registry.get_tool_declarations())
+
+        # Hide capabilities this selected engine cannot actually serve.
+        # Gemini Live (None) retains the original declaration list unchanged.
+        if self._engine_caps is not None:
+            _caps = self._engine_caps
+            _blocked = set()
+            if not _caps.get("vision"):
+                _blocked |= {"screen_process", "close_camera"}
+            if not _caps.get("tools"):
+                _blocked = {
+                    (d.get("name") if isinstance(d, dict) else getattr(d, "name", ""))
+                    for d in _all_decls
+                }
+            if _blocked:
+                _all_decls = [
+                    d for d in _all_decls
+                    if (d.get("name") if isinstance(d, dict) else getattr(d, "name", "")) not in _blocked
+                ]
+                print(f"[JARVIS] {len(_blocked)} tool(s) withheld — this engine cannot serve them")
+
         _names = {(d.get("name") if isinstance(d, dict) else getattr(d, "name", ""))
                   for d in _all_decls}
         sys_prompt = _render_prompt(sys_prompt, {
@@ -2243,6 +2289,122 @@ class JarvisLive:
 
     # ── main loop ───────────────────────────────────────────────────────────
 
+    def _engine_mode(self) -> str:
+        try:
+            from memory.config_manager import get_provider_mode
+            return get_provider_mode()
+        except Exception:
+            return "gemini"
+
+    def _resolve_engine_caps(self):
+        """What the chosen engine can do — or None for Gemini Live.
+
+        Called BEFORE `_build_config()`, because the tool declarations depend on
+        the answer. Building the providers here rather than later is deliberate:
+        the registry caches them by configuration, so the objects made now are
+        the same ones the engine gets a moment later, and a misconfiguration is
+        reported while there is still a Gemini session to fall back to.
+        """
+        if self._engine_mode() != "pipeline":
+            return None
+        try:
+            from memory.config_manager import get_pipeline, get_provider_config
+            from providers import registry
+
+            pipe = get_pipeline()
+            llm_id = str(pipe.get("llm") or "").strip()
+            if not llm_id:
+                raise RuntimeError("no language model is chosen")
+            missing = registry.missing_fields(llm_id, get_provider_config(llm_id))
+            if missing:
+                raise RuntimeError(f"{llm_id} needs: {', '.join(missing)}")
+            llm = registry.build(llm_id, get_provider_config(llm_id))
+
+            # Ask the model whether it can see, once, and remember the answer.
+            #
+            # This decides whether `screen_process` is declared at all, so it
+            # has to be settled BEFORE the config is built. Leaving it to the
+            # panel's TEST button meant that anybody who never pressed it ran a
+            # vision model with its eyes switched off — silently, and for every
+            # session. Measured once per model, in about a second, then read
+            # from the settings for ever after.
+            from memory.config_manager import save_provider_config
+            ensure = getattr(llm, "ensure_vision_known", None)
+            if ensure is not None:
+                try:
+                    seen = ensure(lambda v, _id=llm_id: save_provider_config(_id, v))
+                    self.ui.write_log(
+                        f"SYS: {llm_id} "
+                        + ("can see images." if seen else "is text only."))
+                except Exception as e:
+                    print(f"[JARVIS] vision check skipped: {e}")
+
+            caps = dict(getattr(llm, "caps", {}) or {})
+            caps["audio_out"] = bool(str(pipe.get("tts") or "").strip())
+            return caps
+        except Exception as e:
+            # A local engine that will not start must never mean no assistant.
+            # Falling back to Live is the whole reason the ladder exists, and
+            # the reason is said out loud rather than left in a console.
+            # Said once per reason, not on every reconnect attempt.
+            note = (f"SYS: local engine unavailable ({e}) — using Gemini Live."
+                    if _gemini_usable() else f"SYS: local engine unavailable ({e}).")
+            if note != getattr(self, "_engine_fail_said", ""):
+                self._engine_fail_said = note
+                self.ui.write_log(note)
+            print(f"[JARVIS] Pipeline engine unavailable: {e}")
+            return None
+
+    @asynccontextmanager
+    async def _open_session(self, live_model: str, config):
+        """The conversation, from whichever engine is configured.
+
+        Both branches yield an object with the same four methods and the same
+        event shapes, which is the entire contract — see providers/base.py. The
+        Live branch is unchanged from what it has always been, down to the
+        client being rebuilt on every reconnect.
+        """
+        if self._engine_caps is None:
+            client = genai.Client(
+                api_key=_get_api_key(),
+                http_options={"api_version":
+                              "v1alpha" if self._enhanced_live else "v1beta"},
+            )
+            async with client.aio.live.connect(model=live_model,
+                                               config=config) as session:
+                yield session
+            return
+
+        from memory.config_manager import get_pipeline, get_provider_config
+        from providers import registry
+        from providers.engine_pipeline import PipelineEngine
+
+        pipe = get_pipeline()
+
+        def part(slot):
+            pid = str(pipe.get(slot) or "").strip()
+            if not pid:
+                return None
+            # `log` so a provider can say what it is doing — downloading a
+            # voice, loading a model — in the activity log rather than only on a
+            # console the user may not be watching.
+            cfg = dict(get_provider_config(pid))
+            cfg["log"] = self.ui.write_log
+            return registry.build(pid, cfg)
+
+        engine = PipelineEngine(part("llm"), part("stt"), part("tts"),
+                                config=config, log=self.ui.write_log)
+        # Without push-to-talk nothing else knows when a sentence ended, so the
+        # engine finds it in the audio. With push-to-talk the key release is the
+        # signal and the detector stays out of the way.
+        engine.auto_turn = not self._ptt_enabled
+        self._engine = engine
+        try:
+            yield engine
+        finally:
+            self._engine = None
+            await engine.close()
+
     async def run(self):
         self._loop = asyncio.get_event_loop()
         self._reconnect_event = asyncio.Event()
@@ -2366,18 +2528,26 @@ class JarvisLive:
                 print(f"[JARVIS] Live model: {live_model}")
 
                 _resumed_with = self._resume_handle is not None
+
+                # Resolve the selected engine before building tool declarations.
+                self._engine_caps = self._resolve_engine_caps()
+                if self._engine_caps is None and not _gemini_usable():
+                    if not getattr(self, "_no_engine_said", False):
+                        self._no_engine_said = True
+                        self.ui.write_log(
+                            "SYS: No Gemini key and no local engine is configured — "
+                            "open Setup → Engine & Providers or add a Gemini key."
+                        )
+                    self.ui.set_state("SLEEPING")
+                    await asyncio.sleep(5)
+                    continue
+                self._no_engine_said = False
                 config = self._build_config()
 
-                # Fresh client on every reconnect — avoids stale HTTP session state
-                # v1alpha carries proactive audio; if it gets rejected we fall
-                # back to v1beta.
-                client = genai.Client(
-                    api_key=_get_api_key(),
-                    http_options={"api_version": "v1alpha" if self._enhanced_live else "v1beta"}
-                )
-
+                # The selected engine presents the same session contract to the
+                # existing receive, tool, audio, avatar and companion code.
                 async with (
-                    client.aio.live.connect(model=live_model, config=config) as session,
+                    self._open_session(live_model, config) as session,
                     asyncio.TaskGroup() as tg,
                 ):
                     self.session          = session
