@@ -93,6 +93,10 @@ class RelayRegistry:
             self._db.commit()
             return cur.rowcount == 1
 
+    def healthcheck(self) -> bool:
+        with self._lock:
+            return self._db.execute("SELECT 1").fetchone()[0] == 1
+
     def close(self):
         with self._lock:
             self._db.close()

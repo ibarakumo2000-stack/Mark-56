@@ -49,6 +49,8 @@ send2trash                   # file_controller — recoverable deletes
 python-pptx                  # file_processor — presentation reading
 
 # ── Remote dashboard (control from your phone) ────────────────────────────────
+# Serverless Vercel relay uses pooled managed PostgreSQL; desktop/local still uses SQLite.
+psycopg[binary]>=3.2,<4
 fastapi>=0.110,<1
 uvicorn[standard]>=0.27,<1
 cryptography>=42,<50
