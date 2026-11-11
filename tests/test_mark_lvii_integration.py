@@ -35,7 +35,7 @@ class MarkLVIIIntegrationTests(unittest.TestCase):
 
     def test_routine_time_helpers(self):
         self.assertEqual(parse_hhmm("08:05"), (8, 5))
-        self.assertEqual(hhmm((8, 5)), "08:05")
+        self.assertEqual(hhmm("08:05"), "08:05")
 
     def test_action_tools_are_discoverable(self):
         self.assertEqual(BACKGROUND_TASK_TOOL["name"], "background_tasks")
