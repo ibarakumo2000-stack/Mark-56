@@ -53,6 +53,19 @@ class ProviderConfigTests(unittest.TestCase):
         self.assertEqual(cfg["model"], "qwen2.5:7b")
         self.assertEqual(cfg["base_url"], "http://localhost:11434/v1")
 
+    def test_provider_modules_and_native_panel_import(self):
+        from providers import registry
+        from providers.engine_pipeline import PipelineEngine
+        from providers.panel import ProviderSettingsDialog
+
+        declarations = registry.discover()
+        ids = {item["id"] for item in declarations}
+        self.assertIn("openai_compat", ids)
+        self.assertIn("whisper", ids)
+        self.assertIn("piper", ids)
+        self.assertTrue(callable(PipelineEngine))
+        self.assertTrue(callable(ProviderSettingsDialog))
+
     def test_invalid_mode_falls_back_to_gemini(self):
         config_manager.save_provider_mode("not-a-provider")
         self.assertEqual(config_manager.get_provider_mode(), "gemini")
