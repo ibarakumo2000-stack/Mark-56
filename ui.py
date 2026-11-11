@@ -4633,12 +4633,12 @@ class MainWindow(QMainWindow):
         return w
 
     def _build_quick_drawer(self) -> QWidget:
-        """Floating overlay panel shown when the ⚙ header button is toggled."""
+        """Premium setup drawer: configuration, connected services and tools."""
         _BTN_STYLE_PRI = f"""
             QPushButton {{
                 background: #00091a; color: {C.PRI};
                 border: 1px solid {C.PRI_DIM}; border-radius: 3px;
-                text-align: left; padding: 0 8px;
+                text-align: left; padding: 0 10px;
             }}
             QPushButton:hover {{ background: {C.PRI_GHO}; border-color: {C.PRI}; }}
         """
@@ -4646,11 +4646,10 @@ class MainWindow(QMainWindow):
             QPushButton {{
                 background: transparent; color: {C.TEXT_MED};
                 border: 1px solid {C.BORDER}; border-radius: 3px;
-                text-align: left; padding: 0 8px;
+                text-align: left; padding: 0 10px;
             }}
             QPushButton:hover {{ color: {C.PRI}; border-color: {C.BORDER_B}; }}
         """
-
         self._BTN_PRI, self._BTN_DIM = _BTN_STYLE_PRI, _BTN_STYLE_DIM
         w = QWidget(self.centralWidget())
         w.setObjectName("QuickDrawer")
@@ -4664,151 +4663,158 @@ class MainWindow(QMainWindow):
         """)
         w.hide()
 
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(10, 8, 10, 10)
+        outer = QVBoxLayout(w)
+        outer.setContentsMargins(8, 6, 8, 8)
+        scroll = QScrollArea(w)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        lay = QVBoxLayout(content)
+        lay.setContentsMargins(2, 2, 4, 2)
         lay.setSpacing(5)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
 
-        hdr = QLabel("◈ SETUP")
+        hdr = QLabel("◈ SETUP & CONFIGURATION")
         hdr.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
-        hdr.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent; "
-                          f"border-bottom: 1px solid {C.BORDER}; padding-bottom: 4px;")
+        hdr.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent; padding: 3px 2px 6px;")
         lay.addWidget(hdr)
 
-        remote_btn = QPushButton("◉  REMOTE CONTROL")
-        remote_btn.setFixedHeight(30)
-        remote_btn.setFont(QFont(_mono(), 8, QFont.Weight.Bold))
-        remote_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        remote_btn.setStyleSheet(_BTN_STYLE_PRI)
-        remote_btn.clicked.connect(self._open_remote)
-        lay.addWidget(remote_btn)
+        def _section(title):
+            label = QLabel(title)
+            label.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
+            label.setStyleSheet(
+                f"color: {C.PRI_DIM}; background: transparent; "
+                f"border-bottom: 1px solid {C.BORDER}; padding: 5px 2px 3px;"
+            )
+            lay.addWidget(label)
 
-        pair_btn = QPushButton("＋  PAIR PHONE / DEVICE")
-        pair_btn.setFixedHeight(30)
-        pair_btn.setFont(QFont(_mono(), 8, QFont.Weight.Bold))
-        pair_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        pair_btn.setStyleSheet(_BTN_STYLE_DIM)
-        pair_btn.setToolTip("Open secure phone, Wear OS and smart-glasses pairing")
-        pair_btn.clicked.connect(self._open_device_pairing)
-        lay.addWidget(pair_btn)
+        def _action(text, slot, primary=False, tooltip=""):
+            button = QPushButton(text)
+            button.setFixedHeight(30)
+            button.setFont(QFont(_mono(), 8 if primary else 7, QFont.Weight.Bold if primary else QFont.Weight.Medium))
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setStyleSheet(_BTN_STYLE_PRI if primary else _BTN_STYLE_DIM)
+            if tooltip:
+                button.setToolTip(tooltip)
+            button.clicked.connect(slot)
+            lay.addWidget(button)
+            return button
 
-        sc_btn = QPushButton("⊞  CREATE DESKTOP SHORTCUT")
-        sc_btn.setFixedHeight(26)
-        sc_btn.setFont(QFont(_mono(), 7))
-        sc_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        sc_btn.setStyleSheet(_BTN_STYLE_DIM)
-        sc_btn.clicked.connect(self._create_desktop_shortcut)
-        lay.addWidget(sc_btn)
+        _section("CONNECTIVITY")
+        _action("◉  REMOTE CONTROL", self._open_remote, primary=True)
+        _action("＋  PAIR PHONE / DEVICE", self._open_device_pairing,
+                tooltip="Securely pair Android, Wear OS and compatible smart glasses")
 
-        self._autostart_btn = QPushButton("◉  AUTO-START: OFF")
-        self._autostart_btn.setFixedHeight(26)
-        self._autostart_btn.setFont(QFont(_mono(), 7))
-        self._autostart_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._autostart_btn.clicked.connect(self._toggle_autostart)
-        lay.addWidget(self._autostart_btn)
+        _section("PERSONALISATION")
+        _action("⚙  CUSTOMISE ASSISTANT", self._open_customize)
+        _action("🎧  AUDIO DEVICES", self._open_audio_devices,
+                tooltip="Choose microphone and speaker devices")
+        _action("🧠  MEMORY", self._open_memory_panel,
+                tooltip="Review and manage Jarvis memories")
 
-        cust_btn = QPushButton("⚙  CUSTOMISE ASSISTANT")
-        cust_btn.setFixedHeight(26)
-        cust_btn.setFont(QFont(_mono(), 7))
-        cust_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        cust_btn.setStyleSheet(_BTN_STYLE_DIM)
-        cust_btn.clicked.connect(self._open_customize)
-        lay.addWidget(cust_btn)
+        _section("EXTENSIONS & CREATION")
+        _action("🧩  PLUGIN MANAGER", self._open_plugin_manager)
+        _action("⚙  PLUGIN CONFIGURATION", self._open_plugin_settings)
+        _action("✦  WEBSITE STUDIO", self._open_website_studio,
+                tooltip="Create and preview websites in the local workspace")
 
-        audio_btn = QPushButton("🎧  AUDIO DEVICES")
-        audio_btn.setFixedHeight(26)
-        audio_btn.setFont(QFont(_mono(), 7))
-        audio_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        audio_btn.setStyleSheet(_BTN_STYLE_DIM)
-        audio_btn.clicked.connect(self._open_audio_devices)
-        lay.addWidget(audio_btn)
+        _section("DESKTOP & MAINTENANCE")
+        _action("⊞  CREATE DESKTOP SHORTCUT", self._create_desktop_shortcut)
+        self._autostart_btn = _action("◉  AUTO-START: OFF", self._toggle_autostart)
+        _action("↻  CHECK FOR UPDATES", self._check_for_updates)
 
-        mem_btn = QPushButton("🧠  MEMORY")
-        mem_btn.setFixedHeight(26)
-        mem_btn.setFont(QFont(_mono(), 7))
-        mem_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        mem_btn.setStyleSheet(_BTN_STYLE_DIM)
-        mem_btn.clicked.connect(self._open_memory_panel)
-        lay.addWidget(mem_btn)
-
-        plugin_btn = QPushButton("🧩  PLUGINS")
-        plugin_btn.setFixedHeight(26)
-        plugin_btn.setFont(QFont(_mono(), 7))
-        plugin_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        plugin_btn.setStyleSheet(_BTN_STYLE_DIM)
-        plugin_btn.clicked.connect(self._open_plugin_manager)
-        lay.addWidget(plugin_btn)
-
-        settings_btn = QPushButton("⚙  PLUGIN SETTINGS")
-        settings_btn.setFixedHeight(26)
-        settings_btn.setFont(QFont(_mono(), 7))
-        settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        settings_btn.setStyleSheet(_BTN_STYLE_DIM)
-        settings_btn.clicked.connect(self._open_plugin_settings)
-        lay.addWidget(settings_btn)
-
-        w.adjustSize()
+        lay.addStretch(1)
+        w.setMinimumWidth(250)
+        w.setMaximumHeight(560)
         return w
 
     def _build_controls_drawer(self) -> QWidget:
-        """The switches that get flicked every day, in their own panel."""
+        """Everyday assistant and workspace controls in a matching scrollable panel."""
         w = QWidget(self.centralWidget())
         w.setObjectName("QuickDrawer")
         w.setStyleSheet(self._quick_drawer.styleSheet())
         w.hide()
 
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(10, 8, 10, 10)
+        outer = QVBoxLayout(w)
+        outer.setContentsMargins(8, 6, 8, 8)
+        scroll = QScrollArea(w)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        lay = QVBoxLayout(content)
+        lay.setContentsMargins(2, 2, 4, 2)
         lay.setSpacing(5)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
 
         hdr = QLabel("◈ CONTROLS")
         hdr.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
-        hdr.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent; "
-                          f"border-bottom: 1px solid {C.BORDER}; padding-bottom: 4px;")
+        hdr.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent; padding: 3px 2px 6px;")
         lay.addWidget(hdr)
 
-        def _row(button, style=None, height=26):
+        def _section(title):
+            label = QLabel(title)
+            label.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
+            label.setStyleSheet(
+                f"color: {C.PRI_DIM}; background: transparent; "
+                f"border-bottom: 1px solid {C.BORDER}; padding: 5px 2px 3px;"
+            )
+            lay.addWidget(label)
+
+        def _row(button, style=None, height=29):
             button.setFixedHeight(height)
-            button.setFont(QFont(_mono(), 7))
+            button.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            if style:
-                button.setStyleSheet(style)
+            button.setStyleSheet(style or self._BTN_DIM)
             lay.addWidget(button)
             return button
 
-        fs_btn = _row(QPushButton("⛶  FULLSCREEN  [F11]"), self._BTN_DIM)
+        _section("ASSISTANT")
+        fs_btn = _row(QPushButton("⛶  FULLSCREEN  [F11]"))
         fs_btn.clicked.connect(self._toggle_fullscreen)
+        mute_btn = _row(QPushButton("◉  MICROPHONE MUTE / UNMUTE"))
+        mute_btn.clicked.connect(self._toggle_mute)
+        interrupt_btn = _row(QPushButton("■  INTERRUPT JARVIS"))
+        interrupt_btn.clicked.connect(self._do_interrupt)
 
+        _section("VOICE & LISTENING")
         self._brief_btn = _row(QPushButton())
         self._brief_btn.clicked.connect(self._toggle_brief)
-
         self._wake_btn = _row(QPushButton())
         self._wake_btn.clicked.connect(self._toggle_wake_word)
         self._wake_sleep_btn = _row(QPushButton())
         self._wake_sleep_btn.clicked.connect(self._tap_wake_manual)
-        # Neutral until the real state lands from the background warm-up.
         self._wake_btn.setText("🎙  WAKE WORD")
         self._wake_btn.setStyleSheet(self._BTN_DIM)
         self._wake_sleep_btn.hide()
-
         self._ptt_btn = _row(QPushButton())
         self._ptt_btn.clicked.connect(self._toggle_ptt)
         self._refresh_talk_btns()
 
+        _section("INTERFACE")
         self._hud_btn = _row(QPushButton())
         self._hud_btn.clicked.connect(self._toggle_hud_style)
         self._refresh_hud_btn()
-
         self._metrics_btn = _row(QPushButton())
         self._metrics_btn.clicked.connect(self._toggle_metrics_style)
         self._refresh_metrics_btn()
 
-        self._check_update_btn = _row(QPushButton("↻  CHECK FOR UPDATES"), self._BTN_DIM)
-        self._check_update_btn.clicked.connect(self._check_for_updates)
+        _section("WORKSPACE")
+        device_btn = _row(QPushButton("＋  CONNECTED DEVICES"))
+        device_btn.clicked.connect(self._open_device_pairing)
+        remote_btn = _row(QPushButton("◉  REMOTE CONTROL"))
+        remote_btn.clicked.connect(self._open_remote)
 
-        self._website_studio_btn = _row(QPushButton("✦  WEBSITE STUDIO"), self._BTN_DIM)
-        self._website_studio_btn.clicked.connect(self._open_website_studio)
-
-        w.adjustSize()
+        lay.addStretch(1)
+        w.setMinimumWidth(250)
+        w.setMaximumHeight(560)
         return w
 
     def _warm_wake_state(self) -> None:
