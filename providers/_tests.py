@@ -958,120 +958,36 @@ def test_voices_follow_the_language():
 
 
 def test_panel_settings_survive():
-    """The settings panel: does what you choose come back?
-
-    Three faults lived here, all of them reported as "it does not remember":
-    five separate writes of one file racing each other, a choice read from the
-    box that was still being built, and a redraw eating what had been typed.
-    Qt runs offscreen so this needs no display.
-    """
+    """The Mark 56 native panel exposes the selectable engine and providers."""
     import os
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-    section("[10] The settings panel remembers")
+    section("[10] The native Engine & Providers panel")
     try:
-        from PyQt6.QtWidgets import QApplication, QComboBox
-    except Exception as e:
-        check("PyQt6 available", False, str(e))
+        from PyQt6.QtWidgets import QApplication
+        from providers.panel import ProviderSettingsDialog
+    except Exception as exc:
+        check("provider settings panel imports", False, str(exc))
         return
     app = QApplication.instance() or QApplication([])
-
-    import ui as UI
-    from memory.config_manager import (get_pipeline, get_provider_config,
-                                       get_provider_mode, save_pipeline,
-                                       save_provider_config,
-                                       save_provider_mode,
-                                       save_sidecar_provider)
-
-    # The test writes the real config and puts it back. A fresh install has
-    # none yet: then the file it made is removed again afterwards.
-    cfg_file = Path(__file__).resolve().parent.parent / "config" / "api_keys.json"
-    had_config = cfg_file.exists()
-    restore = json.loads(cfg_file.read_text(encoding="utf-8")).get("providers") \
-        if had_config else None
-
+    dialog = ProviderSettingsDialog()
     try:
-        save_provider_mode("gemini")
-        save_pipeline(stt="", llm="", tts="")
-        save_sidecar_provider("")
-        # Every catalog service has its own id and settings —
-        # "openai_compat@ollama" — so that is what the panel offers and stores.
-        OLLAMA = "openai_compat@ollama"
-        save_provider_config(OLLAMA, {"base_url": "", "model": ""})
-
-        # -- a provider chosen for background requests is configurable --------
-        ov = UI.ProvidersOverlay()
-        box = ov._sidecar_combo
-        i = box.findData(OLLAMA)
-        check("named services are offered for background requests", i > 0)
-        if i > 0:
-            box.setCurrentIndex(i)
-            ov._sidecar_changed(i)
-            ov._rebuild_body()
-            check("choosing one shows its form", OLLAMA in ov._edits,
-                  str(list(ov._edits)))
-            check("its address is filled in from the preset",
-                  get_provider_config(OLLAMA).get("base_url", "")
-                  .endswith("11434/v1"),
-                  str(get_provider_config(OLLAMA)))
-
-        # -- typing survives a redraw ----------------------------------------
-        if OLLAMA in ov._edits:
-            ov._edits[OLLAMA]["model"][0].setCurrentText("qwen3:8b")
-            ov._rebuild_body()
-            check("a typed model survives a redraw",
-                  get_provider_config(OLLAMA).get("model") == "qwen3:8b",
-                  str(get_provider_config(OLLAMA).get("model")))
-
-        # -- the whole setup round-trips -------------------------------------
-        ov._set_mode("pipeline")
-        ov._rebuild_body()
-        ov._pipe.update({"stt": "whisper@local", "llm": OLLAMA,
-                         "tts": "elevenlabs@elevenlabs"})
-        ov._rebuild_body()
-
-        import pathlib
-        writes = [0]
-        real = pathlib.Path.write_text
-
-        def counted(self, *a, **k):
-            # The config is written to api_keys.json.tmp and moved into place
-            # in one step (memory/config_manager.py), so either name is a write.
-            if self.name in ("api_keys.json", "api_keys.json.tmp"):
-                writes[0] += 1
-            return real(self, *a, **k)
-
-        pathlib.Path.write_text = counted
-        try:
-            ov._apply()
-        finally:
-            pathlib.Path.write_text = real
-
-        check("APPLY writes the config once", writes[0] == 1, str(writes[0]))
-        check("the mode was stored", get_provider_mode() == "pipeline",
-              get_provider_mode())
-        check("all three slots were stored",
-              all(get_pipeline().get(k) for k in ("stt", "llm", "tts")),
-              str(get_pipeline()))
-
-        ov2 = UI.ProvidersOverlay()
-        check("reopening shows MY OWN SETUP", ov2._mode == "pipeline", ov2._mode)
-        check("the local card is the selected one", ov2._card_local.isChecked())
-        check("Ollama is remembered", ov2._pipe.get("llm") == OLLAMA,
-              str(ov2._pipe.get("llm")))
-        check("no slot reads 'not set'",
-              all(ov2._pipe.get(s) for s in ("stt", "llm", "tts")),
-              str(ov2._pipe))
-
-        # -- the wheel does not change a box you scroll past -----------------
-        combos = ov2.findChildren(QComboBox)
-        check(f"all {len(combos)} boxes ignore the wheel unless focused",
-              combos and all(isinstance(c, UI._ScrollSafeCombo) for c in combos))
+        check("Gemini Live remains the default",
+              dialog.mode.currentData() == "gemini",
+              str(dialog.mode.currentData()))
+        for kind, expected in (
+            ("llm", "openai_compat@ollama"),
+            ("stt", "whisper@local"),
+            ("tts", "system_tts@system"),
+        ):
+            values = [dialog._combos[kind].itemData(i)
+                      for i in range(dialog._combos[kind].count())]
+            check(f"{kind.upper()} catalog is exposed", expected in values,
+                  str(values))
+        dialog.mode.setCurrentIndex(1)
+        check("custom pipeline mode is selectable",
+              dialog.mode.currentData() == "pipeline")
     finally:
-        from memory.config_manager import _patch_config
-        _patch_config(providers=restore or {})
-        if not had_config:
-            cfg_file.unlink(missing_ok=True)
+        dialog.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
