@@ -1,4 +1,4 @@
-def _build_quick_drawer(self) -> QWidget:
+    def _build_quick_drawer(self) -> QWidget:
         """Premium setup drawer: configuration, connected services and tools."""
         _BTN_STYLE_PRI = f"""
             QPushButton {{
@@ -124,7 +124,6 @@ def _build_quick_drawer(self) -> QWidget:
         interrupt_btn = _row(QPushButton("■  INTERRUPT JARVIS"))
         interrupt_btn.clicked.connect(self._do_interrupt)
 
-        # Frequently used system and workspace actions live in Controls.
         customise_btn = _row(QPushButton("⚙  CUSTOMISE JARVIS"))
         customise_btn.clicked.connect(self._open_customize)
         website_btn = _row(QPushButton("✦  WEBSITE BUILDER"))
@@ -158,6 +157,10 @@ def _build_quick_drawer(self) -> QWidget:
         w.setMinimumWidth(250)
         w.setMaximumHeight(560)
         return w
+
+    def write_log(self, message: str) -> None:
+        """Write UI status messages through the MainWindow log signal."""
+        self._log_sig.emit(str(message))
 
     def _warm_wake_state(self) -> None:
         """Work out the wake-word state off the UI thread, once.
