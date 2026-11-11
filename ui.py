@@ -338,11 +338,51 @@ def _nvml_gpu_windows() -> float:
         return -1.0
 
 
+class NetworkSparkline(QWidget):
+    """Compact live network-throughput sparkline for the command-centre rail."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._values = []
+        self.setMinimumHeight(28)
+        self.setMaximumHeight(34)
+        self.setToolTip("Combined network receive + transmit throughput")
+
+    def set_values(self, values):
+        self._values = [max(0.0, float(v)) for v in values][-36:]
+        self.update()
+
+    def paintEvent(self, event):
+        if not self._values:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = self.rect().adjusted(2, 3, -2, -3)
+        if rect.width() < 4 or rect.height() < 4:
+            p.end()
+            return
+        p.setPen(QPen(qcol(C.BORDER, 180), 1))
+        p.drawLine(rect.bottomLeft(), rect.bottomRight())
+        peak = max(max(self._values), 0.02)
+        path = QPainterPath()
+        for i, value in enumerate(self._values):
+            x = rect.left() + rect.width() * i / max(1, len(self._values) - 1)
+            y = rect.bottom() - value / peak * rect.height() * 0.86
+            if i == 0:
+                path.moveTo(x, y)
+            else:
+                path.lineTo(x, y)
+        p.setPen(QPen(qcol(C.PRI, 210), 1.5))
+        p.drawPath(path)
+        p.end()
+
+
 class _SysMetrics:
+
     def __init__(self):
         self.cpu  = 0.0
         self.mem  = 0.0
-        self.net  = 0.0   
+        self.net  = 0.0
+        self.net_history = [0.0] * 36
         self.gpu  = -1.0  
         self.tmp  = -1.0  
         self._lock = threading.Lock()
@@ -401,6 +441,8 @@ class _SysMetrics:
             self.cpu = cpu
             self.mem = mem
             self.net = net
+            self.net_history.append(net)
+            self.net_history = self.net_history[-36:]
             self.gpu = gpu
             self.tmp = tmp
 
@@ -485,6 +527,7 @@ class _SysMetrics:
                 "cpu": self.cpu,
                 "mem": self.mem,
                 "net": self.net,
+                "net_history": list(self.net_history),
                 "gpu": self.gpu,
                 "tmp": self.tmp,
             }
@@ -4354,6 +4397,9 @@ class MainWindow(QMainWindow):
         gpu = snap["gpu"]
         tmp = snap["tmp"]
 
+        if hasattr(self, "_network_sparkline"):
+            self._network_sparkline.set_values(snap.get("net_history", [net]))
+
         self._metric_vals = {
             "cpu": (cpu, f"{cpu:.0f}%"),
             "mem": (mem, f"{mem:.0f}%"),
@@ -4549,6 +4595,10 @@ class MainWindow(QMainWindow):
             bars_lay.addWidget(b[k])
         lay.addWidget(self._bars_box)
 
+        self._network_sparkline = NetworkSparkline()
+        self._network_sparkline.setToolTip("Live network throughput · receive + transmit")
+        lay.addWidget(self._network_sparkline)
+
         self._apply_metrics_style()
 
         lay.addSpacing(4)
@@ -4577,6 +4627,17 @@ class MainWindow(QMainWindow):
         os_lbl.setFont(QFont(_mono(), 8))
         os_lbl.setStyleSheet(f"color: {C.ACC2}; background: transparent;")
         ip_lay.addWidget(os_lbl)
+
+        platform_btn = QPushButton("PLATFORM & PERMISSIONS  ›")
+        platform_btn.setFixedHeight(23)
+        platform_btn.setFont(_sans_font(6.8, True, 0.3))
+        platform_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        platform_btn.setStyleSheet(
+            f"QPushButton {{ color: {C.TEXT_MED}; background: transparent; border: 1px solid {C.BORDER}; border-radius: 4px; }}"
+            f"QPushButton:hover {{ color: {C.PRI}; border-color: {C.PRI_DIM}; }}"
+        )
+        platform_btn.clicked.connect(self._show_platform_report)
+        ip_lay.addWidget(platform_btn)
 
         lay.addWidget(info_panel)
 
@@ -4608,6 +4669,33 @@ class MainWindow(QMainWindow):
         self._automation_switch.clicked.connect(self._flip_tasks_panel)
         auto_head.addWidget(self._automation_switch)
         auto_lay.addLayout(auto_head)
+        quiet_row = QHBoxLayout()
+        self._quiet_hours_input = QLineEdit()
+        self._quiet_hours_input.setPlaceholderText("Quiet hours HH:MM-HH:MM")
+        self._quiet_hours_input.setFixedHeight(23)
+        self._quiet_hours_input.setFont(_sans_font(7))
+        self._quiet_hours_input.setStyleSheet(
+            f"QLineEdit {{ color: {C.TEXT_MED}; background: {C.BG}; border: 1px solid {C.BORDER}; border-radius: 4px; padding: 2px 4px; }}"
+            f"QLineEdit:focus {{ border-color: {C.PRI_DIM}; }}"
+        )
+        self._quiet_hours_input.setToolTip("Example: 22:00-07:00. Leave blank to disable quiet hours.")
+        quiet_save = QPushButton("SET")
+        quiet_save.setFixedSize(32, 23)
+        quiet_save.setFont(_sans_font(6.5, True))
+        quiet_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        quiet_save.setStyleSheet(
+            f"QPushButton {{ color: {C.PRI}; background: transparent; border: 1px solid {C.PRI_DIM}; border-radius: 4px; }}"
+        )
+        quiet_save.clicked.connect(self._save_quiet_hours)
+        quiet_row.addWidget(self._quiet_hours_input, 1)
+        quiet_row.addWidget(quiet_save)
+        auto_lay.addLayout(quiet_row)
+        self._quiet_hours_status = QLabel("QUIET HOURS · OFF")
+        self._quiet_hours_status.setFont(_sans_font(6.5))
+        self._quiet_hours_status.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+        auto_lay.addWidget(self._quiet_hours_status)
+        self._load_quiet_hours()
+
         self._automation_stack = QStackedWidget()
         self._automation_stack.setMinimumHeight(88)
         self._automation_stack.setStyleSheet("background: transparent;")
@@ -4701,7 +4789,12 @@ class MainWindow(QMainWindow):
             tid = str(task.get("id") or task.get("task_id") or "")
             title = str(task.get("title") or task.get("task") or "Background task")
             status = str(task.get("status") or "queued").upper()
-            button = QPushButton(f"•  {title[:24]}\n   {status}")
+            used = task.get("used") or {}
+            budget = task.get("budget") or {}
+            rounds = int(used.get("rounds") or 0)
+            round_cap = int(budget.get("rounds") or 0)
+            round_note = f" · {rounds}/{round_cap} rounds" if round_cap else ""
+            button = QPushButton(f"•  {title[:24]}\n   {status}{round_note}")
             button.setToolTip(f"{title} — {status.lower()}")
             button.setFont(_sans_font(7.2))
             button.setFixedHeight(34)
@@ -4750,14 +4843,95 @@ class MainWindow(QMainWindow):
                 lambda checked=False, routine_id=rid, enabled=bool(routine.get("enabled")):
                     self._toggle_routine(routine_id, not enabled)
             )
+            run_btn = QPushButton("▶")
+            run_btn.setFixedWidth(22)
+            run_btn.setFont(_sans_font(6.5, True))
+            run_btn.setToolTip("Run this routine now")
+            run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            run_btn.setStyleSheet(
+                f"QPushButton {{ color: {C.PRI}; background: transparent; border: 1px solid {C.BORDER}; border-radius: 4px; }}"
+            )
+            run_btn.clicked.connect(lambda checked=False, routine_id=rid: self._run_routine_now(routine_id))
             row_lay.addWidget(detail, 1)
+            row_lay.addWidget(run_btn)
             row_lay.addWidget(toggle)
+            if not routine.get("system"):
+                delete_btn = QPushButton("×")
+                delete_btn.setFixedWidth(18)
+                delete_btn.setFont(_sans_font(7, True))
+                delete_btn.setToolTip("Delete this user-created routine")
+                delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                delete_btn.setStyleSheet(
+                    f"QPushButton {{ color: {C.RED}; background: transparent; border: 1px solid {C.BORDER}; border-radius: 4px; }}"
+                )
+                delete_btn.clicked.connect(lambda checked=False, routine_id=rid: self._delete_routine(routine_id))
+                row_lay.addWidget(delete_btn)
             self._routine_rows_layout.insertWidget(self._routine_rows_layout.count() - 1, row)
         self._automation_switch.setToolTip(
             f"{enabled_count} enabled routines · switch to tasks"
             if self._automation_stack.currentIndex() == 1
             else f"{len(active)} active tasks · switch to routines"
         )
+
+    def _show_platform_report(self):
+        try:
+            from core.platform_awareness import format_platform_report
+            report = format_platform_report()
+        except Exception as exc:
+            report = f"Platform diagnostics could not be loaded: {exc}"
+        self._show_content("PLATFORM & PERMISSIONS", report)
+
+    def _load_quiet_hours(self):
+        try:
+            from core.routines import desktop
+            engine = desktop.engine()
+            value = engine.quiet_hours() if engine else ""
+        except Exception:
+            value = ""
+        self._quiet_hours_input.setText(value)
+        self._quiet_hours_status.setText(f"QUIET HOURS · {value}" if value else "QUIET HOURS · OFF")
+
+    def _save_quiet_hours(self):
+        try:
+            from core.routines import desktop
+            engine = desktop.engine()
+            if engine is None:
+                raise RuntimeError("The routine engine is not running yet.")
+            value = engine.set_quiet_hours(self._quiet_hours_input.text().strip())
+            self._quiet_hours_input.setText(value)
+            self._quiet_hours_status.setText(f"QUIET HOURS · {value}" if value else "QUIET HOURS · OFF")
+            self.write_log("SYS: Quiet hours updated" if value else "SYS: Quiet hours disabled")
+        except Exception as exc:
+            QMessageBox.warning(self, "Quiet hours", str(exc))
+
+    def _run_routine_now(self, routine_id: str):
+        try:
+            from core.routines import desktop
+            engine = desktop.engine()
+            if engine is None:
+                raise RuntimeError("The routine engine is not running.")
+            result = engine.run_now(routine_id)
+            self.write_log(f"SYS: Routine started manually — {str(result)[:120]}")
+        except Exception as exc:
+            self.write_log(f"ERR: Could not run routine: {exc}")
+        self._refresh_tasks()
+
+    def _delete_routine(self, routine_id: str):
+        answer = QMessageBox.question(
+            self, "Delete routine", "Delete this user-created routine?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            from core.routines import desktop
+            engine = desktop.engine()
+            if engine and engine.remove(routine_id):
+                self.write_log("SYS: Routine deleted")
+        except Exception as exc:
+            self.write_log(f"ERR: Could not delete routine: {exc}")
+        self._refresh_tasks()
 
     def _toggle_routine(self, routine_id: str, enabled: bool):
         try:
@@ -4781,6 +4955,18 @@ class MainWindow(QMainWindow):
             return
         title = str(task.get("title") or task.get("task") or "Background task")
         lines = [title, "", f"Status: {task.get('status', 'unknown')}"]
+        used = task.get("used") or {}
+        budget = task.get("budget") or {}
+        lines.extend([
+            "",
+            f"Work budget used: {float(used.get('seconds') or 0) / 60:.1f} / {float(budget.get('minutes') or 0):.0f} minutes",
+            f"Agent rounds: {int(used.get('rounds') or 0)} / {int(budget.get('rounds') or 0)}",
+        ])
+        if str(task.get("agent") or "").lower() == "research":
+            lines.extend(["", "RESEARCH RUN", "Research agent activity appears in the event feed below."])
+        if task.get("events"):
+            latest = task["events"][-1]
+            lines.extend(["", f"Latest activity ({latest.get('kind', 'event')}): {latest.get('text', '')}"])
         if task.get("result"):
             lines.extend(["", str(task["result"])])
         if task.get("error"):
@@ -5047,6 +5233,9 @@ class MainWindow(QMainWindow):
         self._refresh_talk_btns()
 
         _section("INTERFACE")
+        accent_btn = _row(QPushButton("◉  LIVE ACCENT COLOUR"))
+        accent_btn.clicked.connect(self._open_customize)
+        accent_btn.setToolTip("Open the existing colour wheel and preview the full interface live.")
         self._hud_btn = _row(QPushButton())
         self._hud_btn.clicked.connect(self._toggle_hud_style)
         self._refresh_hud_btn()
