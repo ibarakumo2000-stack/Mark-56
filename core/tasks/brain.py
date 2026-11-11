@@ -123,32 +123,98 @@ def _ask_gemini(model: str, system: str, turns: list, decls) -> dict:
     return {"text": "".join(text).strip(), "calls": calls}
 
 
-def ask(system: str, turns: list, decls: list | None) -> dict:
-    """One Gemini tool-calling turn using Mark 56's existing Gemini ladder.
+def _ask_local(system: str, turns: list, decls: list | None) -> dict:
+    """Tool-call through Mark 56's loopback-only Ollama adapter.
 
-    Mark 56's OpenAI Responses adapter is text-only, so it is deliberately not
-    used for this tool-calling loop. The regular assistant keeps its configured
-    provider behavior; background tasks use Gemini REST models until a
-    tool-capable provider adapter is available.
+    The local adapter currently exposes text generation rather than native
+    tool calls, so the model must return a small JSON envelope. Only tools
+    already allowlisted by TaskTools are present in decls, and the engine
+    validates names again before execution.
     """
+    from core import local_model
+
+    if not local_model.enabled():
+        raise RuntimeError("local model mode is disabled")
+
+    history = []
+    for turn in turns:
+        role = turn.get("role")
+        if role == "user":
+            history.append("USER: " + str(turn.get("text") or ""))
+        elif role == "model":
+            if turn.get("text"):
+                history.append("ASSISTANT: " + str(turn["text"]))
+            for call in turn.get("calls") or []:
+                history.append("ASSISTANT TOOL CALL: " + call["name"] + " "
+                               + json.dumps(call.get("args") or {}, ensure_ascii=False))
+        elif role == "tool":
+            for result in turn.get("results") or []:
+                history.append("TOOL RESULT (" + str(result.get("name") or "") + "): "
+                               + str(result.get("result") or ""))
+
+    tool_block = json.dumps(decls or [], ensure_ascii=False)
+    prompt = (
+        system
+        + "\\n\\n[LOCAL TASK MODEL PROTOCOL]\\n"
+        + "Return exactly one JSON object and no Markdown. Shape: "
+        + '{"text":"optional progress or final answer","calls":[{"name":"tool_name","args":{}}]}. '
+        + "Use calls=[] when finished. Never invent a tool; choose only from the declarations. "
+        + "Do not claim a tool succeeded before its result is returned.\\n"
+        + "AVAILABLE TOOLS: " + tool_block
+        + "\\n\\nCONVERSATION:\\n" + "\\n".join(history[-80:])
+    )
+    raw = local_model.generate(prompt, timeout_ms=120_000)
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.strip("`").strip()
+        if cleaned.lower().startswith("json"):
+            cleaned = cleaned[4:].strip()
+    try:
+        data = json.loads(cleaned)
+    except Exception:
+        left, right = cleaned.find("{"), cleaned.rfind("}")
+        if left < 0 or right <= left:
+            raise RuntimeError("local model did not return the required JSON task response")
+        data = json.loads(cleaned[left:right + 1])
+    if not isinstance(data, dict):
+        raise RuntimeError("local model task response must be a JSON object")
+
+    allowed = {str(d.get("name")) for d in (decls or []) if isinstance(d, dict)}
+    calls = []
+    for index, call in enumerate(data.get("calls") or []):
+        if not isinstance(call, dict):
+            continue
+        name = str(call.get("name") or "").strip()
+        args = call.get("args") or {}
+        if name not in allowed:
+            raise RuntimeError("local model requested a tool that is not allowlisted")
+        if not isinstance(args, dict):
+            raise RuntimeError("local model tool arguments must be an object")
+        calls.append({"id": f"local_call_{index}_{int(time.time() * 1000)}",
+                      "name": name, "args": args, "sig": ""})
+    text = data.get("text") or ""
+    if not isinstance(text, str):
+        raise RuntimeError("local model response text must be a string")
+    if not text.strip() and not calls:
+        raise RuntimeError("local model returned neither text nor a tool call")
+    return {"text": text.strip(), "calls": calls}
+
+
+def ask(system: str, turns: list, decls: list | None) -> dict:
+    """One tool-calling model turn, preferring Gemini and falling back locally."""
     from core import gemini
     from core.action_loader import strip_meta
 
     decls = strip_meta(decls) if decls else None
-    if not gemini.api_key():
-        raise NoModel(
-            "background tasks currently require a configured Gemini API key",
-            transient=False,
-        )
-    ladder = [
-        model for model in gemini._LADDERS[gemini.SMART]
-        if model != gemini.LIVE and not model.startswith(gemini.PROVIDER_PREFIX)
-    ]
-    rungs = gemini.usable_rungs(ladder)
-    if not rungs:
-        raise NoModel("no available Gemini REST model is configured", transient=True)
-
     errors, transient = [], False
+    rungs: list = []
+    if gemini.api_key():
+        ladder = [
+            model for model in gemini._LADDERS[gemini.SMART]
+            if model != gemini.LIVE and not model.startswith(gemini.PROVIDER_PREFIX)
+        ]
+        rungs = gemini.usable_rungs(ladder)
+
     for model in rungs:
         try:
             return _ask_gemini(model, system, turns, decls)
@@ -166,5 +232,14 @@ def ask(system: str, turns: list, decls: list | None) -> dict:
             elif _is_network(msg):
                 transient = True
             print(f"[Tasks] {model} failed: {msg[:160]}")
-    raise NoModel("no Gemini model answered — " + "; ".join(errors[-3:]),
+
+    try:
+        return _ask_local(system, turns, decls)
+    except Exception as exc:
+        errors.append(f"local model: {str(exc)[:160]}")
+        print(f"[Tasks] local model failed: {str(exc)[:160]}")
+
+    if not gemini.api_key() and not errors:
+        errors.append("Gemini is not configured")
+    raise NoModel("no task model answered — " + "; ".join(errors[-3:]),
                   transient=transient)
