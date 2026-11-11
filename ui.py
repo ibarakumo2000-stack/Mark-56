@@ -72,6 +72,11 @@ try:
 except Exception:      # pragma: no cover — HUD must never die over cosmetics
     HoloAvatar = None
 
+try:
+    from gui.reactor import Reactor3D
+except Exception:  # pragma: no cover — classic core remains available
+    Reactor3D = None
+
 
 def _base_dir() -> Path:
     if getattr(sys, "frozen", False):
@@ -517,6 +522,12 @@ class HudCanvas(QWidget):
         except Exception:
             self.hud_style = "face"
         self._core_phase = 0.0
+        self._reactor = None
+        if Reactor3D is not None:
+            try:
+                self._reactor = Reactor3D()
+            except Exception as exc:
+                print(f"[HUD] 3-D reactor unavailable; using classic core: {exc}")
 
         self._tick       = 0
         self._scale      = 1.0
@@ -690,6 +701,10 @@ class HudCanvas(QWidget):
         # a rate that changes with state jumps the rings the instant JARVIS
         # starts talking. Same lesson the head's sway taught.
         self._core_phase += min(0.10, max(0.0, dt))
+        if self._reactor is not None:
+            self._reactor.step(dt, speaking=self.speaking,
+                               thinking=self.state in ("THINKING", "PROCESSING"),
+                               muted=self.muted)
 
         if self._avatar is not None:
             # Advance the shared face for the floating hologram even when the
@@ -783,6 +798,14 @@ class HudCanvas(QWidget):
 
     def _paint_core(self, p: QPainter, cx: float, cy: float, r: float,
                     W: float = 0.0, H: float = 0.0):
+        if self._reactor is not None:
+            main, acc = self._core_colours()
+            live = (self.speaking or self._amp_disp > 0.04) and not self.muted
+            self._reactor.paint(
+                p, cx, cy, r, main, acc, qcol(C.WHITE), self._amp_disp,
+                live, getattr(self, "_assistant_name", "J.A.R.V.I.S")
+            )
+            return
         """Draw the reactor at (cx, cy) with outer radius r, using the whole
         canvas (W x H) for the marks that frame it."""
         main, acc = self._core_colours()
