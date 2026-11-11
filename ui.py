@@ -62,7 +62,7 @@ from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter,
     QGraphicsScene, QGraphicsView,
-    QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar, QMessageBox,
+    QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar, QMessageBox, QInputDialog,
 )
 
 from floating_launcher import FloatingLauncher
@@ -4668,6 +4668,16 @@ class MainWindow(QMainWindow):
         )
         self._automation_switch.clicked.connect(self._flip_tasks_panel)
         auto_head.addWidget(self._automation_switch)
+        add_routine_btn = QPushButton("＋")
+        add_routine_btn.setFixedSize(22, 20)
+        add_routine_btn.setFont(_sans_font(8, True))
+        add_routine_btn.setToolTip("Create a new idle-triggered routine")
+        add_routine_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_routine_btn.setStyleSheet(
+            f"QPushButton {{ color: {C.PRI}; background: transparent; border: 1px solid {C.BORDER}; border-radius: 4px; }}"
+        )
+        add_routine_btn.clicked.connect(self._add_routine)
+        auto_head.addWidget(add_routine_btn)
         auto_lay.addLayout(auto_head)
         quiet_row = QHBoxLayout()
         self._quiet_hours_input = QLineEdit()
@@ -4885,6 +4895,31 @@ class MainWindow(QMainWindow):
             else f"{len(active)} active tasks · switch to routines"
         )
 
+    def _add_routine(self):
+        name, ok = QInputDialog.getText(self, "New routine", "Routine name:")
+        if not ok or not name.strip():
+            return
+        instruction, ok = QInputDialog.getMultiLineText(
+            self, "Routine instruction", "What should JARVIS do when you have been idle?",
+            "Check in with me about my current priorities."
+        )
+        if not ok or not instruction.strip():
+            return
+        try:
+            from core.routines import desktop
+            engine = desktop.engine()
+            if engine is None:
+                raise RuntimeError("The routine engine is not running.")
+            engine.add(
+                name=name.strip(), kind="prompt", text=instruction.strip(),
+                trigger={"type": "idle", "minutes": 15, "cooldown": 60},
+                deliver="panel", quiet=True,
+            )
+            self.write_log(f"SYS: Routine created — {name.strip()}")
+            self._refresh_tasks()
+        except Exception as exc:
+            QMessageBox.warning(self, "New routine", str(exc))
+
     def _show_platform_report(self):
         try:
             from core.platform_awareness import format_platform_report
@@ -4974,7 +5009,23 @@ class MainWindow(QMainWindow):
             f"Work budget used: {float(used.get('seconds') or 0) / 60:.1f} / {float(budget.get('minutes') or 0):.0f} minutes",
             f"Agent rounds: {int(used.get('rounds') or 0)} / {int(budget.get('rounds') or 0)}",
         ])
-        if str(task.get("agent") or "").lower() == "research":
+        research = task.get("research") or {}
+        if research:
+            phase = str(research.get("phase") or "starting").upper()
+            plan = research.get("plan") or {}
+            subqs = plan.get("subqs") or []
+            done = sum(1 for item in subqs if item.get("status") == "done")
+            lines.extend([
+                "", "DEEP RESEARCH",
+                f"Phase: {phase}",
+                f"Research questions completed: {done} / {len(subqs)}",
+            ])
+            for item in subqs[:8]:
+                mark = "✓" if item.get("status") == "done" else "…"
+                lines.append(f"{mark} {item.get('q', 'Research question')}")
+                if item.get("summary"):
+                    lines.append(f"   {str(item['summary'])[:180]}")
+        elif str(task.get("agent") or "").lower() == "research":
             lines.extend(["", "RESEARCH RUN", "Research agent activity appears in the event feed below."])
         if task.get("events"):
             latest = task["events"][-1]
