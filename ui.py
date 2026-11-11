@@ -5248,15 +5248,6 @@ class MainWindow(QMainWindow):
         hdr.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent; padding: 3px 2px 6px;")
         lay.addWidget(hdr)
 
-        def _section(title):
-            label = QLabel(title)
-            label.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
-            label.setStyleSheet(
-                f"color: {C.PRI_DIM}; background: transparent; "
-                f"border-bottom: 1px solid {C.BORDER}; padding: 5px 2px 3px;"
-            )
-            lay.addWidget(label)
-
         def _action(text, slot, primary=False, tooltip=""):
             button = QPushButton(text)
             button.setFixedHeight(30)
@@ -5269,27 +5260,23 @@ class MainWindow(QMainWindow):
             lay.addWidget(button)
             return button
 
-        _section("CONNECTIVITY")
         _action("◉  REMOTE CONTROL", self._open_remote, primary=True)
         _action("＋  PAIR PHONE / DEVICE", self._open_device_pairing,
                 tooltip="Securely pair Android, Wear OS and compatible smart glasses")
         _action("⚙  ENGINE & PROVIDERS", self._open_provider_settings,
                 tooltip="Choose Gemini Live or a local / custom speech and model stack")
 
-        _section("PERSONALISATION")
         _action("⚙  CUSTOMISE ASSISTANT", self._open_customize)
         _action("🎧  AUDIO DEVICES", self._open_audio_devices,
                 tooltip="Choose microphone and speaker devices")
         _action("🧠  MEMORY", self._open_memory_panel,
                 tooltip="Review and manage Jarvis memories")
 
-        _section("EXTENSIONS & CREATION")
         _action("🧩  PLUGIN MANAGER", self._open_plugin_manager)
         _action("⚙  PLUGIN CONFIGURATION", self._open_plugin_settings)
         _action("✦  WEBSITE STUDIO", self._open_website_studio,
                 tooltip="Create and preview websites in the local workspace")
 
-        _section("DESKTOP & MAINTENANCE")
         _action("⊞  CREATE DESKTOP SHORTCUT", self._create_desktop_shortcut)
         self._autostart_btn = _action("◉  AUTO-START: OFF", self._toggle_autostart)
         _action("↻  CHECK FOR UPDATES", self._check_for_updates)
@@ -5326,15 +5313,6 @@ class MainWindow(QMainWindow):
         hdr.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent; padding: 3px 2px 6px;")
         lay.addWidget(hdr)
 
-        def _section(title):
-            label = QLabel(title)
-            label.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
-            label.setStyleSheet(
-                f"color: {C.PRI_DIM}; background: transparent; "
-                f"border-bottom: 1px solid {C.BORDER}; padding: 5px 2px 3px;"
-            )
-            lay.addWidget(label)
-
         def _row(button, style=None, height=29):
             button.setFixedHeight(height)
             button.setFont(QFont(_mono(), 7, QFont.Weight.Bold))
@@ -5343,7 +5321,6 @@ class MainWindow(QMainWindow):
             lay.addWidget(button)
             return button
 
-        _section("ASSISTANT")
         fs_btn = _row(QPushButton("⛶  FULLSCREEN  [F11]"))
         fs_btn.clicked.connect(self._toggle_fullscreen)
         mute_btn = _row(QPushButton("◉  MICROPHONE MUTE / UNMUTE"))
@@ -5351,7 +5328,6 @@ class MainWindow(QMainWindow):
         interrupt_btn = _row(QPushButton("■  INTERRUPT JARVIS"))
         interrupt_btn.clicked.connect(self._do_interrupt)
 
-        _section("VOICE & LISTENING")
         self._brief_btn = _row(QPushButton())
         self._brief_btn.clicked.connect(self._toggle_brief)
         self._wake_btn = _row(QPushButton())
@@ -5365,10 +5341,6 @@ class MainWindow(QMainWindow):
         self._ptt_btn.clicked.connect(self._toggle_ptt)
         self._refresh_talk_btns()
 
-        _section("INTERFACE")
-        accent_btn = _row(QPushButton("◉  LIVE ACCENT COLOUR"))
-        accent_btn.clicked.connect(self._open_customize)
-        accent_btn.setToolTip("Open the existing colour wheel and preview the full interface live.")
         self._hud_btn = _row(QPushButton())
         self._hud_btn.clicked.connect(self._toggle_hud_style)
         self._refresh_hud_btn()
@@ -5376,11 +5348,6 @@ class MainWindow(QMainWindow):
         self._metrics_btn.clicked.connect(self._toggle_metrics_style)
         self._refresh_metrics_btn()
 
-        _section("WORKSPACE")
-        device_btn = _row(QPushButton("＋  CONNECTED DEVICES"))
-        device_btn.clicked.connect(self._open_device_pairing)
-        remote_btn = _row(QPushButton("◉  REMOTE CONTROL"))
-        remote_btn.clicked.connect(self._open_remote)
 
         lay.addStretch(1)
         w.setMinimumWidth(250)
