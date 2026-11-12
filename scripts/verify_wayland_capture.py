@@ -12,6 +12,7 @@ import sys
 
 
 def main() -> int:
+    wayland_screencast = None
     session = os.environ.get("XDG_SESSION_TYPE", "").lower()
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "")
     if session != "wayland":
