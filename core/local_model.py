@@ -113,6 +113,42 @@ def status(timeout_seconds: float = 2.0) -> dict:
         }
 
 
+
+def vision_status(timeout_seconds: float = 2.0) -> dict:
+    """Check whether the configured local image model is installed.
+
+    Ollama's tags endpoint proves the model is present; the first real image
+    request remains the definitive capability check. No screenshot is uploaded
+    and no cloud provider is contacted by this diagnostic.
+    """
+    settings = _settings()
+    base_status = status(timeout_seconds=timeout_seconds)
+    model = str(settings.get("local_vision_model_name") or "").strip()
+    installed_models = set(base_status.get("models") or [])
+    installed = bool(model and model in installed_models)
+    ready = bool(base_status.get("ok") and base_status.get("enabled") and
+                 model and installed)
+    if not base_status.get("ok"):
+        message = base_status.get("message") or "Ollama is not reachable."
+    elif not base_status.get("enabled"):
+        message = "Local model mode is disabled. Enable it in config/local_model.json."
+    elif not model:
+        message = "Set local_vision_model_name in config/local_model.json."
+    elif not installed:
+        message = f"Vision model '{model}' is not installed. Run: python3 scripts/setup_local_vision.py"
+    else:
+        message = f"Vision model '{model}' is installed. Image input will be validated on the first request."
+    return {
+        "ok": bool(base_status.get("ok")),
+        "enabled": bool(base_status.get("enabled")),
+        "model": model or None,
+        "installed": installed,
+        "ready": ready,
+        "models": sorted(installed_models),
+        "message": message,
+    }
+
+
 def generate(
     prompt: str,
     *,
