@@ -9,6 +9,13 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
+
+# Running a script by filename sets sys.path[0] to scripts/, not the repo root.
+# Add the repository root so top-level packages such as plugins can be imported.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 
 def main() -> int:
