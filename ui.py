@@ -6893,6 +6893,10 @@ class MainWindow(QMainWindow):
         if launcher is None:
             return
         if self.isMinimized():
+            # Treat the window's minimize button as "switch to hologram":
+            # remove the full interface from the desktop/taskbar while keeping
+            # this MainWindow instance and all assistant services alive.
+            self.hide()
             launcher.show_launcher()
         elif self.isVisible():
             launcher.hide()

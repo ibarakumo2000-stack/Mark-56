@@ -139,8 +139,10 @@ class FloatingLauncherWiringTests(unittest.TestCase):
         change_source = ast.get_source_segment(source, change_event) or ""
         self.assertIn("QEvent.Type.WindowStateChange", change_source)
         self.assertIn("self.isMinimized()", change_source)
+        self.assertIn("self.hide()", change_source)
         self.assertIn("launcher.show_launcher()", change_source)
         self.assertIn("launcher.hide()", change_source)
+        self.assertNotIn("app.quit()", change_source)
 
     def test_opening_full_interface_hides_hologram_without_quitting_assistant(self):
         source = (ROOT / "ui.py").read_text(encoding="utf-8")
