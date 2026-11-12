@@ -72,5 +72,21 @@ class DesktopCaptureTests(unittest.TestCase):
         mss.assert_called_once()
 
 
+    def test_active_persistent_screencast_is_reused(self):
+        from plugins import wayland_screencast
+
+        good = (png_bytes((20, 30, 40), varied=True), 320, 200)
+        with patch.object(
+            wayland_screencast, "capture_monitor_frame", return_value=good
+        ) as active_stream, patch.object(
+            desktop_capture, "_portal_capture_wayland"
+        ) as screenshot_portal:
+            result = desktop_capture.capture_png()
+
+        self.assertEqual(result, good)
+        active_stream.assert_called_once_with()
+        screenshot_portal.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

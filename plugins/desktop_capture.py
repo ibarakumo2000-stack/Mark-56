@@ -70,12 +70,11 @@ def _file_capture(command_builder, timeout: float = 8.0) -> tuple[bytes, int, in
 
 
 def _portal_capture_wayland(timeout: float = 35.0) -> tuple[bytes, int, int]:
-    """Capture through xdg-desktop-portal without parsing its introspection XML.
+    """Capture through xdg-desktop-portal with race-free response handling.
 
-    Some GNOME portal versions expose a hyphenated property in introspection
-    XML (for example, power-saver-enabled), which dbus-next 0.2.x rejects
-    while parsing the entire interface. Use the stable D-Bus method signatures
-    directly instead. The desktop may show a permission/selection prompt.
+    Subscribe to Request.Response before invoking Screenshot. GNOME can answer
+    quickly enough that registering after the method reply loses the signal.
+    All D-Bus stages are bounded so a broken portal cannot hang JARVIS.
     """
     import asyncio
     from urllib.parse import unquote, urlparse
@@ -84,79 +83,98 @@ def _portal_capture_wayland(timeout: float = 35.0) -> tuple[bytes, int, int]:
     from dbus_next.aio import MessageBus
 
     async def request_capture() -> tuple[bytes, int, int]:
-        bus = await MessageBus(bus_type=BusType.SESSION).connect()
+        bus = await asyncio.wait_for(
+            MessageBus(bus_type=BusType.SESSION).connect(), timeout=10
+        )
         match_rule = None
+        match_installed = False
         response_handler = None
         try:
             loop = asyncio.get_running_loop()
             response_future = loop.create_future()
-
-            reply = await bus.call(Message(
-                destination="org.freedesktop.portal.Desktop",
-                path="/org/freedesktop/portal/desktop",
-                interface="org.freedesktop.portal.Screenshot",
-                member="Screenshot",
-                signature="sa{sv}",
-                body=["", {"interactive": Variant("b", True)}],
-            ))
-            if reply.message_type == MessageType.ERROR:
-                detail = reply.body[0] if reply.body else "unknown D-Bus error"
-                raise RuntimeError(f"Screenshot portal D-Bus error {reply.error_name}: {detail}")
-            if not reply.body or not isinstance(reply.body[0], str):
-                raise RuntimeError("Screenshot portal returned no request handle.")
-            handle = reply.body[0]
+            request_handle = None
+            early_responses = []
 
             def on_message(message):
                 if (
                     message.message_type == MessageType.SIGNAL
-                    and message.path == handle
                     and message.interface == "org.freedesktop.portal.Request"
                     and message.member == "Response"
                     and message.signature == "ua{sv}"
                 ):
-                    if not response_future.done():
+                    if request_handle is None:
+                        early_responses.append(message)
+                    elif message.path == request_handle and not response_future.done():
                         response_future.set_result((message.body[0], message.body[1]))
                 return False
 
             response_handler = on_message
             bus.add_message_handler(response_handler)
             match_rule = (
-                "type='signal',"
-                "sender='org.freedesktop.portal.Desktop',"
-                f"path='{handle}',"
-                "interface='org.freedesktop.portal.Request',"
-                "member='Response'"
+                "type='signal',sender='org.freedesktop.portal.Desktop',"
+                "interface='org.freedesktop.portal.Request',member='Response'"
             )
-            match_reply = await bus.call(Message(
+            match_reply = await asyncio.wait_for(bus.call(Message(
                 destination="org.freedesktop.DBus",
                 path="/org/freedesktop/DBus",
                 interface="org.freedesktop.DBus",
                 member="AddMatch",
                 signature="s",
                 body=[match_rule],
-            ))
+            )), timeout=8)
             if match_reply.message_type == MessageType.ERROR:
                 detail = match_reply.body[0] if match_reply.body else "unknown D-Bus error"
                 raise RuntimeError(f"Could not subscribe to screenshot response: {detail}")
+            match_installed = True
+
+            reply = await asyncio.wait_for(bus.call(Message(
+                destination="org.freedesktop.portal.Desktop",
+                path="/org/freedesktop/portal/desktop",
+                interface="org.freedesktop.portal.Screenshot",
+                member="Screenshot",
+                signature="sa{sv}",
+                body=["", {"interactive": Variant("b", True)}],
+            )), timeout=12)
+            if reply.message_type == MessageType.ERROR:
+                detail = reply.body[0] if reply.body else "unknown D-Bus error"
+                raise RuntimeError(f"Screenshot portal D-Bus error {reply.error_name}: {detail}")
+            if not reply.body or not isinstance(reply.body[0], str):
+                raise RuntimeError("Screenshot portal returned no request handle.")
+            request_handle = reply.body[0]
+
+            for message in early_responses:
+                if message.path == request_handle and not response_future.done():
+                    response_future.set_result((message.body[0], message.body[1]))
+                    break
 
             try:
                 code, results = await asyncio.wait_for(response_future, timeout=timeout)
+            except asyncio.TimeoutError as exc:
+                raise RuntimeError(
+                    f"Timed out waiting {timeout:g} seconds for the GNOME screenshot permission response."
+                ) from exc
             finally:
-                await bus.call(Message(
-                    destination="org.freedesktop.DBus",
-                    path="/org/freedesktop/DBus",
-                    interface="org.freedesktop.DBus",
-                    member="RemoveMatch",
-                    signature="s",
-                    body=[match_rule],
-                ))
-                match_rule = None
+                if match_installed:
+                    try:
+                        await asyncio.wait_for(bus.call(Message(
+                            destination="org.freedesktop.DBus",
+                            path="/org/freedesktop/DBus",
+                            interface="org.freedesktop.DBus",
+                            member="RemoveMatch",
+                            signature="s",
+                            body=[match_rule],
+                        )), timeout=3)
+                    except Exception:
+                        pass
+                    match_installed = False
 
             if code != 0:
                 if code == 1:
                     raise RuntimeError("Screenshot was cancelled in the desktop permission dialog.")
                 raise RuntimeError(f"Desktop screenshot portal returned response code {code}.")
             uri = results.get("uri")
+            if hasattr(uri, "value"):
+                uri = uri.value
             if not uri:
                 raise RuntimeError("Screenshot portal succeeded but returned no image URI.")
             parsed = urlparse(uri)
@@ -167,16 +185,16 @@ def _portal_capture_wayland(timeout: float = 35.0) -> tuple[bytes, int, int]:
                 raise RuntimeError("Screenshot portal image path does not exist.")
             return _decode_png(path.read_bytes())
         finally:
-            if match_rule:
+            if match_installed and match_rule:
                 try:
-                    await bus.call(Message(
+                    await asyncio.wait_for(bus.call(Message(
                         destination="org.freedesktop.DBus",
                         path="/org/freedesktop/DBus",
                         interface="org.freedesktop.DBus",
                         member="RemoveMatch",
                         signature="s",
                         body=[match_rule],
-                    ))
+                    )), timeout=3)
                 except Exception:
                     pass
             if response_handler is not None:
@@ -193,7 +211,6 @@ def _portal_capture_wayland(timeout: float = 35.0) -> tuple[bytes, int, int]:
             "Check that xdg-desktop-portal and the GNOME portal backend are installed and running, "
             "and launch Jarvis inside your logged-in graphical session."
         ) from exc
-
 
 def _python_capture_mss() -> tuple[bytes, int, int]:
     import mss
