@@ -47,7 +47,7 @@ class WaylandScreenCast:
         async def create_session():
             print("[ScreenCast] Connecting to the GNOME desktop portal…", flush=True)
             self._bus = await asyncio.wait_for(
-                MessageBus(bus_type=BusType.SESSION).connect(), timeout=10
+                MessageBus(bus_type=BusType.SESSION, negotiate_unix_fd=True).connect(), timeout=10
             )
             token = "mark56_" + uuid.uuid4().hex[:16]
             options = {"handle_token": Variant("s", token),
