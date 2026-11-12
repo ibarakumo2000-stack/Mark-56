@@ -6604,6 +6604,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Update download", "An update download is already running.")
             return
         self._update_download_running = True
+        self._pending_update_result = dict(result)
         QMessageBox.information(
             self, "Downloading JARVIS update",
             "The package will be saved to your Downloads folder and checked against GitHub's published SHA-256 digest. "
@@ -6627,12 +6628,56 @@ class MainWindow(QMainWindow):
     def _show_update_download_result(self, ok: bool, detail: str):
         self._update_download_running = False
         if ok:
-            QMessageBox.information(
-                self, "Update downloaded and verified",
-                f"The package passed SHA-256 verification and was saved here:\n\n{detail}\n\n"
-                "Close JARVIS before running the installer. Review the file location and launch it yourself when ready."
-            )
+            metadata = getattr(self, "_pending_update_result", {}) or {}
             self._log_sig.emit(f"SYS: Update downloaded and verified: {detail}")
+            if __import__("platform").system() == "Windows":
+                answer = QMessageBox.question(
+                    self,
+                    "Install verified JARVIS update?",
+                    "The official Windows installer passed SHA-256 verification.\n\n"
+                    f"Version: {metadata.get('latest_version', 'unknown')}\n"
+                    f"Package: {metadata.get('asset_name', 'installer')}\n\n"
+                    "Starting setup will close JARVIS. The installer creates a local recovery backup "
+                    "before replacing application files. Continue?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if answer == QMessageBox.StandardButton.Yes:
+                    try:
+                        from plugins.update_installer import PreparedUpdate
+                        from plugins.update_install_flow import handoff_to_installer
+                        digest = str(metadata.get("sha256") or "")
+                        prepared = PreparedUpdate(
+                            version=str(metadata.get("latest_version") or ""),
+                            asset_name=str(metadata.get("asset_name") or ""),
+                            file_path=detail,
+                            sha256=digest.removeprefix("sha256:").lower(),
+                            release_url=str(metadata.get("release_url") or ""),
+                        )
+                        handoff = handoff_to_installer(prepared, user_confirmed=True)
+                        self._log_sig.emit(f"SYS: {handoff.message}")
+                        if handoff.status == "installer_started":
+                            QApplication.quit()
+                        else:
+                            QMessageBox.information(self, "Manual update required", handoff.message)
+                    except Exception as exc:
+                        QMessageBox.warning(
+                            self, "Update handoff failed",
+                            f"The verified package remains saved, but setup was not started.\n\n{type(exc).__name__}: {exc}",
+                        )
+                else:
+                    QMessageBox.information(
+                        self, "Update ready",
+                        f"The verified installer remains saved at:\n\n{detail}\n\n"
+                        "You can install it later from your Downloads folder.",
+                    )
+            else:
+                QMessageBox.information(
+                    self, "Update downloaded and verified",
+                    f"The package passed SHA-256 verification and was saved here:\n\n{detail}\n\n"
+                    "Linux and macOS packages require their platform installer steps. "
+                    "The existing installer scripts create local recovery backups before replacing files.",
+                )
         else:
             QMessageBox.warning(
                 self, "Update download failed",

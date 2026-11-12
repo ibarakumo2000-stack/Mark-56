@@ -63,9 +63,39 @@ class CodingWorkspaceTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual((self.root / "note.txt").read_text(), "updated\n")
 
-    def test_test_suite_is_allowlisted(self):
-        result = self.call_plugin(operation="test", suite="shell", command="rm -rf /")
+    def test_test_suite_requires_explicit_execution_approval(self):
+        result = self.call_plugin(operation="test", suite="unittest")
+        self.assertIn("confirmed=true", result)
+
+    def test_test_suite_is_allowlisted_after_approval(self):
+        result = self.call_plugin(operation="test", suite="shell", confirmed=True, command="rm -rf /")
         self.assertIn("Blocked", result)
+
+    def test_sensitive_files_are_not_read_or_edited(self):
+        for name in (".env", "secrets/token.txt", "relay-data/relay.sqlite3", "signing.jks"):
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("secret", encoding="utf-8")
+            result = self.call_plugin(operation="read", path=name)
+            self.assertIn("protected", result.lower())
+
+    def test_symlink_paths_are_rejected(self):
+        outside = self.root.parent / "outside-mark56-workspace.txt"
+        outside.write_text("outside", encoding="utf-8")
+        link = self.root / "linked.txt"
+        try:
+            link.symlink_to(outside)
+        except (OSError, NotImplementedError):
+            self.skipTest("Symlinks unavailable")
+        result = self.call_plugin(operation="read", path="linked.txt")
+        self.assertIn("symbolic links", result.lower())
+
+    def test_missing_workspace_uses_dedicated_user_directory_not_current_directory(self):
+        with tempfile.TemporaryDirectory() as home:
+            with patch.dict(os.environ, {"MARK56_WORKSPACE": "", "HOME": home}):
+                result = json.loads(coding_workspace.run({"operation": "list"}))
+            self.assertEqual(Path(result["root"]), Path(home) / "Mark56-workspaces")
+            self.assertTrue((Path(home) / "Mark56-workspaces").is_dir())
 
 
 if __name__ == "__main__":
