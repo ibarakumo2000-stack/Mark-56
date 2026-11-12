@@ -47,7 +47,7 @@ class WaylandScreenCast:
         async def create_session():
             print("[ScreenCast] Connecting to the GNOME desktop portal…", flush=True)
             self._bus = await asyncio.wait_for(
-                MessageBus(bus_type=BusType.SESSION).connect(), timeout=10
+                MessageBus(bus_type=BusType.SESSION, negotiate_unix_fd=True).connect(), timeout=10
             )
             token = "mark56_" + uuid.uuid4().hex[:16]
             options = {"handle_token": Variant("s", token),
@@ -77,12 +77,17 @@ class WaylandScreenCast:
             if not streams:
                 raise RuntimeError("ScreenCast portal returned no monitor stream.")
             self._node_id = int(streams[0][0])
-            remote = await asyncio.wait_for(self._bus.call(Message(
-                destination="org.freedesktop.portal.Desktop",
-                path="/org/freedesktop/portal/desktop",
-                interface="org.freedesktop.portal.ScreenCast",
-                member="OpenPipeWireRemote",
-                signature="oa{sv}", body=[self._session_handle, {}])), timeout=10)
+            try:
+                remote = await asyncio.wait_for(self._bus.call(Message(
+                    destination="org.freedesktop.portal.Desktop",
+                    path="/org/freedesktop/portal/desktop",
+                    interface="org.freedesktop.portal.ScreenCast",
+                    member="OpenPipeWireRemote",
+                    signature="oa{sv}", body=[self._session_handle, {}])), timeout=10)
+            except asyncio.TimeoutError as exc:
+                raise RuntimeError(
+                    "Timed out waiting for GNOME to open the PipeWire remote (OpenPipeWireRemote)."
+                ) from exc
             if remote.message_type == MessageType.ERROR:
                 detail = remote.body[0] if remote.body else "unknown error"
                 raise RuntimeError(f"OpenPipeWireRemote failed: {detail}")
@@ -91,6 +96,7 @@ class WaylandScreenCast:
             self._remote_fd = remote.unix_fds[0]
             import gi
             gi.require_version("Gst", "1.0")
+            gi.require_version("GstVideo", "1.0")
             from gi.repository import Gst, GstVideo
             Gst.init(None)
             self._Gst = Gst
