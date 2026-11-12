@@ -21,7 +21,11 @@ TEST_TIMEOUT_SECONDS = 120
 
 def _root() -> Path:
     raw = os.environ.get("MARK56_WORKSPACE", "").strip()
-    root = Path(raw).expanduser() if raw else Path.cwd()
+    if not raw:
+        raise ValueError("Coding workspace is disabled until MARK56_WORKSPACE points to a dedicated project directory.")
+    root = Path(raw).expanduser()
+    if root.is_symlink():
+        raise ValueError("The configured coding workspace must not be a symbolic link.")
     root = root.resolve()
     if not root.is_dir():
         raise ValueError("Configured workspace directory does not exist.")
@@ -35,7 +39,20 @@ def _target(relative_path: str) -> Path:
     if candidate.is_absolute():
         raise ValueError("Absolute paths are not allowed.")
     root = _root()
-    target = (root / candidate).resolve()
+    blocked = {".git", ".ssh", ".gnupg", ".venv", "venv", "node_modules",
+               "relay-data", "secrets", "credentials", "__pycache__"}
+    parts = candidate.parts
+    if any(part in blocked or part.lower().startswith(".env") for part in parts):
+        raise ValueError("Access to protected workspace paths is blocked.")
+    if any(part.lower().endswith((".pem", ".key", ".p12", ".pfx", ".jks", ".sqlite", ".sqlite3", ".db")) for part in parts):
+        raise ValueError("Access to credential, signing, and database files is blocked.")
+    lexical = root / candidate
+    cursor = root
+    for part in parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise ValueError("Symbolic links are not allowed in coding workspace paths.")
+    target = lexical.resolve()
     if not target.is_relative_to(root):
         raise ValueError("Path escapes the configured workspace.")
     if target == root:
@@ -58,6 +75,8 @@ def _read(relative_path: str) -> tuple[Path, bytes]:
 
 
 def _run_tests(parameters: dict) -> str:
+    if parameters.get("confirmed") is not True:
+        return "Blocked: running project code requires confirmed=true after reviewing the workspace and test scope."
     suite = str(parameters.get("suite") or "unittest").lower()
     root = _root()
     if suite == "unittest":
@@ -155,10 +174,29 @@ def run(parameters: dict, **_context) -> str:
             new = content.encode("utf-8")
             if len(new) > MAX_EDIT_BYTES:
                 return "Refused: proposed content exceeds 1 MB."
-            # Refuse symlinks and re-check the destination immediately before write.
-            if target.is_symlink() or not target.resolve().is_relative_to(root):
+            # Revalidate the lexical path immediately before an atomic replacement.
+            relative = target.relative_to(root)
+            cursor = root
+            for part in relative.parts:
+                cursor = cursor / part
+                if cursor.is_symlink():
+                    return "Blocked: symbolic links are not allowed in coding workspace paths."
+            if not target.resolve().is_relative_to(root) or not target.is_file():
                 return "Blocked: unsafe file target."
-            target.write_bytes(new)
+            temp_path = target.with_name(f".{target.name}.mark56-{os.getpid()}.tmp")
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            descriptor = os.open(temp_path, flags, 0o600)
+            try:
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(new)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temp_path, target)
+            finally:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
             return json.dumps({
                 "ok": True, "path": target.relative_to(root).as_posix(),
                 "sha256": _digest(new), "message": "Edit applied after confirmation.",
@@ -175,8 +213,9 @@ PLUGIN = {
     "description": (
         "Guarded project workspace: list/read files, preview proposed edits as diffs, "
         "apply an exact reviewed edit only with confirmed=true and a matching SHA-256, "
-        "or run a fixed unittest/pytest/compile suite. Paths stay inside MARK56_WORKSPACE "
-        "or the current working directory. Does not run arbitrary shell commands."
+        "or run a fixed unittest/pytest/compile suite after explicit execution approval. "
+        "MARK56_WORKSPACE must point to a dedicated directory; sensitive paths and symlinks are blocked. "
+        "Does not run arbitrary shell commands."
     ),
     "parameters": {
         "type": "OBJECT",
@@ -187,6 +226,7 @@ PLUGIN = {
             "expected_sha256": {"type": "STRING", "description": "SHA-256 returned by read/propose"},
             "confirmed": {"type": "BOOLEAN", "description": "Explicit approval to apply the reviewed edit"},
             "suite": {"type": "STRING", "description": "For test: unittest | pytest | compile"},
+            "confirmed": {"type": "BOOLEAN", "description": "Explicit approval before executing project tests"},
         },
         "required": ["operation"],
     },
