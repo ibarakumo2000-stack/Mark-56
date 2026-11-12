@@ -64,7 +64,7 @@ class PostgresRelayQueueTests(unittest.TestCase):
         self.assertEqual(json.loads(params[4]), {
             "type": "command", "payload": {"text": "hello"}
         })
-        self.assertEqual(params[6] - params[5], 30)
+        self.assertEqual(params[6] - params[5], 20)
 
     def test_enqueue_rejects_queue_when_recipient_limit_reached(self):
         connection = _Connection(count=PostgresRelayRegistry.MAX_PENDING_PER_RECIPIENT)
