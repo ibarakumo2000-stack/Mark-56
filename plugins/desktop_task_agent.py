@@ -238,6 +238,15 @@ def run(parameters: dict, **_context) -> str:
         task = str(p.get("task") or "").strip()
         if not task or len(task) > 1000:
             return "Provide a task between 1 and 1000 characters."
+        # Require the configured local image model before opening ScreenCast.
+        vision = local_model.vision_status()
+        if not vision.get("ready"):
+            return json.dumps({
+                "active": False,
+                "status": "vision_model_unavailable",
+                "vision": vision,
+                "message": vision.get("message") or "Install and enable a local vision model first.",
+            }, ensure_ascii=False)
         needs_approval = any(term in task.lower() for term in _CONSEQUENTIAL_TERMS)
         with _state_lock:
             if _state["active"]:
