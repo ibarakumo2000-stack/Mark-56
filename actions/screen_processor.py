@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -86,6 +87,24 @@ def _compress(img_bytes: bytes, source_format: str = "PNG") -> tuple[bytes, str]
 
 
 def _capture_screen() -> tuple[bytes, str]:
+    """Capture the desktop using the permission-aware backend on Wayland.
+
+    GNOME Wayland does not guarantee that MSS/X11 can see the real desktop.
+    Route Wayland captures through the project's portal-aware adapter; it will
+    reuse an already-approved persistent ScreenCast stream when one is active.
+    """
+    is_wayland = (
+        os.name == "posix"
+        and (
+            os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+            or bool(os.environ.get("WAYLAND_DISPLAY"))
+        )
+    )
+    if is_wayland:
+        from plugins import desktop_capture
+
+        png, _width, _height = desktop_capture.capture_png()
+        return _compress(png, "PNG")
 
     if not _MSS:
         raise RuntimeError("mss is not installed. Run: pip install mss")
