@@ -19,7 +19,7 @@ concurrency:
 jobs:
   python-tests:
     name: Python tests (3.12 / 3.13)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -35,9 +35,22 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
       - name: Install native runtime libraries
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libportaudio2 libegl1 libgl1 libxcb-cursor0 libxcb-xinerama0
+          set -euo pipefail
+          packages=(libportaudio2 libegl1 libgl1 libxcb-cursor0 libxcb-xinerama0)
+          for attempt in 1 2 3 4; do
+            echo "Installing native runtime libraries (attempt ${attempt}/4)"
+            if sudo apt-get -o Acquire::Retries=3 update && \
+               sudo apt-get -o Acquire::Retries=3 install -y "${packages[@]}"; then
+              exit 0
+            fi
+            if [ "${attempt}" -lt 4 ]; then
+              sleep "$((attempt * 10))"
+            fi
+          done
+          echo "::error::Unable to install native runtime libraries after retries."
+          exit 1
 
       - name: Install project dependencies
         run: |
