@@ -90,10 +90,12 @@ class CodingWorkspaceTests(unittest.TestCase):
         result = self.call_plugin(operation="read", path="linked.txt")
         self.assertIn("symbolic links", result.lower())
 
-    def test_missing_workspace_configuration_fails_closed(self):
-        with patch.dict(os.environ, {"MARK56_WORKSPACE": ""}):
-            result = coding_workspace.run({"operation": "list"})
-        self.assertIn("dedicated project directory", result)
+    def test_missing_workspace_uses_dedicated_user_directory_not_current_directory(self):
+        with tempfile.TemporaryDirectory() as home:
+            with patch.dict(os.environ, {"MARK56_WORKSPACE": "", "HOME": home}):
+                result = json.loads(coding_workspace.run({"operation": "list"}))
+            self.assertEqual(Path(result["root"]), Path(home) / "Mark56-workspaces")
+            self.assertTrue((Path(home) / "Mark56-workspaces").is_dir())
 
 
 if __name__ == "__main__":
