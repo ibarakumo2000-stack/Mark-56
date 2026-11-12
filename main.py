@@ -1018,9 +1018,11 @@ class JarvisLive:
             _cfg = json.loads(open(API_CONFIG_PATH, encoding="utf-8").read())
             self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip()
             _user_name = (_cfg.get("user_name") or "").strip()
+            _speech_language = str(_cfg.get("speech_language") or "Auto (match user)").strip()
         except Exception:
             self._asst_name = "JARVIS"
             _user_name = ""
+            _speech_language = "Auto (match user)"
 
         memory     = load_memory()
         mem_str    = format_memory_for_prompt(memory)
@@ -1046,11 +1048,24 @@ class JarvisLive:
                       'language. Never an archaic or aristocratic form, and never '
                       'the form from a different language than the one you are '
                       'speaking in this sentence.')
+        if _speech_language == "Auto (match user)":
+            _language_rule = (
+                "SPOKEN LANGUAGE: Reply in the language the user is currently using. "
+                "Follow the user's language naturally from turn to turn; do not force English."
+            )
+        else:
+            _language_rule = (
+                f"SPOKEN LANGUAGE: Speak in {_speech_language} for every spoken reply. "
+                f"Use natural, fluent {_speech_language}, including pronunciation and "
+                "ordinary respectful forms of address. Do not switch languages unless "
+                "the user explicitly asks you to."
+            )
         identity_ctx = (
             f"[IDENTITY]\n"
             f"Your name is {self._asst_name}. "
             f"Always refer to yourself as {self._asst_name}.\n"
-            f"{_addr}\n\n"
+            f"{_addr}\n"
+            f"{_language_rule}\n\n"
         )
 
         # Everything the model is told about *itself* is derived here, not
