@@ -125,5 +125,39 @@ class FloatingLauncherWiringTests(unittest.TestCase):
         self.assertIn("QSystemTrayIcon", source)
 
 
+    def test_minimizing_full_interface_returns_to_hologram_and_restoring_hides_it(self):
+        source = (ROOT / "ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        main_window = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
+        )
+        change_event = next(
+            node for node in main_window.body
+            if isinstance(node, ast.FunctionDef) and node.name == "changeEvent"
+        )
+        change_source = ast.get_source_segment(source, change_event) or ""
+        self.assertIn("QEvent.Type.WindowStateChange", change_source)
+        self.assertIn("self.isMinimized()", change_source)
+        self.assertIn("launcher.show_launcher()", change_source)
+        self.assertIn("launcher.hide()", change_source)
+
+    def test_opening_full_interface_hides_hologram_without_quitting_assistant(self):
+        source = (ROOT / "ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        jarvis_ui = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "JarvisUI"
+        )
+        show_full = next(
+            node for node in jarvis_ui.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_show_full_interface"
+        )
+        show_source = ast.get_source_segment(source, show_full) or ""
+        self.assertIn("self._win.showNormal()", show_source)
+        self.assertIn("self.launcher.hide()", show_source)
+        self.assertNotIn("self._app.quit()", show_source)
+
+
 if __name__ == "__main__":
     unittest.main()
