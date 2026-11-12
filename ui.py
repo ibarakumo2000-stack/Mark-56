@@ -3416,6 +3416,9 @@ class MainWindow(QMainWindow):
 
     def __init__(self, face_path: str):
         super().__init__()
+        # Keep the full JARVIS command centre above ordinary application windows.
+        # The floating hologram has the same hint, so either surface remains reachable.
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self._face_path = face_path
 
         # Load customization from config
@@ -6989,9 +6992,15 @@ class JarvisUI:
             self._win.show()
 
     def _show_full_interface(self):
+        """Restore the existing command centre and move focus back from the hologram."""
+        # Explicitly clear the minimized state before showing: on some window
+        # managers the prior hide() leaves the native window in a minimized state.
+        self._win.setWindowState(self._win.windowState() & ~Qt.WindowState.WindowMinimized)
         self._win.showNormal()
+        self._win.show()
         self._win.raise_()
         self._win.activateWindow()
+        # Hide the launcher only after the main window has been re-shown.
         self.launcher.hide()
 
     def show_launcher_reply(self, text: str):
