@@ -52,9 +52,22 @@ jobs:
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
       - name: Install Linux build prerequisites
         if: matrix.target == 'linux-x86_64'
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxcb-cursor0 libegl1 libgl1 libasound2t64 libpulse0 libportaudio2
+          set -euo pipefail
+          packages=(xvfb libxcb-cursor0 libegl1 libgl1 libasound2t64 libpulse0 libportaudio2)
+          for attempt in 1 2 3 4 5; do
+            echo "Installing Linux build prerequisites (attempt ${attempt}/5)"
+            if sudo apt-get -o Acquire::Retries=3 update && \
+               sudo apt-get -o Acquire::Retries=3 install -y "${packages[@]}"; then
+              exit 0
+            fi
+            if [ "${attempt}" -lt 5 ]; then
+              sleep "$((attempt * 10))"
+            fi
+          done
+          echo "::error::Unable to install Linux build prerequisites after retries."
+          exit 1
       - name: Build self-contained installer
         run: python scripts/build_portable.py --target "${{ matrix.target }}" --version "$APP_VERSION"
       - name: Upload installer artifact
