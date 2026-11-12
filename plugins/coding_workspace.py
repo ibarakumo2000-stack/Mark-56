@@ -46,7 +46,7 @@ def _target(relative_path: str) -> Path:
     if any(part in blocked or part.lower().startswith(".env") for part in parts):
         raise ValueError("Access to protected workspace paths is blocked.")
     if any(part.lower().endswith((".pem", ".key", ".p12", ".pfx", ".jks", ".sqlite", ".sqlite3", ".db")) for part in parts):
-        raise ValueError("Access to credential, signing, and database files is blocked.")
+        raise ValueError("Access to protected credential, signing, and database files is blocked.")
     lexical = root / candidate
     cursor = root
     for part in parts:

@@ -5347,11 +5347,6 @@ class MainWindow(QMainWindow):
 
         fs_btn = _row(QPushButton("⛶  FULLSCREEN  [F11]"))
         fs_btn.clicked.connect(self._toggle_fullscreen)
-        mute_btn = _row(QPushButton("◉  MICROPHONE MUTE / UNMUTE"))
-        mute_btn.clicked.connect(self._toggle_mute)
-        interrupt_btn = _row(QPushButton("■  INTERRUPT JARVIS"))
-        interrupt_btn.clicked.connect(self._do_interrupt)
-
         customise_btn = _row(QPushButton("⚙  CUSTOMISE JARVIS"))
         customise_btn.clicked.connect(self._open_customize)
         website_btn = _row(QPushButton("✦  WEBSITE BUILDER"))

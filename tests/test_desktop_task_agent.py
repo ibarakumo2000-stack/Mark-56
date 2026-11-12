@@ -12,6 +12,17 @@ class DesktopTaskAgentTests(unittest.TestCase):
             agent._state.update(active=False, task=None, step=0, started_at=None,
                                 last_action=None, status="idle", stop_reason=None)
         agent._stop_event.clear()
+        # Lifecycle tests exercise task-state transitions, not Ollama/model
+        # availability. The dedicated vision-readiness tests cover the gate.
+        self._vision_ready = patch.object(
+            agent.local_model,
+            "vision_status",
+            return_value={"ready": True, "model": "llava:7b", "installed": True},
+        )
+        self._vision_ready.start()
+
+    def tearDown(self):
+        self._vision_ready.stop()
 
     def test_start_requires_task(self):
         self.assertIn("Provide a task", agent.run({"operation": "start"}))
