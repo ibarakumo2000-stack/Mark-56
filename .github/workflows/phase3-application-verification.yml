@@ -59,7 +59,7 @@ jobs:
           python -m pip install edge-tts faster-whisper soundfile miniaudio msal
       - name: Compile application and test sources
         run: |
-          python -m compileall -q main.py ui.py core actions plugins dashboard memory tests
+          python -m compileall -q main.py ui.py core actions plugins dashboard memory tests scripts
       - name: Run complete unittest suite
         run: |
           python -m unittest discover -s tests -v
