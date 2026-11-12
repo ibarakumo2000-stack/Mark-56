@@ -30,7 +30,7 @@ def main() -> int:
             raise RuntimeError("ScreenCast session started but no frame was returned.")
         png, width, height = frame
         _decode_png(png)
-        if width < 64 or height < 64 or not png.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        if width < 64 or height < 64 or not png.startswith(bytes((137, 80, 78, 71, 13, 10, 26, 10))):
             raise RuntimeError("Captured frame failed PNG/dimension validation.")
         print(f"PASS: fresh PipeWire frame captured and decoded ({width}x{height}).")
         print("PASS: capture used the permission-approved GNOME portal stream.")
