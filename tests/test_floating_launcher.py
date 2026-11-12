@@ -156,10 +156,16 @@ class FloatingLauncherWiringTests(unittest.TestCase):
             if isinstance(node, ast.FunctionDef) and node.name == "_show_full_interface"
         )
         show_source = ast.get_source_segment(source, show_full) or ""
+        self.assertIn("self._win.setWindowState(", show_source)
+        self.assertIn("WindowState.WindowMinimized", show_source)
         self.assertIn("self._win.showNormal()", show_source)
+        self.assertIn("self._win.show()", show_source)
+        self.assertIn("self._win.raise_()", show_source)
+        self.assertIn("self._win.activateWindow()", show_source)
         self.assertIn("self.launcher.hide()", show_source)
         self.assertNotIn("self._app.quit()", show_source)
 
 
 if __name__ == "__main__":
     unittest.main()
+
