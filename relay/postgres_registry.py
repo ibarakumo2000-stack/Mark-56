@@ -1,10 +1,4 @@
-"""Managed PostgreSQL credential registry for the JARVIS relay.
-
-The desktop/self-hosted relay continues to use the SQLite registry. Vercel
-selects this implementation when a PostgreSQL connection URL is configured.
-Connections are short-lived and use the provider's pooled endpoint, which is
-safe for serverless request lifecycles.
-"""
+"""Managed PostgreSQL registry and short-lived cross-instance relay queue."""
 from __future__ import annotations
 
 import hashlib
@@ -18,7 +12,11 @@ from relay.registry import RelayAuthError
 
 
 class PostgresRelayRegistry:
-    """PostgreSQL-backed registry with the same public API as RelayRegistry."""
+    """PostgreSQL-backed credentials and bounded message handoff queue."""
+
+    MAX_PENDING_PER_RECIPIENT = 100
+    MAX_QUEUE_TTL_SECONDS = 20
+    MAX_PAYLOAD_BYTES = 32_768
 
     def __init__(self, database_url: str):
         if not isinstance(database_url, str) or not database_url.startswith(
@@ -60,6 +58,27 @@ class PostgresRelayRegistry:
                     "CREATE INDEX IF NOT EXISTS idx_relay_channel "
                     "ON principals(channel_id, revoked_at)"
                 )
+                connection.execute(
+                    """CREATE TABLE IF NOT EXISTS relay_messages (
+                        message_id TEXT PRIMARY KEY,
+                        channel_id TEXT NOT NULL,
+                        sender_principal_id TEXT NOT NULL,
+                        recipient_principal_id TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        created_at DOUBLE PRECISION NOT NULL,
+                        expires_at DOUBLE PRECISION NOT NULL,
+                        claim_token TEXT,
+                        claim_until DOUBLE PRECISION
+                    )"""
+                )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_relay_messages_recipient "
+                    "ON relay_messages(channel_id, recipient_principal_id, created_at)"
+                )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_relay_messages_expiry "
+                    "ON relay_messages(expires_at)"
+                )
             self._schema_ready = True
 
     @staticmethod
@@ -94,13 +113,8 @@ class PostgresRelayRegistry:
             raise ValueError("Every relay scope must be a string")
         clean = sorted(set(scopes))
         allowed = {
-            "command.send",
-            "notification.receive",
-            "media.control",
-            "battery.read",
-            "display.render",
-            "voice.capture",
-            "camera.capture",
+            "command.send", "notification.receive", "media.control",
+            "battery.read", "display.render", "voice.capture", "camera.capture",
         }
         if len(clean) > 16 or any(scope not in allowed for scope in clean):
             raise ValueError("Unknown relay scope")
@@ -111,10 +125,7 @@ class PostgresRelayRegistry:
         principal_id: str | None = None,
     ):
         channel_id, principal_id, clean = self._validate_identity(
-            channel_id=channel_id,
-            role=role,
-            scopes=scopes,
-            principal_id=principal_id,
+            channel_id=channel_id, role=role, scopes=scopes, principal_id=principal_id,
         )
         token = "rly_" + secrets.token_urlsafe(40)
         self._ensure_schema()
@@ -123,45 +134,220 @@ class PostgresRelayRegistry:
                 """INSERT INTO principals
                    (principal_id, channel_id, role, token_hash, scopes_json, created_at, revoked_at)
                    VALUES (%s, %s, %s, %s, %s, %s, NULL)""",
-                (
-                    principal_id,
-                    channel_id,
-                    role,
-                    self._hash(token),
-                    json.dumps(clean),
-                    time.time(),
-                ),
+                (principal_id, channel_id, role, self._hash(token), json.dumps(clean), time.time()),
             )
         return {
-            "principal_id": principal_id,
-            "channel_id": channel_id,
-            "role": role,
-            "token": token,
+            "principal_id": principal_id, "channel_id": channel_id,
+            "role": role, "token": token,
         }
 
+    def import_principals(self, records) -> tuple[int, int]:
+        """Import SQLite credential hashes without ever handling raw tokens.
+
+        Existing matching rows are left untouched, making repeated imports
+        safe. A principal-ID or token-hash collision with different identity
+        data aborts the transaction rather than overwriting a live credential.
+        """
+        import re
+
+        self._ensure_schema()
+        imported = 0
+        skipped = 0
+        with self._lock, self._connect() as connection:
+            for record in records:
+                principal_id = record["principal_id"]
+                channel_id, principal_id, scopes = self._validate_identity(
+                    channel_id=record["channel_id"],
+                    role=record["role"],
+                    scopes=json.loads(record["scopes_json"]),
+                    principal_id=principal_id,
+                )
+                token_hash = record["token_hash"]
+                if not isinstance(token_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", token_hash):
+                    raise ValueError("Source registry contains an invalid token hash")
+                created_at = float(record["created_at"])
+                revoked_at = (
+                    float(record["revoked_at"])
+                    if record["revoked_at"] is not None else None
+                )
+                existing = connection.execute(
+                    """SELECT principal_id, token_hash FROM principals
+                       WHERE principal_id=%s OR token_hash=%s""",
+                    (principal_id, token_hash),
+                ).fetchone()
+                if existing is not None:
+                    if (
+                        existing["principal_id"] != principal_id
+                        or existing["token_hash"] != token_hash
+                    ):
+                        raise ValueError(
+                            "Source registry conflicts with an existing Neon principal"
+                        )
+                    skipped += 1
+                    continue
+                connection.execute(
+                    """INSERT INTO principals
+                       (principal_id, channel_id, role, token_hash, scopes_json,
+                        created_at, revoked_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    (
+                        principal_id, channel_id, record["role"], token_hash,
+                        json.dumps(scopes), created_at, revoked_at,
+                    ),
+                )
+                imported += 1
+        return imported, skipped
+
     def authenticate(self, token: str) -> dict:
-        if (
-            not isinstance(token, str)
-            or not token.startswith("rly_")
-            or not 32 <= len(token) <= 160
-        ):
+        if not isinstance(token, str) or not token.startswith("rly_") or not 32 <= len(token) <= 160:
             raise RelayAuthError("Invalid relay credentials")
         self._ensure_schema()
         with self._lock, self._connect() as connection:
             row = connection.execute(
                 """SELECT principal_id, channel_id, role, scopes_json
-                   FROM principals
-                   WHERE token_hash=%s AND revoked_at IS NULL""",
+                   FROM principals WHERE token_hash=%s AND revoked_at IS NULL""",
                 (self._hash(token),),
             ).fetchone()
         if row is None:
             raise RelayAuthError("Invalid or revoked relay credentials")
         return {
-            "principal_id": row["principal_id"],
-            "channel_id": row["channel_id"],
-            "role": row["role"],
-            "scopes": json.loads(row["scopes_json"]),
+            "principal_id": row["principal_id"], "channel_id": row["channel_id"],
+            "role": row["role"], "scopes": json.loads(row["scopes_json"]),
         }
+
+    def lookup_principal(self, channel_id: str, principal_id: str):
+        self._ensure_schema()
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """SELECT principal_id, channel_id, role, scopes_json
+                   FROM principals
+                   WHERE channel_id=%s AND principal_id=%s AND revoked_at IS NULL""",
+                (channel_id, principal_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "principal_id": row["principal_id"], "channel_id": row["channel_id"],
+            "role": row["role"], "scopes": json.loads(row["scopes_json"]),
+        }
+
+    def find_active_principal(self, channel_id: str, role: str):
+        if role not in {"desktop", "device"}:
+            raise ValueError("Unknown relay role")
+        self._ensure_schema()
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """SELECT principal_id, channel_id, role, scopes_json
+                   FROM principals
+                   WHERE channel_id=%s AND role=%s AND revoked_at IS NULL
+                   ORDER BY created_at DESC LIMIT 1""",
+                (channel_id, role),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "principal_id": row["principal_id"], "channel_id": row["channel_id"],
+            "role": row["role"], "scopes": json.loads(row["scopes_json"]),
+        }
+
+    def enqueue_message(
+        self, *, channel_id: str, sender_principal_id: str,
+        recipient_principal_id: str, payload: dict, ttl_seconds: int = 20,
+    ) -> str:
+        encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        if len(encoded.encode("utf-8")) > self.MAX_PAYLOAD_BYTES:
+            raise ValueError("Relay message exceeds queue size limit")
+        ttl = max(1, min(int(ttl_seconds), self.MAX_QUEUE_TTL_SECONDS))
+        message_id = str(uuid.uuid4())
+        now = time.time()
+        self._ensure_schema()
+        with self._lock, self._connect() as connection:
+            # Reclaim expired rows even when their recipient never reconnects.
+            connection.execute(
+                "DELETE FROM relay_messages WHERE expires_at<=%s",
+                (now,),
+            )
+            pending = connection.execute(
+                """SELECT COUNT(*) AS count FROM relay_messages
+                   WHERE channel_id=%s AND recipient_principal_id=%s AND expires_at>%s""",
+                (channel_id, recipient_principal_id, now),
+            ).fetchone()["count"]
+            if pending >= self.MAX_PENDING_PER_RECIPIENT:
+                raise ValueError("Recipient relay queue is full")
+            connection.execute(
+                """INSERT INTO relay_messages
+                   (message_id, channel_id, sender_principal_id,
+                    recipient_principal_id, payload_json, created_at, expires_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (
+                    message_id, channel_id, sender_principal_id,
+                    recipient_principal_id, encoded, now, now + ttl,
+                ),
+            )
+        return message_id
+
+    def claim_messages(self, channel_id: str, recipient_principal_id: str, limit: int = 10):
+        self._ensure_schema()
+        now = time.time()
+        claim_token = secrets.token_urlsafe(18)
+        safe_limit = max(1, min(int(limit), 25))
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """WITH candidates AS (
+                       SELECT message_id FROM relay_messages
+                       WHERE channel_id=%s AND recipient_principal_id=%s
+                         AND expires_at>%s
+                         AND (claim_until IS NULL OR claim_until<%s)
+                       ORDER BY created_at
+                       LIMIT %s
+                       FOR UPDATE SKIP LOCKED
+                   )
+                   UPDATE relay_messages AS message
+                   SET claim_token=%s, claim_until=%s
+                   FROM candidates
+                   WHERE message.message_id=candidates.message_id
+                   RETURNING message.message_id, message.payload_json""",
+                (
+                    channel_id, recipient_principal_id, now, now,
+                    safe_limit, claim_token, now + 10,
+                ),
+            ).fetchall()
+        return [
+            {
+                "message_id": row["message_id"],
+                "payload": json.loads(row["payload_json"]),
+                "claim_token": claim_token,
+            }
+            for row in rows
+        ]
+
+    def ack_message(self, message_id: str, claim_token: str) -> bool:
+        self._ensure_schema()
+        with self._lock, self._connect() as connection:
+            result = connection.execute(
+                "DELETE FROM relay_messages WHERE message_id=%s AND claim_token=%s",
+                (message_id, claim_token),
+            )
+            return result.rowcount == 1
+
+    def release_message(self, message_id: str, claim_token: str) -> bool:
+        self._ensure_schema()
+        with self._lock, self._connect() as connection:
+            result = connection.execute(
+                """UPDATE relay_messages SET claim_token=NULL, claim_until=NULL
+                   WHERE message_id=%s AND claim_token=%s""",
+                (message_id, claim_token),
+            )
+            return result.rowcount == 1
+
+    def cleanup_expired_messages(self) -> int:
+        self._ensure_schema()
+        with self._lock, self._connect() as connection:
+            result = connection.execute(
+                "DELETE FROM relay_messages WHERE expires_at<=%s",
+                (time.time(),),
+            )
+            return result.rowcount
 
     def revoke(self, principal_id: str, channel_id: str) -> bool:
         self._ensure_schema()
@@ -171,6 +357,13 @@ class PostgresRelayRegistry:
                    WHERE principal_id=%s AND channel_id=%s AND revoked_at IS NULL""",
                 (time.time(), principal_id, channel_id),
             )
+            if cursor.rowcount == 1:
+                connection.execute(
+                    """DELETE FROM relay_messages
+                       WHERE channel_id=%s
+                         AND (sender_principal_id=%s OR recipient_principal_id=%s)""",
+                    (channel_id, principal_id, principal_id),
+                )
             return cursor.rowcount == 1
 
     def healthcheck(self) -> bool:

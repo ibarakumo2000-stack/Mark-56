@@ -9,6 +9,27 @@ class RemoteRelayClientValidationTest {
     private val state: (String) -> Unit = {}
     private val message: (org.json.JSONObject) -> Unit = {}
 
+    @Test fun recognizesRelayControlFramesWithoutTreatingThemAsApplicationMessages() {
+        org.junit.Assert.assertTrue(RemoteRelayProtocol.isControlFrame("ack"))
+        org.junit.Assert.assertTrue(RemoteRelayProtocol.isControlFrame("error"))
+        org.junit.Assert.assertFalse(RemoteRelayProtocol.isControlFrame("command"))
+        org.junit.Assert.assertTrue(RemoteRelayProtocol.isMessageType("command"))
+    }
+
+    @Test fun reconnectsAfterServerCloseButNotAfterCredentialRejectionOrManualClose() {
+        org.junit.Assert.assertTrue(RemoteRelayProtocol.shouldReconnect(1001, false))
+        org.junit.Assert.assertTrue(RemoteRelayProtocol.shouldReconnect(4001, false))
+        org.junit.Assert.assertFalse(RemoteRelayProtocol.shouldReconnect(4403, false))
+        org.junit.Assert.assertFalse(RemoteRelayProtocol.shouldReconnect(1000, true))
+    }
+
+    @Test fun reconnectDelayUsesBoundedExponentialBackoff() {
+        org.junit.Assert.assertEquals(1L, RemoteRelayProtocol.reconnectDelaySeconds(0))
+        org.junit.Assert.assertEquals(2L, RemoteRelayProtocol.reconnectDelaySeconds(1))
+        org.junit.Assert.assertEquals(60L, RemoteRelayProtocol.reconnectDelaySeconds(6))
+        org.junit.Assert.assertEquals(60L, RemoteRelayProtocol.reconnectDelaySeconds(20))
+    }
+
     @Test fun rejectsPlainHttpRelay() {
         assertThrows(IllegalArgumentException::class.java) {
             RemoteRelayClient("http://relay.example.com", channel, "phone-1", token, state, message)

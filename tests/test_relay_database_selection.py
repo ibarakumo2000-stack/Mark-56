@@ -40,6 +40,27 @@ class RelayDatabaseSelectionTests(unittest.TestCase):
             })
         factory.assert_called_once_with("postgresql://db.example/app")
 
+    def test_vercel_runtime_accepts_prefixed_neon_marketplace_database_url(self):
+        module = importlib.import_module("relay.postgres_registry")
+        with patch.object(module, "PostgresRelayRegistry") as factory:
+            _build_registry({
+                "VERCEL": "1",
+                "JARVIS_RELAY_DATABASE_URL_DATABASE_URL":
+                    "postgresql://pooled.example/app",
+            })
+        factory.assert_called_once_with("postgresql://pooled.example/app")
+
+    def test_explicit_relay_database_url_takes_precedence_over_marketplace_prefix(self):
+        module = importlib.import_module("relay.postgres_registry")
+        with patch.object(module, "PostgresRelayRegistry") as factory:
+            _build_registry({
+                "VERCEL": "1",
+                "JARVIS_RELAY_DATABASE_URL": "postgresql://explicit.example/app",
+                "JARVIS_RELAY_DATABASE_URL_DATABASE_URL":
+                    "postgresql://marketplace.example/app",
+            })
+        factory.assert_called_once_with("postgresql://explicit.example/app")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,8 +2,7 @@
 from __future__ import annotations
 import argparse
 import json
-import os
-from relay.registry import RelayRegistry
+from relay.registry_factory import build_registry
 
 
 def main() -> int:
@@ -13,7 +12,7 @@ def main() -> int:
     parser.add_argument("--principal-id", help="Stable device ID; defaults to a generated UUID")
     parser.add_argument("--scopes", default="", help="Comma-separated least-privilege scopes")
     args = parser.parse_args()
-    registry = RelayRegistry(os.environ.get("JARVIS_RELAY_DATABASE", "relay-data/relay.sqlite3"))
+    registry = build_registry()
     try:
         result = registry.provision(
             channel_id=args.channel, role=args.role,

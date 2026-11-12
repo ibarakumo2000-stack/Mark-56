@@ -1,3 +1,13 @@
+[project]
+name = "mark56-vercel-relay"
+version = "0.1.0"
+description = "Authenticated JARVIS relay service for Vercel"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastapi>=0.110,<1",
+    "psycopg[binary]>=3.2,<4",
+]
+
 [tool.vercel]
 # Mark 56's root main.py is the Qt desktop launcher, not an ASGI entrypoint.
 # The deployable FastAPI service is the authenticated remote relay.
