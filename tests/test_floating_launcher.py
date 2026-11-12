@@ -144,6 +144,20 @@ class FloatingLauncherWiringTests(unittest.TestCase):
         self.assertIn("launcher.hide()", change_source)
         self.assertNotIn("app.quit()", change_source)
 
+    def test_full_interface_is_configured_to_stay_above_other_windows(self):
+        source = (ROOT / "ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        main_window = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
+        )
+        init = next(
+            node for node in main_window.body
+            if isinstance(node, ast.FunctionDef) and node.name == "__init__"
+        )
+        init_source = ast.get_source_segment(source, init) or ""
+        self.assertIn("WindowStaysOnTopHint", init_source)
+
     def test_opening_full_interface_hides_hologram_without_quitting_assistant(self):
         source = (ROOT / "ui.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
