@@ -15,7 +15,7 @@ class PostgresRelayRegistry:
     """PostgreSQL-backed credentials and bounded message handoff queue."""
 
     MAX_PENDING_PER_RECIPIENT = 100
-    MAX_QUEUE_TTL_SECONDS = 30
+    MAX_QUEUE_TTL_SECONDS = 20
     MAX_PAYLOAD_BYTES = 32_768
 
     def __init__(self, database_url: str):
