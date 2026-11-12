@@ -36,7 +36,7 @@ except Exception:
     pass  # PyQt6-WebEngine not installed: JARVIS tells the user how to add it when the globe is requested
 
 from PyQt6.QtCore import (
-    QEasingCurve, QLineF, QMimeData, QObject, QParallelAnimationGroup, QPointF,
+    QEasingCurve, QEvent, QLineF, QMimeData, QObject, QParallelAnimationGroup, QPointF,
     QPoint, QPropertyAnimation, QRect, QRectF, QSize, QSizeF, Qt, QTimer,
     QUrl, pyqtSignal,
 )
@@ -6878,6 +6878,24 @@ class MainWindow(QMainWindow):
             self._style_state_pill(state)
         except Exception:
             pass
+
+    def changeEvent(self, event):
+        """Keep the hologram and full interface as two reachable views.
+
+        Minimising the full window returns to the floating hologram; restoring
+        the full window hides the hologram so the two surfaces never overlap.
+        This also works when the window manager minimises/restores the app.
+        """
+        super().changeEvent(event)
+        if event.type() != QEvent.Type.WindowStateChange:
+            return
+        launcher = getattr(self, "_floating_launcher", None)
+        if launcher is None:
+            return
+        if self.isMinimized():
+            launcher.show_launcher()
+        elif self.isVisible():
+            launcher.hide()
 
     def closeEvent(self, event):
         # Closing the main JARVIS window exits the whole application, including
