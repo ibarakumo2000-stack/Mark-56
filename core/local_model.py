@@ -125,9 +125,7 @@ def vision_status(timeout_seconds: float = 2.0) -> dict:
     base_status = status(timeout_seconds=timeout_seconds)
     model = str(settings.get("local_vision_model_name") or "").strip()
     installed_models = set(base_status.get("models") or [])
-    installed = bool(model and (model in installed_models or
-                                any(name.split(":")[0] == model.split(":")[0]
-                                    for name in installed_models)))
+    installed = bool(model and model in installed_models)
     ready = bool(base_status.get("ok") and base_status.get("enabled") and
                  model and installed)
     if not base_status.get("ok"):
