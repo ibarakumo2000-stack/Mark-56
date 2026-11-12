@@ -21,9 +21,10 @@ TEST_TIMEOUT_SECONDS = 120
 
 def _root() -> Path:
     raw = os.environ.get("MARK56_WORKSPACE", "").strip()
-    if not raw:
-        raise ValueError("Coding workspace is disabled until MARK56_WORKSPACE points to a dedicated project directory.")
-    root = Path(raw).expanduser()
+    # Never default to the application/repository working directory. Use a
+    # dedicated per-user projects folder unless the user configures another root.
+    root = Path(raw).expanduser() if raw else Path.home() / "Mark56-workspaces"
+    root.mkdir(parents=True, exist_ok=True)
     if root.is_symlink():
         raise ValueError("The configured coding workspace must not be a symbolic link.")
     root = root.resolve()
@@ -214,7 +215,7 @@ PLUGIN = {
         "Guarded project workspace: list/read files, preview proposed edits as diffs, "
         "apply an exact reviewed edit only with confirmed=true and a matching SHA-256, "
         "or run a fixed unittest/pytest/compile suite after explicit execution approval. "
-        "MARK56_WORKSPACE must point to a dedicated directory; sensitive paths and symlinks are blocked. "
+        "Uses MARK56_WORKSPACE or the dedicated ~/Mark56-workspaces directory; sensitive paths and symlinks are blocked. "
         "Does not run arbitrary shell commands."
     ),
     "parameters": {
