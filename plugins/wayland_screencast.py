@@ -45,10 +45,14 @@ class WaylandScreenCast:
         from dbus_next.aio import MessageBus
 
         async def create_session():
-            self._bus = await MessageBus(bus_type=BusType.SESSION).connect()
+            print("[ScreenCast] Connecting to the GNOME desktop portal…", flush=True)
+            self._bus = await asyncio.wait_for(
+                MessageBus(bus_type=BusType.SESSION).connect(), timeout=10
+            )
             token = "mark56_" + uuid.uuid4().hex[:16]
             options = {"handle_token": Variant("s", token),
                        "session_handle_token": Variant("s", token + "_session")}
+            print("[ScreenCast] Creating portal session…", flush=True)
             results, _ = await self._request(
                 "org.freedesktop.portal.ScreenCast", "CreateSession", "a{sv}", [options])
             handle = results.get("session_handle")
@@ -60,22 +64,25 @@ class WaylandScreenCast:
                 "multiple": Variant("b", False),
                 "cursor_mode": Variant("u", 2),  # embedded cursor
             }
+            print("[ScreenCast] Selecting monitor source…", flush=True)
             await self._request(
                 "org.freedesktop.portal.ScreenCast", "SelectSources",
                 "oa{sv}", [self._session_handle, source_options])
+            print("[ScreenCast] Waiting for GNOME monitor approval…", flush=True)
             started, _ = await self._request(
                 "org.freedesktop.portal.ScreenCast", "Start",
                 "osa{sv}", [self._session_handle, "", {}])
+            print("[ScreenCast] GNOME approved the stream; connecting to PipeWire…", flush=True)
             streams = started.get("streams", [])
             if not streams:
                 raise RuntimeError("ScreenCast portal returned no monitor stream.")
             self._node_id = int(streams[0][0])
-            remote = await self._bus.call(Message(
+            remote = await asyncio.wait_for(self._bus.call(Message(
                 destination="org.freedesktop.portal.Desktop",
                 path="/org/freedesktop/portal/desktop",
                 interface="org.freedesktop.portal.ScreenCast",
                 member="OpenPipeWireRemote",
-                signature="oa{sv}", body=[self._session_handle, {}]))
+                signature="oa{sv}", body=[self._session_handle, {}])), timeout=10)
             if remote.message_type == MessageType.ERROR:
                 detail = remote.body[0] if remote.body else "unknown error"
                 raise RuntimeError(f"OpenPipeWireRemote failed: {detail}")
@@ -97,6 +104,7 @@ class WaylandScreenCast:
             source.set_property("fd", self._remote_fd)
             source.set_property("path", str(self._node_id))
             self._sink = self._pipeline.get_by_name("framesink")
+            print("[ScreenCast] Starting PipeWire/GStreamer pipeline…", flush=True)
             state = self._pipeline.set_state(Gst.State.PLAYING)
             if state == Gst.StateChangeReturn.FAILURE:
                 raise RuntimeError("GStreamer could not start the PipeWire capture pipeline.")
@@ -152,26 +160,32 @@ class WaylandScreenCast:
         bus.add_message_handler(handler)
         match_installed = False
         try:
-            match = await bus.call(Message(
+            match = await asyncio.wait_for(bus.call(Message(
                 destination="org.freedesktop.DBus",
                 path="/org/freedesktop/DBus",
                 interface="org.freedesktop.DBus",
                 member="AddMatch",
                 signature="s",
                 body=[rule],
-            ))
+            )), timeout=8)
             if match.message_type == MessageType.ERROR:
                 raise RuntimeError(f"Could not subscribe to portal response: {match.body}")
             match_installed = True
 
-            reply = await bus.call(Message(
-                destination="org.freedesktop.portal.Desktop",
-                path="/org/freedesktop/portal/desktop",
-                interface=interface,
-                member=member,
-                signature=signature,
-                body=body,
-            ))
+            print(f"[ScreenCast] Portal method {member}: waiting for method reply…", flush=True)
+            try:
+                reply = await asyncio.wait_for(bus.call(Message(
+                    destination="org.freedesktop.portal.Desktop",
+                    path="/org/freedesktop/portal/desktop",
+                    interface=interface,
+                    member=member,
+                    signature=signature,
+                    body=body,
+                )), timeout=12)
+            except asyncio.TimeoutError as exc:
+                raise RuntimeError(
+                    f"GNOME portal method {member} did not return a request handle within 12 seconds."
+                ) from exc
             if reply.message_type == MessageType.ERROR:
                 detail = reply.body[0] if reply.body else "unknown portal error"
                 raise RuntimeError(f"{member} failed ({reply.error_name}): {detail}")
@@ -184,18 +198,25 @@ class WaylandScreenCast:
                     future.set_result((message.body[0], message.body[1]))
                     break
 
-            code, results = await asyncio.wait_for(future, timeout=35)
+            print(f"[ScreenCast] {member} request created; waiting up to 25 seconds for GNOME's response…", flush=True)
+            try:
+                code, results = await asyncio.wait_for(future, timeout=25)
+            except asyncio.TimeoutError as exc:
+                raise RuntimeError(
+                    f"Timed out waiting 25 seconds for GNOME to answer {member}. "
+                    "Check the GNOME sharing prompt and try again."
+                ) from exc
         finally:
             if match_installed:
                 try:
-                    await bus.call(Message(
+                    await asyncio.wait_for(bus.call(Message(
                         destination="org.freedesktop.DBus",
                         path="/org/freedesktop/DBus",
                         interface="org.freedesktop.DBus",
                         member="RemoveMatch",
                         signature="s",
                         body=[rule],
-                    ))
+                    )), timeout=3)
                 except Exception:
                     pass
             bus.remove_message_handler(handler)
