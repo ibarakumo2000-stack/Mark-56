@@ -27,11 +27,10 @@ Merged through PRs #126, #127, and #128. The always-on-top request remains subje
 
 ## Stage 2 — AI provider abstraction and offline mode
 
-**Present:** Gemini Live remains the live voice provider; OpenAI Responses API is available for one-shot tasks; the Ollama adapter supports local text and image calls and explicitly avoids cloud fallback when local mode is enabled.
+**Present:** Gemini Live remains the live voice provider; OpenAI Responses API is available for one-shot tasks; the Ollama adapter supports local text and image calls; and **Setup & Configuration → Engine & Providers** already exposes local OpenAI-compatible endpoints (Ollama, LM Studio, llama.cpp, vLLM and Jan), model discovery, connectivity testing, and privacy notes.
 
 **Remaining:**
-- [ ] Add/verify a first-class Settings UI for enabling local mode, selecting installed text/vision models, and testing the local endpoint.
-- [ ] Show the active provider clearly in the HUD and command centre before private content is sent.
+- [ ] Verify provider identity and local/cloud privacy state are visible in the HUD and command centre before private content is sent.
 - [ ] Test model-unavailable, Ollama-stopped, model-not-installed, timeout, and low-memory cases on supported hardware.
 - [ ] Decide and document the supported local-model profile for low-power CPUs versus GPU-capable machines.
 
