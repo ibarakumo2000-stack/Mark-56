@@ -38,20 +38,33 @@ class PreparedUpdate:
     release_url: str
 
 
+def _validate_download_url(url: str) -> str:
+    """Validate both requested and post-redirect URLs before consuming bytes."""
+    parsed = urllib.parse.urlparse(str(url or ""))
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in _ALLOWED_HOSTS
+        or parsed.username
+        or parsed.password
+        or parsed.port not in (None, 443)
+    ):
+        raise ValueError("Update URL or redirect target is not an approved HTTPS GitHub release host.")
+    return parsed.geturl()
+
+
 def _request(url: str, *, max_bytes: int):
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname not in _ALLOWED_HOSTS:
-        raise ValueError("Update URL is not an approved HTTPS GitHub release host.")
+    url = _validate_download_url(url)
     request = urllib.request.Request(url, headers={
         "Accept": "application/vnd.github+json",
         "User-Agent": "Mark56-Updater",
     })
-    response = urllib.request.urlopen(request, timeout=_TIMEOUT)
-    if response.status != 200:
-        response.close()
-        raise RuntimeError(f"GitHub returned HTTP {response.status}.")
-    data = response.read(max_bytes + 1)
-    response.close()
+    with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
+        # urllib follows redirects automatically. The original URL being trusted
+        # does not make its redirect target trusted, so validate the final URL.
+        _validate_download_url(response.geturl())
+        if response.status != 200:
+            raise RuntimeError(f"GitHub returned HTTP {response.status}.")
+        data = response.read(max_bytes + 1)
     if len(data) > max_bytes:
         raise RuntimeError("Update response exceeded the allowed size.")
     return data
@@ -125,8 +138,12 @@ def prepare_update(*, current_version: str | None = None, staging_dir: str | Pat
     download_url = urllib.parse.urlparse(asset_url)
     if download_url.scheme != "https" or download_url.hostname not in _ALLOWED_HOSTS:
         raise RuntimeError("Installer URL is not an approved HTTPS GitHub release host.")
+    asset_url = _validate_download_url(asset_url)
     request = urllib.request.Request(asset_url, headers={"User-Agent": "Mark56-Updater"})
     with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
+        # Release assets redirect to GitHub-owned object storage. Do not follow
+        # a compromised or malformed redirect to an arbitrary host.
+        _validate_download_url(response.geturl())
         if response.status != 200:
             raise RuntimeError(f"Installer download failed with HTTP {response.status}.")
         length = response.headers.get("Content-Length")

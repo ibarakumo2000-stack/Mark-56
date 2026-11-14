@@ -26,6 +26,29 @@ class UpdateInstallerTests(unittest.TestCase):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 update_installer._request(url, max_bytes=10)
 
+    @patch("plugins.update_installer.urllib.request.urlopen")
+    def test_request_rejects_redirect_to_untrusted_host(self, urlopen):
+        response = MagicMock()
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.geturl.return_value = "https://evil.example/payload"
+        response.__enter__.return_value.read.return_value = b"untrusted"
+        urlopen.return_value = response
+        with self.assertRaisesRegex(ValueError, "redirect target"):
+            update_installer._request("https://api.github.com/releases/latest", max_bytes=100)
+
+    @patch("plugins.update_installer.urllib.request.urlopen")
+    def test_request_accepts_redirect_to_github_asset_host(self, urlopen):
+        response = MagicMock()
+        entered = response.__enter__.return_value
+        entered.status = 200
+        entered.geturl.return_value = "https://objects.githubusercontent.com/release/asset"
+        entered.read.return_value = b"release metadata"
+        urlopen.return_value = response
+        self.assertEqual(
+            update_installer._request("https://api.github.com/releases/latest", max_bytes=100),
+            b"release metadata",
+        )
+
     def test_release_url_is_pinned_to_official_repo(self):
         self.assertEqual(
             update_installer._safe_release_url(
