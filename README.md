@@ -21,7 +21,7 @@ A clean example configuration belongs in `config/api_keys.example.json`; actual 
 
 ## Development status
 
-See [MARK56_UPGRADE_PLAN.md](MARK56_UPGRADE_PLAN.md) for the staged roadmap and acceptance criteria. Features are only marked complete after implementation and testing.
+See [MARK56_UPGRADE_PLAN.md](MARK56_UPGRADE_PLAN.md) for the staged roadmap and acceptance criteria. Features are only marked complete after implementation and testing. See [Remaining Stages](docs/REMAINING_STAGES.md) for the current implementation and device-acceptance backlog.
 ## Mark 56 changes currently in the repository
 
 - Optional OpenAI Responses API adapter for one-shot AI tasks in `core/openai_provider.py`.
